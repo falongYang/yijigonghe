@@ -505,10 +505,15 @@ export const ENEMY_ARCHETYPES = {
 export const ARCHETYPE_ORDER = ['aggressive', 'expansionist', 'defensive'];
 
 /* ----------------------------- 难度 ----------------------------- */
+// targeting / defense / abilitySmart：AI「智能程度」分级（0=不启用，1=全量）。
+// 只影响敌方决策质量，不影响资源与兵力倍率，故与 ecoMul / armyMul 正交。
 export const DIFFICULTY = {
-  easy:   { id: 'easy',   name: '蛰伏', desc: '敌方更慢、更弱，适合熟悉操作。', ecoMul: 0.78, armyMul: 0.80, thinkMul: 1.45 },
-  normal: { id: 'normal', name: '共时', desc: '标准对抗节奏。',               ecoMul: 1.0,  armyMul: 1.0,  thinkMul: 1.0 },
-  hard:   { id: 'hard',   name: '回响', desc: '敌方更快、更凶，需精密运营。', ecoMul: 1.28, armyMul: 1.32, thinkMul: 0.68 },
+  easy:   { id: 'easy',   name: '蛰伏', desc: '敌方更慢、更弱，适合熟悉操作。', ecoMul: 0.78, armyMul: 0.80, thinkMul: 1.45,
+            targeting: 0,    defense: 0.25, abilitySmart: 0 },
+  normal: { id: 'normal', name: '共时', desc: '标准对抗节奏。',               ecoMul: 1.0,  armyMul: 1.0,  thinkMul: 1.0,
+            targeting: 0.55, defense: 0.60, abilitySmart: 1 },
+  hard:   { id: 'hard',   name: '回响', desc: '敌方更快、更凶，需精密运营。', ecoMul: 1.28, armyMul: 1.32, thinkMul: 0.68,
+            targeting: 1,    defense: 1.00, abilitySmart: 1 },
 };
 export const DIFFICULTY_ORDER = ['easy', 'normal', 'hard'];
 

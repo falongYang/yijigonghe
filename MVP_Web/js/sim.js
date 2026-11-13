@@ -28,6 +28,8 @@ const AGGRO = 22;             // 自动索敌半径
 const PLAYER_BASE = { x: 0, z: HALF_H * 0.62 };
 const ENEMY_BASE = { x: 0, z: -HALF_H * 0.62 };
 const BURROW_IDLE_SPEED = 1.45;          // 潜行提速
+// 敌方 AI 能力分类：进攻类打敌方密集簇，增益类打己方密集簇（全局 buff 落点不敏感）
+const AI_OFFENSIVE_ABILITIES = new Set(['a_acidpool', 'a_whirl', 'a_venom', 'a_dive', 'a_bomb', 'a_burrow']);
 
 export class Simulation {
   constructor() {
@@ -94,7 +96,8 @@ export class Simulation {
     this.ended = null;
     this.time = 0;
     this.peakPop = { P: 0, E: 0 };
-    const blank = () => ({ kills: 0, losses: 0, built: 0, harvested: 0, abilities: 0, evolved: 0, raided: 0, repaired: 0, wellPh: 0, dmgDealt: 0, dmgTaken: 0 });
+    const blank = () => ({ kills: 0, losses: 0, built: 0, harvested: 0, abilities: 0, evolved: 0, raided: 0, repaired: 0, wellPh: 0,
+      dmgDealt: 0, dmgTaken: 0, critHits: 0, smartCasts: 0, defenses: 0, nodeSwitches: 0 });
     this.stats = { P: blank(), E: blank() };
     this.map = getMapConfig(mode, chapter);
     // 战术地形与信息素井用同一套确定性配置生成：模拟、3D 渲染与小地图读取的都是这一份。
@@ -245,7 +248,7 @@ export class Simulation {
       attackTimer: aint[0] * diff.thinkMul + 10,   // +10s 首波宽限，避免开局即被压
       attackInterval: aint, soldierReq: arch.soldierReq[0], soldierReqMax: arch.soldierReq[1],
       abilityUse: arch.abilityUse, expandBias: arch.expandBias,
-      sigCount: 0,
+      sigCount: 0, defTimer: 0, defending: false,
     };
   }
 
@@ -265,7 +268,7 @@ export class Simulation {
       level: opts.level || 1, elite: !!opts.elite, xp: 0, accent, sig,
       state: 'idle', target: null, waypoints: [], nodeId: null, homeId: null,
       heading: Math.random() * 6.28, moving: false, atkTimer: 0,
-      order: 'auto', lastAttacker: null, burrowed: false, phase: Math.random() * 6.28,
+      order: 'auto', lastAttacker: null, burrowed: false, phase: Math.random() * 6.28, defendUntil: 0,
       buff: { dmg: 1, tank: 1, spd: 1, t: 0 },
     };
     this.units.push(u);
@@ -299,13 +302,44 @@ export class Simulation {
   depots(side) { return this.buildings.filter(b => b.side === side && BUILDINGS[b.type].depot && b.state === 'idle'); }
   isTargetable(u) { return !(u.domain === 'underground' && u.burrowed); }
 
-  nearestNode(x, z, domain, minAmount = 1) {
+  nearestNode(x, z, domain, minAmount = 1, opts = {}) {
+    // 默认路径保持「最近距离」原语义；只有显式 balance 时启用负载均衡调度。
+    if (opts.balance) return this._balancedNode(x, z, domain, minAmount, opts);
     let best = null, bd = Infinity;
     for (const n of this.nodes) {
       if (n.amount < minAmount) continue;
       if (domain && n.domain !== domain) continue;
       const d = dist(x, z, n.x, n.z);
       if (d < bd) { bd = d; best = n; }
+    }
+    return best;
+  }
+
+  /** 采集点调度：距离 + 拥挤度 + 剩余储量 + 敌我归属的综合评分，避免工蚁扎堆一个点。
+   *  仅 A 侧内部使用，不改动 nearestNode 的默认返回语义。 */
+  _balancedNode(x, z, domain, minAmount, opts) {
+    const crowd = new Map();
+    for (const w of this.units) {
+      if (w === opts.exclude || w.side !== opts.forSide || w.nodeId == null) continue;
+      const def = UNITS[w.type];
+      if (!def || def.role !== 'econ') continue;
+      crowd.set(w.nodeId, (crowd.get(w.nodeId) || 0) + 1);
+    }
+    let best = null, bestScore = Infinity;
+    for (const n of this.nodes) {
+      if (n.amount < minAmount) continue;
+      if (domain && n.domain !== domain) continue;
+      let score = dist(x, z, n.x, n.z);
+      const c = crowd.get(n.id) || 0;
+      // 每点容纳 3 只以内不分流；超员才逐步加成，避免工蚁为分散而跑太远
+      // （系数经 A/B 扫描：过激会让 120s 采集总量掉 ~10%）
+      if (c > 3) score += (c - 3) * 8;
+      // 优先饱满点：刚再生出一点的点留给后来者，减少来回切换
+      const fill = n.max ? clamp(n.amount / n.max, 0, 1) : 1;
+      score += (1 - fill) * 3;
+      // 敌方正在采的点略避开，减少抢点冲突
+      if (n.owner && n.owner !== opts.forSide) score += 4;
+      if (score < bestScore) { bestScore = score; best = n; }
     }
     return best;
   }
@@ -316,11 +350,24 @@ export class Simulation {
     return best;
   }
 
-  _assignHarvest(u) {
+  _assignHarvest(u) { this._reassignNode(u); }
+
+  /** 统一的采集点重选入口：创建、采空、卸货后都走负载均衡调度。
+   *  玩家手动指定的采集点（order='manual'）优先保留；只有该点确实采空才重新调度并转回自动。 */
+  _reassignNode(u) {
     const dom = UNITS[u.type].domain;
-    const n = this.nearestNode(u.x, u.z, dom, 1);
-    if (!n) { u.state = 'idle'; return; }
+    if (u.order === 'manual' && u.nodeId != null) {
+      const pinned = this.nodes.find(x => x.id === u.nodeId);
+      if (pinned && pinned.amount >= 1) {
+        u.state = 'harvest'; u.target = { x: pinned.x, z: pinned.z };
+        return pinned;
+      }
+    }
+    const n = this.nearestNode(u.x, u.z, dom, 1, { balance: true, forSide: u.side, exclude: u });
+    if (!n) { u.state = 'idle'; u.nodeId = null; return null; }
+    if (u.nodeId && u.nodeId !== n.id && this.stats) this.stats[u.side].nodeSwitches++;
     u.nodeId = n.id; u.state = 'harvest'; u.order = 'auto'; u.target = { x: n.x, z: n.z };
+    return n;
   }
 
   // -------------------------------------------------------------- 资源辅助
@@ -796,18 +843,22 @@ export class Simulation {
 
   _autoUnit(u, dt) {
     if (UNITS[u.type].role === 'econ') { this._assignHarvest(u); return; }
-    const t = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO);
+    const t = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO, this._targetOpts(u));
     if (t) { u.target = { id: t.id, x: t.x, z: t.z }; u.state = 'attack'; if (u.domain === 'underground') u.burrowed = false; }
+  }
+
+  /** 战术索敌开关：只有敌方 AI 且难度 targeting>0 时启用，玩家单位与手动指令保持原行为。 */
+  _targetOpts(u) {
+    const w = (u.side === SIDES.ENEMY && this._ai) ? (this._ai.diff.targeting || 0) : 0;
+    return w > 0 ? { tactical: u, tacticalWeight: w } : undefined;
   }
 
   _harvest(u, dt) {
     let n = this.nodes.find(x => x.id === u.nodeId);
     if (!n || n.amount <= 0) {
-      const dom = UNITS[u.type].domain;
-      const nn = this.nearestNode(u.x, u.z, dom, 1);
-      if (nn) { u.nodeId = nn.id; u.target = { x: nn.x, z: nn.z }; }
-      else { u.state = 'idle'; return; }
-      n = this.nodes.find(x => x.id === u.nodeId);
+      const nn = this._reassignNode(u);
+      if (!nn) return;
+      n = nn;
     }
     if (dist(u.x, u.z, n.x, n.z) > HARVEST_RANGE) {
       this._moveTo(u, n.x, n.z, dt);
@@ -835,9 +886,7 @@ export class Simulation {
         this._emit('gain', { x: d.x, z: d.z, y: (d.size || 5) + 2, amount: haul, res: haulRes });
       }
       u.carrying = 0; u.carryRes = 'bio';
-      const nn = this.nearestNode(u.x, u.z, UNITS[u.type].domain, 1);
-      if (nn) { u.nodeId = nn.id; u.state = 'harvest'; u.target = { x: nn.x, z: nn.z }; }
-      else u.state = 'idle';
+      this._reassignNode(u);
     }
   }
 
@@ -856,7 +905,7 @@ export class Simulation {
   }
 
   _attackMove(u, dt) {
-    const tgt = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO + 6);
+    const tgt = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO + 6, this._targetOpts(u));
     if (tgt) { u.target = { id: tgt.id, x: tgt.x, z: tgt.z }; u.state = 'attack'; return; }
     if (u.target) this._moveTo(u, u.target.x, u.target.z, dt, () => { u.state = 'idle'; u.order = 'auto'; });
   }
@@ -895,6 +944,10 @@ export class Simulation {
   }
 
   _nearestEnemyEntity(side, x, z, radius, opts = {}) {
+    // 战术评分是可选增量：不传 opts.tactical 时，下面这段原「最近目标」逻辑逐字保持不变。
+    if (opts.tactical && opts.tacticalWeight > 0) {
+      return this._tacticalTarget(side, x, z, radius, opts.tactical, opts.tacticalWeight, opts);
+    }
     const enemy = side === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER;
     let best = null, bd = radius;
     for (const u of this.units) {
@@ -912,6 +965,41 @@ export class Simulation {
     return best;
   }
 
+  /** 战术索敌评分：距离 − 武器克制 − 残血/补刀 − 远程威胁 − 经济骚扰 + 建筑降权。
+   *  w 为难度权重（0..1），w 越大越「聪明」；硬约束仍是 radius 内才可选。 */
+  _tacticalTarget(side, x, z, radius, atk, w, opts = {}) {
+    const enemy = side === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER;
+    let best = null, bestScore = Infinity;
+    const consider = (t, d, isBuilding) => {
+      if (d >= radius) return;
+      const armor = t.armor || (isBuilding ? 'chitin' : 'soft');
+      const mult = dmgMult(atk.dtype, armor);
+      let score = d - (mult - 1) * w * 30;
+      if (t.maxHp) {
+        score -= (1 - clamp(t.hp / t.maxHp, 0, 1)) * w * 10;
+        if (atk.dmg && t.hp <= atk.dmg * mult) score -= w * 7;   // 可一击击杀
+      }
+      if (!isBuilding) {
+        if (opts.combatOnly && t.type === 'worker') return;
+        const def = UNITS[t.type];
+        if (def && def.role === 'econ') score -= w * 4;
+        else if (def && (def.range || 0) > 10) score -= w * 5;   // 优先点掉远程输出
+      } else {
+        score += w * 2;
+      }
+      if (score < bestScore) { bestScore = score; best = t; }
+    };
+    for (const u of this.units) {
+      if (u.side !== enemy || !this.isTargetable(u)) continue;
+      consider(u, dist(x, z, u.x, u.z), false);
+    }
+    for (const b of this.buildings) {
+      if (b.side !== enemy || b.state === 'constructing') continue;
+      consider(b, dist(x, z, b.x, b.z) - b.size * 0.5, true);
+    }
+    return best;
+  }
+
   _dealDamage(attacker, tgt, dmg, fromX, fromZ, ranged, dtype) {
     const aSide = attacker && attacker.side ? attacker.side : null;
     const armor = tgt.armor || (BUILDINGS[tgt.type] ? 'chitin' : 'soft');
@@ -925,7 +1013,10 @@ export class Simulation {
     if (tgt.lastAttacker !== undefined) tgt.lastAttacker = aSide;
     // 战局统计：实际结算伤害（已含增益、护甲与武器克制）
     if (this.stats) {
-      if (aSide && this.stats[aSide]) this.stats[aSide].dmgDealt += d;
+      if (aSide && this.stats[aSide]) {
+        this.stats[aSide].dmgDealt += d;
+        if (mult >= 1.15) this.stats[aSide].critHits++;   // 克制命中次数（战术索敌效果可观测）
+      }
       if (tgt.side && this.stats[tgt.side]) this.stats[tgt.side].dmgTaken += d;
     }
     this._emit('dmg', { x: tgt.x, z: tgt.z, amount: Math.max(1, Math.round(d)), victim: tgt.side, atk: aSide,
@@ -1046,6 +1137,7 @@ export class Simulation {
     const hq = eb.find(b => b.type === 'hq');
     if (!hq) return;
     const diff = ai.diff, arch = ai.arch;
+    this._aiDefenseCheck(dt, hq);
     const workers = this.units.filter(u => u.side === E && u.type === 'worker');
     const soldiers = this.units.filter(u => u.side === E && u.type !== 'worker');
     const bio = this.res.E.bio, min = this.res.E.min, ph = this.res.E.ph;
@@ -1112,10 +1204,28 @@ export class Simulation {
     if (ai.abilityTimer <= 0 && soldiers.length > 4) {
       ai.abilityTimer = (20 + Math.random() * 8) * diff.thinkMul;
       if (Math.random() < arch.abilityUse) {
-        const army = soldiers.filter(s => dist(s.x, s.z, PLAYER_BASE.x, PLAYER_BASE.z) < 60);
-        const pt = army.length ? army[Math.floor(Math.random() * army.length)] : soldiers[0];
+        const smart = diff.abilitySmart || 0;
         const cand = ['a_frenzy', 'a_rally', 'a_bomb', 'a_venom', 'a_acidpool'];
-        for (const k of cand) if (this.castAbility(E, k, pt.x, pt.z)) break;
+        for (const k of cand) {
+          // 先筛冷却与信息素，避免「选好落点却放不出来」白算一次
+          if ((this.cd[E][k] || 0) > 0 || this.res_(E, 'ph') < (ABILITIES[k].cost || 0)) continue;
+          let pt;
+          if (smart > 0) {
+            const offensive = AI_OFFENSIVE_ABILITIES.has(k);
+            const pool = offensive
+              ? this.units.filter(u => u.side === SIDES.PLAYER && u.type !== 'worker')
+              : soldiers;
+            // 进攻类没有敌方目标就不浪费信息素；增益类用己方最密集簇
+            pt = offensive && !pool.length ? null : this._bestCluster(pool, offensive ? 9 : 12);
+          } else {
+            const army = soldiers.filter(s => dist(s.x, s.z, PLAYER_BASE.x, PLAYER_BASE.z) < 60);
+            pt = army.length ? army[Math.floor(Math.random() * army.length)] : soldiers[0];
+          }
+          if (pt && this.castAbility(E, k, pt.x, pt.z)) {
+            if (smart > 0 && this.stats) this.stats[E].smartCasts++;
+            break;
+          }
+        }
       }
     }
 
@@ -1136,9 +1246,56 @@ export class Simulation {
       const [lo, hi] = arch.attackInterval;
       ai.attackTimer = (lo + Math.random() * (hi - lo)) * diff.thinkMul;
       ai.soldierReq = Math.min(arch.soldierReqMax, ai.soldierReq + 2);
-      for (const s of soldiers) { if (s.order === 'manual') continue; s.state = 'attackmove'; s.order = 'auto'; s.target = { x: PLAYER_BASE.x, z: PLAYER_BASE.z }; }
+      for (const s of soldiers) {
+        if (s.order === 'manual' || s.defendUntil > this.time) continue;   // 回防中的单位不被进攻波次覆盖
+        s.state = 'attackmove'; s.order = 'auto'; s.target = { x: PLAYER_BASE.x, z: PLAYER_BASE.z };
+      }
       this._emit('aiAttack', {});
     }
+  }
+
+  /** 找密度最高的簇心：返回半径 r 内同伴最多的那个单位的位置。
+   *  AI 能力落点专用，规模 <=100、约 20s 调用一次，O(n²) 可接受。 */
+  _bestCluster(list, r = 9) {
+    if (!list.length) return null;
+    let best = list[0], bestN = -1;
+    for (const c of list) {
+      let n = 0;
+      for (const o of list) if (dist(c.x, c.z, o.x, o.z) <= r) n++;
+      if (n > bestN) { bestN = n; best = c; }
+    }
+    return best;
+  }
+
+  /** 基地回防：玩家战斗单位逼近敌方蚁后巢时，按难度灵敏度抽调离巢最近的兵力回救。
+   *  4s 评估一次 + 12s 指派锁，避免与进攻波次互相拉扯导致来回震荡。 */
+  _aiDefenseCheck(dt, hq) {
+    const ai = this._ai;
+    const sens = (ai.diff && ai.diff.defense) || 0;
+    if (sens <= 0) return;
+    ai.defTimer -= dt;
+    if (ai.defTimer > 0) return;
+    // 灵敏度越低评估越迟钝（蛰伏 ~8.5s / 回响 4s），配合警戒半径与抽调比例形成三级手感
+    ai.defTimer = 4 + (1 - sens) * 6;
+    const E = SIDES.ENEMY;
+    const R = 24 + 34 * sens;
+    const threats = this.units.filter(u => u.side === SIDES.PLAYER && u.type !== 'worker' && dist(u.x, u.z, hq.x, hq.z) < R);
+    if (!threats.length) { ai.defending = false; return; }
+    const pool = this.units.filter(u => u.side === E && u.type !== 'worker'
+      && u.order !== 'manual' && !(u.defendUntil > this.time));
+    const need = Math.min(pool.length, Math.max(2, Math.ceil(threats.length * sens * 0.8)));
+    if (!need) return;
+    let cx = 0, cz = 0;
+    for (const t of threats) { cx += t.x; cz += t.z; }
+    cx /= threats.length; cz /= threats.length;
+    const near = pool.sort((a, b) => dist(a.x, a.z, hq.x, hq.z) - dist(b.x, b.z, hq.x, hq.z)).slice(0, need);
+    for (const s of near) {
+      s.state = 'attackmove'; s.order = 'auto';
+      s.target = { x: cx, z: cz };
+      s.defendUntil = this.time + 12;
+    }
+    ai.defending = true;
+    if (this.stats) this.stats[E].defenses++;
   }
 
   _bestTier(side) {
