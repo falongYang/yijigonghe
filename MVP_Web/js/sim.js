@@ -275,7 +275,7 @@ export class Simulation {
       attackTimer: aint[0] * diff.thinkMul + 10,   // +10s 首波宽限，避免开局即被压
       attackInterval: aint, soldierReq: arch.soldierReq[0], soldierReqMax: arch.soldierReq[1],
       abilityUse: arch.abilityUse, expandBias: arch.expandBias,
-      sigCount: 0, defTimer: 0, defending: false,
+      sigCount: 0, defTimer: 0, defAbilityTimer: 0, defending: false,
       waveReinforce: diff.waveReinforce || 0,   // 波次节奏（默认档只发首波）
       repair: diff.repair || 0, repairTimer: 0,               // 敌方后勤维修（默认档关闭/半开）
     };
@@ -1381,6 +1381,25 @@ export class Simulation {
       }
     }
 
+    // 防御/增益智能（仅 hard 经 aiDefensive 开启）：军团受损时施放甲壳硬化减伤，
+    // 平时机会性补纪元共鸣增伤。独立计时器，不挤占进攻节奏；easy/normal 的 aiDefensive=0 → 整段跳过。
+    ai.defAbilityTimer -= dt;
+    if (ai.defAbilityTimer <= 0 && (diff.aiDefensive || 0) > 0 && soldiers.length > 3) {
+      ai.defAbilityTimer = 22 * diff.thinkMul;   // 固定间隔，避免额外消费种子 RNG 干扰 A/B 对比
+      const armyHp = soldiers.reduce((a, s) => a + s.hp, 0);
+      const armyMax = soldiers.reduce((a, s) => a + s.maxHp, 0);
+      const hurt = armyHp < armyMax * 0.82;
+      const order = hurt ? ['a_harden', 'a_resonance'] : ['a_resonance', 'a_harden'];
+      for (const k of order) {
+        if ((this.cd[E][k] || 0) > 0 || this.res_(E, 'ph') < (ABILITIES[k].cost || 0)) continue;
+        const c = this._bestCluster(soldiers, 12);
+        if (c && this.castAbility(E, k, c.x, c.z)) {
+          if (this.stats) this.stats[E].smartCasts++;
+          break;
+        }
+      }
+    }
+
     // 进化：达到条件的兵种进化
     for (const s of soldiers) {
       const def = UNITS[s.type];
@@ -1484,7 +1503,7 @@ export class Simulation {
     if (ai.repairTimer > 0) return;
     ai.repairTimer = 4;
     const E = SIDES.ENEMY;
-    const cap = Math.ceil(2 * r);
+    const cap = Math.ceil(2 * r) + (r >= 1 ? 1 : 0);   // hard 额外多 1 只预备队（normal r=0.5 → ceil(1)+0=1，不变）
     const busy = this.units.filter(u => u.side === E && u.state === 'repair').length;
     if (busy >= cap) return;
     const workers = this.units.filter(u => u.side === E && UNITS[u.type].role === 'econ');

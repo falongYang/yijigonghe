@@ -506,17 +506,19 @@ export const ARCHETYPE_ORDER = ['aggressive', 'expansionist', 'defensive'];
 
 /* ----------------------------- 难度 ----------------------------- */
 // targeting / defense / abilitySmart：AI「智能程度」分级（0=不启用，1=全量）。
-// waveReinforce：首波之后是否持续组织进攻波次（0=只发首波，1=按战损动态补波）。
+// waveReinforce：首波之后是否持续组织进攻波次（0=只发首波；0<x<1=轻量持续波次，按战损动态补波但节奏更缓；
+//   1=满强度持续波次）。sim 内以线性因子消费该值（组波间隔 ×(1+0.6×wr)、起征兵力 +2×wr、预备队 0.2×wr）。
+// aiDefensive：敌方防御/增益智能（0=关闭，1=开启）；开启后 hard 会在军团受损时施放甲壳硬化、平时机会性补纪元共鸣。
 // repair：敌方后勤维修灵敏度（0=不维修，1=完整）。二者只影响 AI 决策，与 ecoMul / armyMul 正交。
-// 默认档（easy/normal）waveReinforce=0 是刻意保留既有节奏：全面开启会让 AI 连续全军压上，
+// easy/normal 保持 waveReinforce=0/0.5、aiDefensive=0，故默认难度零进攻波次突变、无防御智能；强度变化只落 hard。
 // 属于难度重平衡而非细节开发；需要提升压迫感时只改这里的数值即可，无需动 sim.js。
 export const DIFFICULTY = {
   easy:   { id: 'easy',   name: '蛰伏', desc: '敌方更慢、更弱，适合熟悉操作。', ecoMul: 0.78, armyMul: 0.80, thinkMul: 1.45,
-            targeting: 0,    defense: 0.25, abilitySmart: 0, waveReinforce: 0, repair: 0, aiAbilities: [] },
-  normal: { id: 'normal', name: '共时', desc: '标准对抗节奏。',               ecoMul: 1.0,  armyMul: 1.0,  thinkMul: 1.0,
-            targeting: 0.55, defense: 0.60, abilitySmart: 1, waveReinforce: 0, repair: 0.5, aiAbilities: [] },
+            targeting: 0,    defense: 0.25, abilitySmart: 0, waveReinforce: 0, repair: 0, aiAbilities: [], aiDefensive: 0 },
+  normal: { id: 'normal', name: '共时', desc: '标准对抗节奏，含少量持续波次。', ecoMul: 1.0,  armyMul: 1.0,  thinkMul: 1.0,
+            targeting: 0.55, defense: 0.60, abilitySmart: 1, waveReinforce: 0.5, repair: 0.5, aiAbilities: [], aiDefensive: 0 },
   hard:   { id: 'hard',   name: '回响', desc: '敌方更快、更凶，需精密运营。', ecoMul: 1.28, armyMul: 1.32, thinkMul: 0.68,
-            targeting: 1,    defense: 1.00, abilitySmart: 1, waveReinforce: 1, repair: 1, aiAbilities: ['a_whirl', 'a_dive'] },
+            targeting: 1,    defense: 1.00, abilitySmart: 1, waveReinforce: 1, repair: 1, aiAbilities: ['a_whirl', 'a_dive'], aiDefensive: 1 },
 };
 export const DIFFICULTY_ORDER = ['easy', 'normal', 'hard'];
 
