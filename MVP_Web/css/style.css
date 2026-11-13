@@ -113,8 +113,14 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 /* 突袭警告条（top:64 / z:116）活跃时，把 toast 下移到其下方，避免两条顶部预警互相遮挡。 */
 #toast.under-raid { top: 108px; }
 #log { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(520px, 70vw); max-height: 132px; overflow: hidden; display: flex; flex-direction: column-reverse; gap: 2px; pointer-events: none; }
-.log-item { font-size: 12px; background: rgba(14,20,10,.6); border-radius: 5px; padding: 3px 9px; color: #cdd8b8; width: fit-content; }
-.log-item.key { color: #ffd27f; } .log-item.good { color: #9fe0a0; } .log-item.bad { color: #ff9b8a; } .log-item.info { color: #aeb89a; }
+.log-item { font-size: 12px; background: rgba(14,20,10,.6); border-left: 2px solid transparent; border-radius: 5px; padding: 3px 9px; color: #cdd8b8; width: fit-content; animation: log-in .22s ease-out both; }
+@keyframes log-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+/* 高价值条目（战报要点 / 敌情与损毁）在 132px 信息流里加左色条与底色，避免被密集日志冲走；
+   普通 info/good 保持原样，只有配色增强不改变文字内容。 */
+.log-item.key { color: #ffd27f; border-left-color: #ffd27f; background: rgba(70,58,20,.52); font-weight: 600; }
+.log-item.good { color: #9fe0a0; }
+.log-item.bad { color: #ff9b8a; border-left-color: #ff6b5a; background: rgba(88,26,20,.58); font-weight: 600; }
+.log-item.info { color: #aeb89a; }
 
 /* 帮助 / 结局 */
 #help, #end { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8,10,6,.82); z-index: 120; }
@@ -170,6 +176,13 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .dtab { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); color: #cdd8b8; padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; }
 .dtab.on { background: rgba(126,200,106,.22); border-color: #7ef0a0; color: #eaf2dc; }
 .opt-hint { color: #9aa489; font-size: 12px; margin-left: 8px; }
+/* 难度战术情报：只读 DIFFICULTY 常量渲染的一行 chips；固定 min-height 让三档切换不跳动，
+   首页新增的这点高度由 .sp-wrap 弹性轮播区吸收，不挤掉底部按钮。 */
+#difficulty { margin-bottom: 6px; }
+.diff-brief { margin-top: 4px; min-height: 22px; display: flex; flex-wrap: wrap; gap: 3px 8px; justify-content: center; align-items: center; }
+.db-chip { font-size: 11px; line-height: 1.5; white-space: nowrap; color: #9aa489; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.10); border-radius: 5px; padding: 2px 8px; }
+.db-chip.db-ai { color: #b8d0a4; border-color: rgba(126,200,106,.24); }
+.db-chip.db-extra { color: #ffc08a; border-color: rgba(255,160,90,.42); background: rgba(255,150,70,.10); }
 
 /* 敌方性格（仅遭遇战） */
 #arch-opts { margin: 2px 0 4px; }

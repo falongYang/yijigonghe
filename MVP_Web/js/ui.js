@@ -290,15 +290,48 @@ export class UI {
   }
 
   // ----------------------------------------------------------- 难度
+  /** 把 A 侧 DIFFICULTY 的战术系数翻译成玩家可读的情报（只读常量，不改 A 侧数据）。
+   *  三档共用同一种分组结构，切换难度时 chip 数量稳定、不产生布局跳动。 */
+  _diffIntel(d) {
+    const num = v => Number(v || 0).toFixed(2).replace(/\.00$/, '');
+    const pct = v => Math.round(Number(v || 0) * 100) + '%';
+    const groups = [{
+      cls: '', text: `经济 ×${num(d.ecoMul)} · 兵力 ×${num(d.armyMul)} · 决策间隔 ×${num(d.thinkMul)}`,
+    }];
+    const ai = [];
+    if (d.targeting > 0) ai.push(`索敌 ${pct(d.targeting)}`);
+    if (d.defense > 0) ai.push(`回防 ${pct(d.defense)}`);
+    if (d.repair > 0) ai.push(`维修 ${pct(d.repair)}`);
+    if (d.abilitySmart > 0) ai.push('智能施法');
+    if (d.waveReinforce > 0) ai.push('波次增援');
+    groups.push({ cls: 'db-ai', text: ai.length ? 'AI ' + ai.join(' · ') : 'AI 基础行为（无战术强化）' });
+    const extras = (d.aiAbilities || []).map(k => (ABILITIES[k] && ABILITIES[k].name) || k);
+    groups.push({ cls: extras.length ? 'db-extra' : '', text: extras.length ? '额外能力：' + extras.join('、') : '额外能力：无' });
+    return groups;
+  }
   _buildDifficulty() {
     const hint = $('#diff-hint');
+    const brief = $('#diff-brief');
     const set = (id) => {
       this.sel.difficulty = id;
       document.querySelectorAll('.dtab').forEach(x => x.classList.remove('on'));
       document.querySelector(`.dtab[data-diff="${id}"]`).classList.add('on');
-      hint.textContent = DIFFICULTY[id].desc;
+      const d = DIFFICULTY[id];
+      hint.textContent = d.desc;
+      if (brief) {
+        brief.innerHTML = '';
+        for (const g of this._diffIntel(d)) {
+          const chip = el('span', 'db-chip' + (g.cls ? ' ' + g.cls : ''));
+          chip.textContent = g.text;            // 走 textContent，不把常量拼进 innerHTML
+          brief.appendChild(chip);
+        }
+      }
     };
-    document.querySelectorAll('.dtab').forEach(t => { t.onclick = () => set(t.dataset.diff); });
+    document.querySelectorAll('.dtab').forEach(t => {
+      const d = DIFFICULTY[t.dataset.diff];
+      if (d) t.title = `${d.name}：${d.desc}\n` + this._diffIntel(d).map(g => g.text).join('\n');
+      t.onclick = () => set(t.dataset.diff);
+    });
     set('normal');
   }
 
