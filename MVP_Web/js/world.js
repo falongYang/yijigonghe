@@ -1926,6 +1926,17 @@ export class World {
         m.shadow.material.opacity = 0.30;
       }
     }
+    // 移动踏尘 / 水波 / 气泡尾迹：仅在单位移动且未潜地时，按每单位节流（约每 0.32s 一次）生成，
+    // 避免每帧刷特效导致画面杂乱与性能浪费；空域单位悬空 >3 时留气泡尾迹，近水/水陆单位留涟漪，其余留尘土。
+    if (u.moving && u.domain !== 'underground') {
+      m._footT = (m._footT || 0) - (this._frameDt || 0.016);
+      if (m._footT <= 0) {
+        m._footT = 0.32;
+        if (u.domain === 'air') { if (m.group.position.y > 3) this._footBubble(u.x, u.z); }
+        else if (u.terrain === 'water' || u.terrain === 'shore') this._footRipple(u.x, u.z);
+        else this._footDust(u.x, u.z);
+      }
+    }
     m.bar.quaternion.copy(this.camera.quaternion);
     m.bar.quaternion.premultiply(m.group.quaternion.clone().invert());
   }
