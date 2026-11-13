@@ -1353,7 +1353,11 @@ export class Simulation {
       ai.abilityTimer = (20 + Math.random() * 8) * diff.thinkMul;
       if (Math.random() < arch.abilityUse) {
         const smart = diff.abilitySmart || 0;
-        const cand = ['a_frenzy', 'a_rally', 'a_bomb', 'a_venom', 'a_acidpool'];
+        // 基础候选：2 增益 + 3 主攻；hard 把「涡卷/俯冲轰炸」插到增益之后、3 主攻之前，
+        // 让这俩作为 hard 的主攻候选（而非冷却兜底）被真正施放。每次 abilityTimer 至多放 1 个
+        // 且 break 即止 → 施放节奏不变，只改变主攻组合。easy/normal 的 aiAbilities 为空数组
+        // → 候选列表逐字不变，默认难度零平衡影响。
+        const cand = ['a_frenzy', 'a_rally', ...(diff.aiAbilities || []), 'a_bomb', 'a_venom', 'a_acidpool'];
         for (const k of cand) {
           // 先筛冷却与信息素，避免「选好落点却放不出来」白算一次
           if ((this.cd[E][k] || 0) > 0 || this.res_(E, 'ph') < (ABILITIES[k].cost || 0)) continue;

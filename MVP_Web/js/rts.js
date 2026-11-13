@@ -512,11 +512,11 @@ export const ARCHETYPE_ORDER = ['aggressive', 'expansionist', 'defensive'];
 // 属于难度重平衡而非细节开发；需要提升压迫感时只改这里的数值即可，无需动 sim.js。
 export const DIFFICULTY = {
   easy:   { id: 'easy',   name: '蛰伏', desc: '敌方更慢、更弱，适合熟悉操作。', ecoMul: 0.78, armyMul: 0.80, thinkMul: 1.45,
-            targeting: 0,    defense: 0.25, abilitySmart: 0, waveReinforce: 0, repair: 0 },
+            targeting: 0,    defense: 0.25, abilitySmart: 0, waveReinforce: 0, repair: 0, aiAbilities: [] },
   normal: { id: 'normal', name: '共时', desc: '标准对抗节奏。',               ecoMul: 1.0,  armyMul: 1.0,  thinkMul: 1.0,
-            targeting: 0.55, defense: 0.60, abilitySmart: 1, waveReinforce: 0, repair: 0.5 },
+            targeting: 0.55, defense: 0.60, abilitySmart: 1, waveReinforce: 0, repair: 0.5, aiAbilities: [] },
   hard:   { id: 'hard',   name: '回响', desc: '敌方更快、更凶，需精密运营。', ecoMul: 1.28, armyMul: 1.32, thinkMul: 0.68,
-            targeting: 1,    defense: 1.00, abilitySmart: 1, waveReinforce: 1, repair: 1 },
+            targeting: 1,    defense: 1.00, abilitySmart: 1, waveReinforce: 1, repair: 1, aiAbilities: ['a_whirl', 'a_dive'] },
 };
 export const DIFFICULTY_ORDER = ['easy', 'normal', 'hard'];
 
