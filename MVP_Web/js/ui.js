@@ -955,7 +955,23 @@ export class UI {
       // 单体详情卡需要随血量/经验/状态变化刷新（量化以减少重绘）
       const one = ids.length === 1 ? s.getUnit(ids[0]) : null;
       const detail = one ? `:${Math.ceil(one.hp / 8)}:${Math.floor((one.xp || 0) / 10)}:${one.level}:${one.state}:${one.elite ? 1 : 0}:${one.burrowed ? 1 : 0}:${(s.zoneAt(one.x, one.z) || {}).id || '-'}` : '';
-      sig = `U${ids.slice().sort().join(',')}:${s.pop(SIDES.PLAYER)}:${wp}${detail}`;
+      // 多选汇总（整队耐久 / 等级 / 精英 / 编队归属）也需随战斗变化刷新，量化后并入签名，
+      // 否则整队血条会一直停在选中那一刻。
+      let squad = '';
+      if (ids.length > 1) {
+        let hp = 0, maxHp = 0, lvl = 0, elite = 0;
+        for (const id of ids) {
+          const u = s.getUnit(id);
+          if (!u) continue;
+          hp += Math.max(0, u.hp); maxHp += u.maxHp || 0;
+          lvl += u.level || 1; if (u.elite) elite++;
+        }
+        const grp = Object.keys(this.game.groups || {})
+          .filter(k => (this.game.groups[k] || []).some(id => s.selected.has(id)))
+          .sort().join('/');
+        squad = `:${Math.round(hp / 8)}:${Math.round(maxHp / 8)}:${lvl}:${elite}:${grp}`;
+      }
+      sig = `U${ids.slice().sort().join(',')}:${s.pop(SIDES.PLAYER)}:${wp}${detail}${squad}`;
     }
     if (sig === this.selSig) return;
     this.selSig = sig;
@@ -1015,12 +1031,32 @@ export class UI {
         body.innerHTML = this._unitDetail(u0);
       } else {
         title.textContent = `已选择 ${units.length} 个单位`;
-        body.innerHTML = Object.entries(counts).map(([t, n]) => {
-          const u0 = units.find(u => u.type === t);
-          const dom = DOMAINS[u0.domain].key;
-          const lvl = u0.level;
-          return `<div class="kv"><span>${UNITS[t].name}·${dom}·Lv${lvl}</span><b>×${n}</b></div>`;
-        }).join('')
+        // 多选指挥视图：整队耐久 / 等级与精英汇总 / 域分布 / 编队归属，再列兵种构成
+        let hp = 0, maxHp = 0, lvlSum = 0, lvlMax = 0, elites = 0;
+        const domCounts = {};
+        for (const u of units) {
+          hp += Math.max(0, u.hp); maxHp += u.maxHp || 0;
+          const lv = u.level || 1; lvlSum += lv; if (lv > lvlMax) lvlMax = lv;
+          if (u.elite) elites++;
+          const d = DOMAINS[UNITS[u.type].domain]
+            ? DOMAINS[UNITS[u.type].domain].key : (UNITS[u.type].domain || '—');
+          domCounts[d] = (domCounts[d] || 0) + 1;
+        }
+        const hpPct = maxHp ? Math.max(0, Math.min(100, Math.round(hp / maxHp * 100))) : 0;
+        const groups = Object.keys(this.game.groups || {})
+          .filter(k => (this.game.groups[k] || []).some(id => s.selected.has(id)))
+          .sort();
+        const domStr = Object.entries(domCounts).map(([d, n]) => `${d}×${n}`).join(' · ');
+        body.innerHTML = `<div class="hpbar"><i style="width:${hpPct}%"></i></div>
+          <div class="kv"><span>整队耐久</span><b>${Math.ceil(hp)} / ${Math.ceil(maxHp)}（${hpPct}%）</b></div>
+          <div class="kv"><span>等级</span><b>均 Lv${(lvlSum / units.length).toFixed(1)} · 最高 Lv${lvlMax}${elites ? ` · 精英 ${elites}` : ''}</b></div>
+          <div class="kv"><span>域分布</span><b>${domStr || '—'}</b></div>
+          ${groups.length ? `<div class="kv"><span>所属编队</span><b>${groups.map(k => '#' + k).join(' · ')}</b></div>` : ''}`
+          + Object.entries(counts).map(([t, n]) => {
+            const u0 = units.find(u => u.type === t);
+            const dom = DOMAINS[UNITS[t].domain] ? DOMAINS[UNITS[t].domain].key : (UNITS[t].domain || '—');
+            return `<div class="kv"><span>${UNITS[t].name}·${dom}·Lv${u0.level || 1}</span><b>×${n}</b></div>`;
+          }).join('')
           + `<div class="muted sm">右键移动/攻击（多选自动阵型散开）· Shift+右键 追加路径点 · A 攻击移动 · S 停止 · H 驻守 · Q 能力 · T 进化</div>`
           + (wp ? `<div class="muted sm">已排队 ${wp} 段路径点 · 按 S 可清空</div>` : '');
       }

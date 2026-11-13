@@ -108,14 +108,32 @@ export const FX_BUILDERS = {
     }, dispose: () => { m.geometry.dispose(); m.material.dispose(); } });
   },
 
-  ring(world, pos, opts, t0) {
-    const r = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.3, 8, 24), new THREE.MeshBasicMaterial({ color: opts.color || 0x9fe0c8, transparent: true, opacity: 0.9, depthWrite: false }));
-    r.rotation.x = -Math.PI / 2; r.position.set(pos.x, 0.3, pos.z);
-    world.scene.add(r);
-    world.fx.push({ t0, obj: r, update: (t) => {
+  ring(world, pos, opts = {}, t0) {
+    // opts.r = 期望的扩散半径（世界单位）。sim 里已有 6 处传入（信息素井 w.r、号令 r:30、
+    // 维修 b.size*0.6、纪元事件 r:120/40、建筑受袭告警 tgt.size+3），此前被忽略，
+    // 导致大范围提示与建筑告警都只有同一个小环。传 r 时用细环按半径扩散；
+    // 未传 r 的调用（命中/出兵/卸货等）保持原有造型与动画，向后兼容。
+    const col = opts.color || 0x9fe0c8;
+    const R = opts.r;
+    const mesh = R
+      ? new THREE.Mesh(new THREE.TorusGeometry(1, 0.045, 8, 40),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85, depthWrite: false }))
+      : new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.3, 8, 24),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false }));
+    mesh.rotation.x = -Math.PI / 2; mesh.position.set(pos.x, 0.3, pos.z);
+    world.scene.add(mesh);
+    world.fx.push({ t0, obj: mesh, update: (t) => {
       if (t > 0.6) return false;
-      const s = 1 + t * 6; r.scale.set(s, s, s); r.material.opacity = 0.9 * (1 - t / 0.6); return true;
-    }, dispose: () => { r.geometry.dispose(); r.material.dispose(); } });
+      if (R) {
+        const k = t / 0.6;
+        mesh.scale.setScalar(R * (0.3 + 0.7 * k));
+        mesh.material.opacity = 0.85 * (1 - k);
+      } else {
+        const s = 1 + t * 6; mesh.scale.set(s, s, s);
+        mesh.material.opacity = 0.9 * (1 - t / 0.6);
+      }
+      return true;
+    }, dispose: () => { mesh.geometry.dispose(); mesh.material.dispose(); } });
   },
 
   foot(world, pos, opts, t0) {
