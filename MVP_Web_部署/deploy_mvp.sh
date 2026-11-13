@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 《蚁纪·共时》Web MVP — 一键打包并部署到云服务器
+# yijigonghe /《蚁纪·共时》Web MVP — 一键打包并部署到云服务器
 #
 # 用法：
 #   SSHPW='<服务器密码>' bash deploy_mvp.sh
