@@ -1547,7 +1547,18 @@ export class World {
     ring.visible = false;
     this.scene.add(ring);
 
-    this.buildingMeshes.set(b.id, { mesh, bar, fill, ring, side: b.side, type: b.type });
+    // 生产进度环（出兵中显示，独立于血条/施工条，置于血条上方）
+    const prog = new THREE.Group();
+    prog.position.y = (BUILDINGS[b.type].size || 5) + 6.0;
+    const progBg = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: 0x14110c, transparent: true, opacity: 0.7, depthTest: false, side: THREE.DoubleSide }));
+    progBg.renderOrder = 996;
+    const progFill = new THREE.Mesh(new THREE.RingGeometry(2.4, 3.0, 32, 1, Math.PI / 2, 0.001), new THREE.MeshBasicMaterial({ color: 0xffcf6a, transparent: true, opacity: 0.95, depthTest: false, side: THREE.DoubleSide }));
+    progFill.renderOrder = 997;
+    prog.add(progBg, progFill);
+    prog.visible = false;
+    mesh.add(prog);
+
+    this.buildingMeshes.set(b.id, { mesh, bar, fill, ring, prog, progFill, side: b.side, type: b.type });
     this.pickables.push(mesh);
   }
 
@@ -1555,6 +1566,7 @@ export class World {
     const m = this.buildingMeshes.get(id);
     if (!m) return;
     this.scene.remove(m.mesh); this.scene.remove(m.ring);
+    if (m.progFill) m.progFill.geometry.dispose();
     const i = this.pickables.indexOf(m.mesh);
     if (i >= 0) this.pickables.splice(i, 1);
     this.buildingMeshes.delete(id);
@@ -1763,6 +1775,28 @@ export class World {
       m.mesh.material.emissiveIntensity = 0;
       m.ring.visible = selected;
       if (selected) m.ring.material.color.set(m.side === SIDES.PLAYER ? 0x7ef0ff : 0xffb070);
+    }
+    // 生产进度环：出兵中（idle 且有队列）显示 0→1 填充弧，独立于血条/施工条
+    let pProg = 0, producing = false;
+    if (!constructing && b.queue && b.queue.length) {
+      const it = b.queue[0];
+      const tot = UNITS[it.type] ? UNITS[it.type].build : 1;
+      pProg = clamp(1 - it.t / tot, 0, 1);
+      producing = true;
+    }
+    if (producing) {
+      m.prog.visible = true;
+      m.progFill.material.color.set(m.side === SIDES.PLAYER ? 0xffcf6a : 0xff8a4a);
+      if (m._progShown == null || Math.abs(pProg - m._progShown) > 0.02) {
+        m.progFill.geometry.dispose();
+        m.progFill.geometry = new THREE.RingGeometry(2.4, 3.0, 32, 1, Math.PI / 2, Math.max(0.001, Math.PI * 2 * pProg));
+        m._progShown = pProg;
+      }
+      m.prog.quaternion.copy(this.camera.quaternion);
+      m.prog.quaternion.premultiply(m.mesh.quaternion.clone().invert());
+    } else {
+      m.prog.visible = false;
+      m._progShown = null;
     }
     m.bar.quaternion.copy(this.camera.quaternion);
     m.bar.quaternion.premultiply(m.mesh.quaternion.clone().invert());
