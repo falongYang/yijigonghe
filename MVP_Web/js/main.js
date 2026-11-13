@@ -3,6 +3,7 @@ import { Simulation } from './sim.js';
 import { World } from './world.js';
 import { UI } from './ui.js';
 import { Sound } from './audio.js';
+import { installBridge } from './bridge.js';
 import { MAP, HALF_W, HALF_H, BUILDINGS, SIDES, ABILITIES, UNITS, TERRAIN } from './rts.js';
 
 const canvas = document.getElementById('scene');
@@ -45,43 +46,7 @@ function boot() {
     ui = new UI(game, hooks);
     game.ui = ui;
     world._onMapName = cfg => ui.setMapName(cfg);
-    let sfxHit = 0, sfxDeath = 0, lastGain = 0;   // 高频战斗事件音效节流
-    sim.on((t, p) => {
-      if (t === 'log') ui.addLog(p);
-      else if (t === 'toast') ui.toast(p.text);
-      else if (t === 'era') {
-        ui.showEraCard(p.side, p.era); Sound.play('era');
-        if (p.side === SIDES.PLAYER) world.setEra(p.era);   // 纪元推进联动环境色（1.8s 平滑）
-      }
-      else if (t === 'end') { game.running = false; game.paused = false; ui.showPause(false); ui.showEnd(p); Sound.play(p.type === 'win' ? 'win' : 'lose'); Sound.stopAmbient(); }
-      else if (t === 'echo') { ui.echoToast(p.text); Sound.play('echo'); }
-      else if (t === 'ability') { if (p.side === SIDES.PLAYER) ui.toast('能力发动：' + abilityName(p.key)); }
-      else if (t === 'dmg') {
-        ui.damageFloat(p);
-        const now = performance.now();
-        if (now - sfxHit > 150) { sfxHit = now; Sound.play((p.mult || 1) >= 1.15 ? 'crit' : 'hit'); }
-      }
-      else if (t === 'gain') {
-        const now = performance.now();
-        if (now - lastGain > 260) { lastGain = now; ui.resourceFloat(p); }   // 卸货密集时节流，避免刷屏
-      }
-      else if (t === 'build') Sound.play('build');
-      else if (t === 'research') Sound.play('era');
-      else if (t === 'evolve') Sound.play('ability');
-      else if (t === 'rally') Sound.play('move');
-      else if (t === 'produce') Sound.play('produce');
-      else if (t === 'aiAttack') { ui.alertRaid(); Sound.play('attack'); }
-      else if (t === 'well') {
-        ui.toast(p.owner ? (p.owner === SIDES.PLAYER ? '已占领信息素井：持续产出信息素' : '敌方占领了信息素井！') : '信息素井恢复中立');
-        Sound.play(p.owner === SIDES.PLAYER ? 'era' : 'attack');
-      }
-      else if (t === 'repair') Sound.play('build');
-      else if (t === 'death') {
-        const now = performance.now();
-        if (now - sfxDeath > 320) { sfxDeath = now; Sound.play('death'); }
-      }
-      else if (t === 'destroy') Sound.play('crash');
-    });
+    installBridge(sim, { game, ui, world, Sound, SIDES });
     bindInput();
     window.__ANT_EPOCH__ = { game, VERSION: '2.1-四域' };
     if (location.hash.startsWith('#auto')) {
@@ -100,7 +65,6 @@ function boot() {
     showBootError(e);
   }
 }
-function abilityName(k) { return ({ a_frenzy: '狂暴', a_harden: '甲壳硬化', a_acidpool: '酸液覆盖', a_whirl: '涡卷', a_venom: '毒雾', a_dive: '俯冲轰炸', a_bomb: '滑翔轰炸', a_burrow: '钻地突袭', a_rally: '信息素号令', a_resonance: '纪元共鸣' })[k] || k; }
 function showBootError(e) {
   const d = document.getElementById('boot-error');
   d.classList.remove('hidden');
