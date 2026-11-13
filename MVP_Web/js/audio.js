@@ -16,31 +16,51 @@ export const Sound = (() => {
   }
   function resume() { ensure(); if (ctx && ctx.state === 'suspended') ctx.resume(); }
 
+  // 叠音预算：大规模会战同帧可触发十几个音效，逐声源满幅叠加会削波爆音。
+  // 统计 90ms 滑动窗口内的声源数，超出 6 个后按超出比例整体衰减（下限 0.35）。
+  let voices = [];
+  function voiceBudget() {
+    const now = performance.now();
+    voices = voices.filter(t => now - t < 90);
+    voices.push(now);
+    return voices.length > 6 ? Math.max(0.35, 6 / voices.length) : 1;
+  }
+  // 微随机化：程序化合成音每次参数完全一致，连续触发时相位相同会形成刺耳的"电子蜂鸣"。
+  // 对音高(±2.5%)、音量(±10%)、时长(±8%)做轻微抖动，让同一音效每次都略有生命感。
+  const human = (v, amt) => v * (1 + (Math.random() - 0.5) * 2 * amt);
+
   function tone({ freq = 440, type = 'sine', dur = 0.12, gain = 0.3, slide = 0, delay = 0 }) {
     if (!ready || muted) return;
+    const bud = voiceBudget();
+    const fq = human(freq, 0.025);
+    const du = human(dur, 0.08);
+    const gn = human(gain, 0.10) * bud;
     const t0 = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = type;
-    osc.frequency.setValueAtTime(freq, t0);
-    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), t0 + dur);
+    osc.frequency.setValueAtTime(fq, t0);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(40, fq + slide), t0 + du);
     g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.012);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gn), t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + du);
     osc.connect(g); g.connect(master);
-    osc.start(t0); osc.stop(t0 + dur + 0.03);
+    osc.start(t0); osc.stop(t0 + du + 0.03);
   }
   function noise({ dur = 0.12, gain = 0.2, hp = 800, lp = 4000 }) {
     if (!ready || muted) return;
+    const bud = voiceBudget();
+    const du = human(dur, 0.08);
+    const gn = human(gain, 0.10) * bud;
     const t0 = ctx.currentTime;
-    const n = Math.floor(ctx.sampleRate * dur);
+    const n = Math.max(1, Math.floor(ctx.sampleRate * du));
     const buf = ctx.createBuffer(1, n, ctx.sampleRate);
     const data = buf.getChannelData(0);
     for (let i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / n);
     const src = ctx.createBufferSource(); src.buffer = buf;
     const hpf = ctx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = hp;
     const lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = lp;
-    const g = ctx.createGain(); g.gain.value = gain;
+    const g = ctx.createGain(); g.gain.value = gn;
     src.connect(hpf); hpf.connect(lpf); lpf.connect(g); g.connect(master);
     src.start(t0);
   }
@@ -62,7 +82,9 @@ export const Sound = (() => {
     crash:   () => { noise({ dur: 0.26, gain: 0.22, hp: 200, lp: 2600 }); tone({ freq: 150, type: 'sawtooth', dur: 0.22, gain: 0.2, slide: -80 }); },
   };
 
-  // 蚁巢环境氛围音：两枚微失谐低频振荡 + 低通，音量极低、持续嗡鸣，随昼夜轻微起伏。
+  // 蚁巢环境氛围音：两枚微失谐低频振荡 + 低通，音量极低、持续嗡鸣。
+  // 叠加一枚 0.16Hz(约 6.3s 周期) 的 LFO 调制增益，形成"活着"的缓慢呼吸起伏；
+  // 基准音量另由 setAmbient(昼夜 dayFactor) 平滑驱动：白昼更清晰、深夜更沉。
   let ambient = null;
   function startAmbient() {
     if (!ready || muted || ambient) return;
@@ -71,24 +93,38 @@ export const Sound = (() => {
     const lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = 220;
     const g = ctx.createGain(); g.gain.value = 0.0;
     o1.connect(g); o2.connect(g); g.connect(lpf); lpf.connect(master);
+    // 呼吸 LFO：调制信号叠加在 g.gain 的基准值上，不与缓入 / setAmbient 冲突（AudioParam 相加）
+    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.16;
+    const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.008;
+    lfo.connect(lfoGain); lfoGain.connect(g.gain);
     const t0 = ctx.currentTime;
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(0.03, t0 + 1.2);   // 缓入，避免突兀
-    o1.start(t0); o2.start(t0);
-    ambient = { o1, o2, g, lpf };
+    o1.start(t0); o2.start(t0); lfo.start(t0);
+    ambient = { o1, o2, g, lpf, lfo, lfoGain, startedAt: t0, lastLevel: -1, lastSet: -Infinity };
   }
   function stopAmbient() {
     if (!ambient) return;
-    const { o1, o2, g } = ambient;
+    const { o1, o2, g, lfo } = ambient;
     const t0 = ctx.currentTime;
     g.gain.cancelScheduledValues(t0);
     g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), t0);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
     o1.stop(t0 + 0.55); o2.stop(t0 + 0.55);
+    try { lfo.stop(t0 + 0.55); } catch (e) { /* 某些实现重复 stop 会抛错，忽略 */ }
     ambient = null;
   }
+  /** 昼夜联动（由主循环每帧传入 world.dayFactor，0.16 深夜 .. 1 正午）。
+   *  启动后 1.4s 内不接管，保护 exponentialRamp 缓入；之后以 0.5s 节流 + setTargetAtTime
+   *  平滑过渡，避免每帧直接写 .value 造成咔哒声，也避免昼夜缓慢变化时反复调度。 */
   function setAmbient(level) {
-    if (ambient) ambient.g.gain.value = 0.02 + Math.max(0, Math.min(1, Number(level) || 0)) * 0.05;
+    if (!ambient || !ctx) return;
+    const now = ctx.currentTime;
+    if (now - ambient.startedAt < 1.4) return;
+    const lv = Math.max(0, Math.min(1, Number(level) || 0));
+    if (now - ambient.lastSet < 0.5 || Math.abs(lv - ambient.lastLevel) < 0.02) return;
+    ambient.lastLevel = lv; ambient.lastSet = now;
+    ambient.g.gain.setTargetAtTime(0.02 + lv * 0.05, now, 0.8);
   }
 
   return {

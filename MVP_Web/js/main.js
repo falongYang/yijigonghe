@@ -548,6 +548,7 @@ function loop(now) {
   world.syncFrame(sim, game.paused);
   ui.refresh();
   world.update(game.paused ? 0 : dt);   // 暂停时冻结场景时间与特效，画面仍保持渲染
+  Sound.setAmbient(world.dayFactor);    // 昼夜明暗驱动蚁巢环境音起伏（audio.js 内部含启动保护与节流）
   requestAnimationFrame(loop);
 }
 
