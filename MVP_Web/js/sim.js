@@ -103,7 +103,7 @@ export class Simulation {
     this.peakPop = { P: 0, E: 0 };
     const blank = () => ({ kills: 0, losses: 0, built: 0, harvested: 0, abilities: 0, evolved: 0, raided: 0, repaired: 0, wellPh: 0,
       dmgDealt: 0, dmgTaken: 0, critHits: 0, smartCasts: 0, defenses: 0, nodeSwitches: 0,
-      overkillSaved: 0, raids: 0 });
+      overkillSaved: 0, raids: 0, waves: 0, repairs: 0 });
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
     this.map = getMapConfig(mode, chapter);
@@ -212,6 +212,8 @@ export class Simulation {
     for (const w of this.wells) {
       let p = 0, e = 0;
       for (const u of this.units) {
+        // 同帧阵亡但尚未被 _reap 清理的尸体不再计入占领（与索敌 / 酸雨口径一致）
+        if (u.hp <= 0) continue;
         if (dist(u.x, u.z, w.x, w.z) <= w.r) { if (u.side === SIDES.PLAYER) p++; else e++; }
       }
       w.contest = p > 0 && e > 0;
@@ -266,6 +268,8 @@ export class Simulation {
       attackInterval: aint, soldierReq: arch.soldierReq[0], soldierReqMax: arch.soldierReq[1],
       abilityUse: arch.abilityUse, expandBias: arch.expandBias,
       sigCount: 0, defTimer: 0, defending: false,
+      waveReinforce: diff.waveReinforce || 0,   // 波次节奏（默认档只发首波）
+      repair: diff.repair || 0, repairTimer: 0,               // 敌方后勤维修（默认档关闭/半开）
     };
   }
 
@@ -615,29 +619,32 @@ export class Simulation {
     }
     return n;
   }
-  /** 维修进行中：靠近后按秒消耗矿物恢复耐久；修满 / 矿耗尽 / 建筑损毁即回归采集。 */
+  /** 维修进行中：靠近后按秒消耗矿物恢复耐久；修满 / 矿耗尽 / 建筑损毁即回归采集。
+   *  按工蚁所属方结算资源与统计（玩家路径与泛化前逐字等价，敌方由 _aiRepairCheck 指派）。 */
   _repair(u, dt) {
     const b = this.getBuilding(u.repairId);
-    if (!b || b.state === 'constructing' || b.hp >= b.maxHp - 0.5) { this._endRepair(u); return; }
+    if (!b || b.side !== u.side || b.state === 'constructing' || b.hp >= b.maxHp - 0.5) { this._endRepair(u); return; }
     const d = dist(u.x, u.z, b.x, b.z) - b.size * 0.5;
     if (d > REPAIR_RANGE) { this._moveTo(u, b.x, b.z, dt); return; }
     const heal = Math.min(REPAIR_RATE * dt, b.maxHp - b.hp);
     const cost = heal * REPAIR_MIN_PER_HP;
-    if (this.res_(SIDES.PLAYER, 'min') < cost) {
-      if (this.time - (this._repairWarnT || -9) > 2) { this._repairWarnT = this.time; this._toast('矿物耗尽，维修中止'); }
+    if (this.res_(u.side, 'min') < cost) {
+      if (u.side === SIDES.PLAYER && this.time - (this._repairWarnT || -9) > 2) {
+        this._repairWarnT = this.time; this._toast('矿物耗尽，维修中止');
+      }
       this._endRepair(u); return;
     }
-    this.res.P.min -= cost;
+    this.res[u.side].min -= cost;
     b.hp = Math.min(b.maxHp, b.hp + heal);
     b.repairGlow = 0.8;
-    if (this.stats) this.stats.P.repaired += heal;
+    if (this.stats && this.stats[u.side]) this.stats[u.side].repaired += heal;
     u.repairAcc = (u.repairAcc || 0) + dt;
     if (u.repairAcc > 0.45) {
       u.repairAcc = 0;
       this._fx('ring', b.x, 0.4, b.z, { color: 0xffd27f, r: b.size * 0.6 });
     }
     if (b.hp >= b.maxHp - 0.5) {
-      this._log(`「${BUILDINGS[b.type].name}」维修完成，耐久已恢复。`, 'good');
+      if (u.side === SIDES.PLAYER) this._log(`「${BUILDINGS[b.type].name}」维修完成，耐久已恢复。`, 'good');
       this._fx('levelup', b.x, b.size * 0.6, b.z, { color: 0x7ef0a0 });
       this._endRepair(u);
     }
@@ -933,6 +940,7 @@ export class Simulation {
     const tgt = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO + 6, this._targetOpts(u));
     if (tgt) { u.target = { id: tgt.id, x: tgt.x, z: tgt.z }; u.state = 'attack'; return; }
     if (u.target) this._moveTo(u, u.target.x, u.target.z, dt, () => { u.state = 'idle'; u.order = 'auto'; });
+    else { u.state = 'idle'; u.order = 'auto'; }   // 无落点时不要滞留在 attackmove 空转
   }
 
   _moveTo(u, tx, tz, dt, onArrive) {
@@ -1052,7 +1060,13 @@ export class Simulation {
     const y = (tgt.size ? tgt.size : 2) + 1;
     if (ranged) this._fx(this._projFor(dtype), tgt.x, y, tgt.z, { from: { x: fromX, y: 1, z: fromZ }, color: aSide === SIDES.PLAYER ? 0xaef06a : 0xff8a5a, dtype });
     else this._fx('hit', tgt.x, y, tgt.z, { color: 0xffd27f });
-    if (attacker && attacker.xp !== undefined) this._gainXp(attacker, dmg * 0.4);
+    if (attacker && attacker.xp !== undefined) {
+      // 过量击杀不按满额伤害刷经验：只有这一发打穿目标时按「实际承伤比例」折算，
+      // 未击杀 / 未过量时与原先 dmg*0.4 完全一致，不改变正常升级节奏。
+      const before = tgt.hp + d;                  // 结算前剩余血量（tgt.hp 已扣过 d）
+      const scale = before > 0 && d > before ? before / d : 1;
+      this._gainXp(attacker, dmg * 0.4 * scale);
+    }
   }
   // 用伤害类型映射一个弹道特效
   _projFor(dtype) {
@@ -1181,6 +1195,7 @@ export class Simulation {
     if (!hq) return;
     const diff = ai.diff, arch = ai.arch;
     this._aiDefenseCheck(dt, hq);
+    this._aiRepairCheck(dt);
     const workers = this.units.filter(u => u.side === E && u.type === 'worker');
     const soldiers = this.units.filter(u => u.side === E && u.type !== 'worker');
     const bio = this.res.E.bio, min = this.res.E.min, ph = this.res.E.ph;
@@ -1287,14 +1302,33 @@ export class Simulation {
     const reqNow = ai.soldierReq + Math.floor((arch.expandBias - 1) * 4);
     if (ai.attackTimer <= 0 && soldiers.filter(s => s.order !== 'manual').length >= reqNow) {
       const [lo, hi] = arch.attackInterval;
-      ai.attackTimer = (lo + Math.random() * (hi - lo)) * diff.thinkMul;
-      // 已知节奏问题：soldierReqMax 挂在 ai 而非 arch，此处取值得 undefined → NaN，
-      // 首波后 AI 不再发动波次。修成 ai.soldierReqMax 会让 AI 全军连续压上、双方经济大幅下滑
-      // （实测敌方 240s 采集 15.0k → 9.8k），需与难度校准一并处理，暂不在细节轮改动。
-      ai.soldierReq = Math.min(arch.soldierReqMax, ai.soldierReq + 2);
+      // 持续波次档拉长组波间隔，避免「每 20s 全军压上」把对局在 100s 内打完
+      ai.attackTimer = (lo + Math.random() * (hi - lo)) * diff.thinkMul * (1 + 0.6 * ai.waveReinforce);
+      if (this.stats) this.stats[E].waves++;
+      // 波次门槛：原先误取 arch.soldierReqMax（undefined）→ NaN，使 `>= reqNow` 恒假，
+      // AI 首波后不再组织进攻。现在改为显式难度配置：
+      //   waveReinforce=0 → 置 Infinity 保持「只发首波」的既有节奏（不再依赖 NaN 这种隐式行为）；
+      //   >0 → 固定为「起征兵力 + 2×强度」的稳定目标，攒够就发、战损后自动重新攒兵，
+      //         不做逐波递增（递增会让兵力越打越少时永久卡在过高门槛上）。
+      ai.soldierReq = ai.waveReinforce > 0
+        ? Math.min(ai.soldierReqMax, arch.soldierReq[0] + 2 * ai.waveReinforce)
+        : Infinity;
+      // 持续波次档留 20% 离巢最近的兵力作预备队，避免全军压上后老家空虚、战损一次性耗尽。
+      // 默认档 waveReinforce=0 → holdN=0，派遣逻辑与原先逐字一致。
+      const wave = soldiers.filter(s => s.order !== 'manual' && !(s.defendUntil > this.time));
+      const holdN = ai.waveReinforce > 0
+        ? Math.max(0, Math.min(wave.length - 1, Math.ceil(wave.length * 0.2 * ai.waveReinforce))) : 0;
+      const hold = new Set();
+      if (holdN > 0) {
+        const byHome = [...wave].sort((a, b) => dist(a.x, a.z, hq.x, hq.z) - dist(b.x, b.z, hq.x, hq.z));
+        for (let k = 0; k < holdN; k++) hold.add(byHome[k].id);
+      }
       for (const s of soldiers) {
         if (s.order === 'manual' || s.defendUntil > this.time) continue;   // 回防中的单位不被进攻波次覆盖
-        s.state = 'attackmove'; s.order = 'auto'; s.target = { x: PLAYER_BASE.x, z: PLAYER_BASE.z };
+        s.state = 'attackmove'; s.order = 'auto';
+        s.target = hold.has(s.id)
+          ? { x: hq.x, z: hq.z }                       // 预备队回巢守家
+          : { x: PLAYER_BASE.x, z: PLAYER_BASE.z };
       }
       this._emit('aiAttack', {});
     }
@@ -1342,6 +1376,43 @@ export class Simulation {
     }
     ai.defending = true;
     if (this.stats) this.stats[E].defenses++;
+  }
+
+  /** 敌方后勤维修：巢室/箭塔受损时按难度抽调少量工蚁抢修。
+   *  玩家侧仍完全由 assignRepair / commandRepair 手动驱动，这里只补 AI 侧缺失的行为。
+   *  严格限流（4s 评估、全场最多 2 只、只修 55% 血以下、工蚁>=6、矿物>=20、
+   *  只挑空载工蚁避免丢货），避免战线拉扯时工蚁反复离岗拖垮敌方经济。 */
+  _aiRepairCheck(dt) {
+    const ai = this._ai;
+    const r = ai.repair || 0;
+    if (r <= 0) return;
+    ai.repairTimer -= dt;
+    if (ai.repairTimer > 0) return;
+    ai.repairTimer = 4;
+    const E = SIDES.ENEMY;
+    const cap = Math.ceil(2 * r);
+    const busy = this.units.filter(u => u.side === E && u.state === 'repair').length;
+    if (busy >= cap) return;
+    const workers = this.units.filter(u => u.side === E && UNITS[u.type].role === 'econ');
+    if (workers.length < 6 || this.res_(E, 'min') < 20) return;
+    const damaged = this.buildings
+      .filter(b => b.side === E && b.state === 'idle' && b.hp < b.maxHp * 0.55)
+      .sort((a, b) => (b.type === 'hq') - (a.type === 'hq') || (a.hp / a.maxHp) - (b.hp / b.maxHp));
+    if (!damaged.length) return;
+    const pick = damaged[0];
+    const assigned = this.units.filter(u => u.repairId === pick.id).length;
+    const want = pick.type === 'hq' ? cap : 1;
+    const n = Math.min(cap - busy, want - assigned);
+    if (n <= 0) return;
+    const cands = workers.filter(u => u.repairId == null && u.state !== 'repair' && u.carrying === 0)
+      .sort((a, c) => dist(a.x, a.z, pick.x, pick.z) - dist(c.x, c.z, pick.x, pick.z))
+      .slice(0, n);
+    for (const u of cands) {
+      u.waypoints = []; u.repairId = pick.id; u.state = 'repair'; u.order = 'auto';
+      u.target = { x: pick.x, z: pick.z }; u.burrowed = false;
+      if (this.stats) this.stats[E].repairs++;
+    }
+    if (cands.length) this._fx('ring', pick.x, 0.4, pick.z, { color: 0xffb070 });
   }
 
   _bestTier(side) {

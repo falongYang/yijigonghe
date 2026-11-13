@@ -506,14 +506,17 @@ export const ARCHETYPE_ORDER = ['aggressive', 'expansionist', 'defensive'];
 
 /* ----------------------------- 难度 ----------------------------- */
 // targeting / defense / abilitySmart：AI「智能程度」分级（0=不启用，1=全量）。
-// 只影响敌方决策质量，不影响资源与兵力倍率，故与 ecoMul / armyMul 正交。
+// waveReinforce：首波之后是否持续组织进攻波次（0=只发首波，1=按战损动态补波）。
+// repair：敌方后勤维修灵敏度（0=不维修，1=完整）。二者只影响 AI 决策，与 ecoMul / armyMul 正交。
+// 默认档（easy/normal）waveReinforce=0 是刻意保留既有节奏：全面开启会让 AI 连续全军压上，
+// 属于难度重平衡而非细节开发；需要提升压迫感时只改这里的数值即可，无需动 sim.js。
 export const DIFFICULTY = {
   easy:   { id: 'easy',   name: '蛰伏', desc: '敌方更慢、更弱，适合熟悉操作。', ecoMul: 0.78, armyMul: 0.80, thinkMul: 1.45,
-            targeting: 0,    defense: 0.25, abilitySmart: 0 },
+            targeting: 0,    defense: 0.25, abilitySmart: 0, waveReinforce: 0, repair: 0 },
   normal: { id: 'normal', name: '共时', desc: '标准对抗节奏。',               ecoMul: 1.0,  armyMul: 1.0,  thinkMul: 1.0,
-            targeting: 0.55, defense: 0.60, abilitySmart: 1 },
+            targeting: 0.55, defense: 0.60, abilitySmart: 1, waveReinforce: 0, repair: 0.5 },
   hard:   { id: 'hard',   name: '回响', desc: '敌方更快、更凶，需精密运营。', ecoMul: 1.28, armyMul: 1.32, thinkMul: 0.68,
-            targeting: 1,    defense: 1.00, abilitySmart: 1 },
+            targeting: 1,    defense: 1.00, abilitySmart: 1, waveReinforce: 1, repair: 1 },
 };
 export const DIFFICULTY_ORDER = ['easy', 'normal', 'hard'];
 
