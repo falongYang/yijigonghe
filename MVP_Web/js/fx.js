@@ -184,6 +184,37 @@ export const FX_BUILDERS = {
       return true;
     }, dispose: () => { m.geometry.dispose(); m.material.dispose(); } });
   },
+
+  // 敌方能力来袭预警：两道错峰扩张的红环 + 地面红闪，配合 world.addPing 的红色光柱，
+  // 在敌方释放酸液/轰炸等时给出明显的"此处遭袭"告警（区别于玩家金色战术标记）。
+  enemyWarn(world, pos, opts, t0) {
+    const col = 0xff5a5a;
+    const ring = (delay) => {
+      const r = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.26, 8, 28),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95, depthWrite: false }));
+      r.rotation.x = -Math.PI / 2; r.position.set(pos.x, 0.45, pos.z);
+      world.scene.add(r);
+      const dur = 0.85;
+      world.fx.push({ t0, obj: r, update: (t) => {
+        const tt = t - delay;
+        if (tt < 0) return true;
+        if (tt > dur) return false;
+        const k = tt / dur;
+        r.scale.setScalar(1 + k * 9);
+        r.material.opacity = 0.95 * (1 - k);
+        return true;
+      }, dispose: () => { r.geometry.dispose(); r.material.dispose(); } });
+    };
+    ring(0); ring(0.25);
+    const flash = new THREE.Mesh(new THREE.CircleGeometry(3.4, 22),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide }));
+    flash.rotation.x = -Math.PI / 2; flash.position.set(pos.x, 0.25, pos.z);
+    world.scene.add(flash);
+    world.fx.push({ t0, obj: flash, update: (t) => {
+      if (t > 0.55) return false;
+      flash.material.opacity = 0.45 * (1 - t / 0.55); return true;
+    }, dispose: () => { flash.geometry.dispose(); flash.material.dispose(); } });
+  },
 };
 
 // 扩散环类：新增一个同类特效只需在此加一行颜色

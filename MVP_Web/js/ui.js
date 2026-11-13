@@ -1222,10 +1222,11 @@ export class UI {
         : '#ff5a3a';
       g.fillRect(toX(u.x) - 1, toY(u.z) - 1, 2, 2);
     }
-    // 战术标记
+    // 战术标记 / 敌方能力来袭 ping（按各自 color 着色：玩家金、敌方红）
     for (const p of (this.world.pings || [])) {
       const k = Math.min(1, p.t / p.dur);
-      g.globalAlpha = 1 - k; g.strokeStyle = '#ffd27f'; g.lineWidth = 1.5;
+      const hex = '#' + (p.color || 0xffd27f).toString(16).padStart(6, '0');
+      g.globalAlpha = 1 - k; g.strokeStyle = hex; g.lineWidth = 1.5;
       g.beginPath(); g.arc(toX(p.x), toY(p.z), 3 + k * 7, 0, 6.28); g.stroke();
       g.globalAlpha = 1;
     }

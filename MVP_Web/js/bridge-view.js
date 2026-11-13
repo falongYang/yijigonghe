@@ -11,14 +11,21 @@ const ABILITY_NAMES = {
 export function abilityName(k) { return ABILITY_NAMES[k] || k; }
 
 export function viewListener(ctx) {
-  const { ui, SIDES } = ctx;
+  const { ui, world, SIDES } = ctx;
   let lastGain = 0;   // 卸货密集时飘字节流，避免刷屏
   return (t, p) => {
     switch (t) {
       case 'log': ui.addLog(p); break;
       case 'toast': ui.toast(p.text); break;
       case 'ability':
-        if (p.side === SIDES.PLAYER) ui.toast('能力发动：' + abilityName(p.key));
+        if (p.side === SIDES.PLAYER) {
+          ui.toast('能力发动：' + abilityName(p.key));
+        } else if (world && p.x != null) {
+          // 敌方能力来袭预警：红色光柱信标（3D + 小地图）+ 脉冲红环 + HUD 提示
+          world.addPing(p.x, p.z, 0xff5a5a);
+          world.addEffect('enemyWarn', { x: p.x, z: p.z }, { key: p.key });
+          ui.toast('⚠ 敌方能力·' + abilityName(p.key));
+        }
         break;
       case 'dmg': ui.damageFloat(p); break;
       case 'gain': {
