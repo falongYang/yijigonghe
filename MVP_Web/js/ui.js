@@ -1064,17 +1064,62 @@ export class UI {
     $('#end').classList.remove('hidden');
   }
 
-  // 战役目标 + 敌方性格 HUD
+  // 作战目标 HUD：非「摧毁」类目标（存活 / 采集 / 占井）会在左上实时显示进度。
+  // 战役与遭遇战 alike 都显示；纯摧毁目标（默认）不显示该条，避免冗余。
   showMission() {
     const s = this.sim;
     const m = $('#mission');
-    if (s.mode !== 'campaign') { m.classList.add('hidden'); return; }
-    const ch = CAMPAIGN[s.chapter];
+    const o = s.objective;
+    if (!o || o.type === 'destroy') { m.classList.add('hidden'); return; }
     m.classList.remove('hidden');
-    $('#mission-title').textContent = `第 ${s.chapter + 1} 章 · ${ERAS[s.chapter].name}`;
-    $('#mission-obj').textContent = '目标：' + ch.objective;
-    const arch = ENEMY_ARCHETYPES[ch.archetype];
-    $('#enemy-badge').innerHTML = `敌方性格：<b style="color:#${arch.color.toString(16).padStart(6,'0')}">${arch.name}</b> · 难度：${s.difficulty.name} <span class="muted sm">${arch.desc}</span>`;
+    const title = $('#mission-title');
+    const badge = $('#enemy-badge');
+    if (s.mode === 'campaign' && CAMPAIGN[s.chapter]) {
+      const ch = CAMPAIGN[s.chapter];
+      title.textContent = `第 ${s.chapter + 1} 章 · ${ERAS[s.chapter].name}`;
+      const arch = ENEMY_ARCHETYPES[ch.archetype];
+      badge.innerHTML = `敌方性格：<b style="color:#${arch.color.toString(16).padStart(6,'0')}">${arch.name}</b> · 难度：${s.difficulty.name} <span class="muted sm">${arch.desc}</span>`;
+    } else {
+      title.textContent = '作战目标';
+      badge.innerHTML = '';
+    }
+    $('#mission-obj').textContent = '目标：' + (o.label || '');
+    this._updateObjective(s);   // 立即渲染首帧进度，避免开局面板空白
+  }
+
+  /** 目标实时进度：读 A 侧 sim.objectiveProgress()（只读，不新增事件），按类型呈现倒计时 / 采集量 / 占井守时。 */
+  _updateObjective(s) {
+    const el = document.getElementById('mission-prog');
+    if (!el) return;
+    const o = s.objective;
+    if (!o || o.type === 'destroy') { el.innerHTML = ''; return; }
+    const pr = (typeof s.objectiveProgress === 'function') ? s.objectiveProgress() : { type: o.type, ratio: 0 };
+    let txt = '', sub = '';
+    if (o.type === 'survive') {
+      const left = Math.max(0, Math.ceil(o.surviveT - s.time));
+      txt = `守住防线 · 剩余 ${left}s`; sub = `已坚守 ${Math.floor(s.time)}/${o.surviveT}s`;
+    } else if (o.type === 'harvest') {
+      const got = s.stats ? (s.stats.P.harvested || 0) : 0;
+      txt = `累计采集 ${Math.round(got)} / ${o.harvestGoal}`;
+    } else if (o.type === 'dominate') {
+      const holding = (s.wells && s.wells.length > 0 && s.wells.every(w => w.owner === SIDES.PLAYER));
+      txt = `占领并守住全部信息素井 · ${Math.floor(o.holdT || 0)}/${o.dominateHold}s`;
+      sub = holding ? '守住中…' : '尚未占满全部井';
+    }
+    const pct = Math.max(0, Math.min(100, Math.round((pr.ratio || 0) * 100)));
+    el.innerHTML = `<div class="mp-row"><b>${txt}</b>${sub ? `<small>${sub}</small>` : ''}</div>
+      <div class="mp-bar"><i style="width:${pct}%"></i></div>`;
+  }
+
+  /** 经济/状态浮标：精炼巢室（全军 +8% 伤害）与资源贸易次数，战斗进行中常驻提示。 */
+  _updateEconStatus(s) {
+    const el = document.getElementById('econ-status');
+    if (!el) return;
+    const bits = [];
+    if (s.refined && s.refined[SIDES.PLAYER]) bits.push('<span class="es-chip es-refine">✦ 精炼巢室 · 全军伤害 +8%</span>');
+    if (s.tradeDone && s.tradeDone > 0) bits.push(`<span class="es-chip es-trade">⇄ 资源贸易 ×${s.tradeDone}</span>`);
+    if (bits.length) { el.innerHTML = bits.join(''); el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
   }
 
   // 战场地图名（六章差异化地图）：传入配置对象时附带主题 tooltip，点击可重看简报
@@ -1225,6 +1270,9 @@ export class UI {
     this._updateAb('#ab-reso', 'a_resonance');
     this._updateAb('#ab-unit', this._unitKey);
     this._updateEvo();
+
+    this._updateObjective(s);
+    this._updateEconStatus(s);
 
     this._refreshSelection();
     this._drawMinimap();
@@ -1398,6 +1446,21 @@ export class UI {
           }).join('')
           + `<div class="muted sm">右键移动/攻击（多选自动阵型散开）· Shift+右键 追加路径点 · A 攻击移动 · S 停止 · H 驻守 · Q 能力 · T 进化</div>`
           + (wp ? `<div class="muted sm">已排队 ${wp} 段路径点 · 按 S 可清空</div>` : '');
+      }
+      // 选中己方单位时的快捷指挥按钮：鼠标流玩家也能下达巡逻 / 阵型 / 停止 / 驻守 / 续采
+      const pIds = [...s.selected].filter(id => { const u = s.getUnit(id); return u && u.side === SIDES.PLAYER; });
+      if (pIds.length) {
+        const hasWorker = pIds.some(id => { const u = s.getUnit(id); return u && u.type === 'worker'; });
+        if (hasWorker) {
+          this._addCtx(ctx, '就近续采 (C)', () => { if (this.hooks.onResumeHarvest) this.hooks.onResumeHarvest(pIds); }, false);
+        }
+        this._addCtx(ctx, '巡逻 (G)', () => { if (this.hooks.onPatrolStart) this.hooks.onPatrolStart(); }, false);
+        this._addCtx(ctx, '阵型·散开 (V)', () => { if (this.hooks.onFormation) this.hooks.onFormation(pIds, 'spread'); }, false);
+        this._addCtx(ctx, '阵型·线', () => { if (this.hooks.onFormation) this.hooks.onFormation(pIds, 'line'); }, false);
+        this._addCtx(ctx, '阵型·纵', () => { if (this.hooks.onFormation) this.hooks.onFormation(pIds, 'column'); }, false);
+        this._addCtx(ctx, '阵型·楔形', () => { if (this.hooks.onFormation) this.hooks.onFormation(pIds, 'wedge'); }, false);
+        this._addCtx(ctx, '停止 (S)', () => { if (this.hooks.onStop) this.hooks.onStop(pIds); }, false);
+        this._addCtx(ctx, '驻守 (H)', () => { if (this.hooks.onHold) this.hooks.onHold(pIds); }, false);
       }
     } else {
       title.textContent = '未选择';

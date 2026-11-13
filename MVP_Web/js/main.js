@@ -12,6 +12,7 @@ const game = {
   sim: null, world: null, ui: null, running: false, speed: 1, paused: false, tutOpen: false,
   pendingBuild: null, buildValid: false,
   pendingAbility: null,
+  pendingPatrol: null,   // 巡逻布点：进行中为 { pts: [{x,z}...] }，落点用绿色 ping 标注
   groups: {},
   box: null, shift: false,
 };
@@ -42,6 +43,11 @@ function boot() {
       onMenu: () => gotoMenu(),
       onScreenshot: () => takeScreenshot(),
       onRepair: bid => { if (sim.assignRepair(bid)) Sound.play('build'); },
+      onPatrolStart: () => beginPatrol(),
+      onFormation: (ids, type) => applyFormation(ids, type),
+      onStop: ids => sim.commandStop(ids),
+      onHold: ids => holdUnits(ids),
+      onResumeHarvest: ids => resumeHarvest(ids),
     };
     ui = new UI(game, hooks);
     game.ui = ui;
@@ -148,6 +154,65 @@ function cancelAbility() {
   ui.toast('已取消施放');
 }
 
+/* ----------------------------------------------------- 编队指挥：巡逻 / 阵型 / 驻守 */
+// 进入巡逻布点：选中单位后左键依次落点、右键/回车确认、Esc 取消。
+function beginPatrol() {
+  if (!game.running || game.paused) return;
+  const ids = playerSel();
+  if (!ids.length) { ui.toast('先选中己方单位，再按 G 设置巡逻路线'); return; }
+  if (game.pendingBuild) { game.pendingBuild = null; world.hideCursor(); ui.setBuildHint(''); }
+  if (game.pendingAbility) { game.pendingAbility = null; world.hideCursor(); ui.setArmedAbility(null); }
+  game.pendingPatrol = { pts: [] };
+  ui.toast('巡逻布点：左键依次落点，右键 / 回车确认（至少 2 点），Esc 取消');
+}
+function commitPatrol() {
+  const pp = game.pendingPatrol;
+  if (!pp) return;
+  if (pp.pts.length < 2) { ui.toast('巡逻至少需要 2 个路径点'); return; }
+  const ids = playerSel();
+  if (ids.length && sim.commandPatrol(ids, pp.pts)) {
+    Sound.play('move');
+    ui.toast(`已为 ${ids.length} 个单位设置 ${pp.pts.length} 点巡逻路线`);
+  }
+  game.pendingPatrol = null;
+}
+function cancelPatrol() {
+  if (!game.pendingPatrol) return;
+  game.pendingPatrol = null;
+  ui.toast('已取消巡逻布点');
+}
+// 阵型：spread / line / column / wedge / auto —— 取选中单位质心为锚点。
+const FORMATION_ORDER = ['spread', 'line', 'column', 'wedge', 'auto'];
+const FORMATION_NAME = { spread: '散开', line: '线', column: '纵列', wedge: '楔形', auto: '自动' };
+function applyFormation(ids, type) {
+  if (!ids || !ids.length) return;
+  let sx = 0, sz = 0, n = 0;
+  for (const id of ids) { const u = sim.getUnit(id); if (u) { sx += u.x; sz += u.z; n++; } }
+  if (!n) return;
+  const ok = sim.commandFormation(ids, type, sx / n, sz / n);
+  if (ok) { Sound.play('select'); ui.toast(`阵型：${FORMATION_NAME[type] || type}`); }
+}
+function cycleFormation() {
+  const ids = playerSel();
+  if (!ids.length) { ui.toast('先选中单位，再按 V 切换阵型'); return; }
+  // 以当前首个单位的阵型为基准向后轮替；auto 视为末位，循环回 spread
+  const u0 = sim.getUnit(ids[0]);
+  const cur = (u0 && u0.formation) || 'auto';
+  const idx = FORMATION_ORDER.indexOf(cur);
+  const next = FORMATION_ORDER[(idx + 1) % FORMATION_ORDER.length];
+  applyFormation(ids, next);
+}
+function holdUnits(ids) {
+  if (!ids || !ids.length) return;
+  for (const id of ids) { const u = sim.getUnit(id); if (u) { u.state = 'idle'; u.order = 'auto'; } }
+  Sound.play('select');
+}
+function resumeHarvest(ids) {
+  const n = sim.resumeHarvest(ids);
+  if (n) { Sound.play('move'); ui.toast(`${n} 只工蚁已返回就近资源点采集`); }
+  else ui.toast('先选中己方工蚁，再续采');
+}
+
 /* ---------------------------------------------------------------- 输入 */
 function bindInput() {
   let down = false, downX = 0, downY = 0, button = 0;
@@ -163,6 +228,15 @@ function bindInput() {
     if (game.pendingAbility && button === 0) { castAbilityAt(e.clientX, e.clientY); return; }
     if (game.pendingBuild && button === 0) { placeBuild(e.clientX, e.clientY); return; }
     if (button === 2 && game.pendingAbility) { cancelAbility(); return; }
+    // 巡逻布点中：左键落点、右键确认，阻止常规点选 / 移动指令
+    if (game.pendingPatrol) {
+      if (button === 0) {
+        const g = world.screenToGround(e.clientX, e.clientY);
+        if (g) { game.pendingPatrol.pts.push({ x: g.x, z: g.z }); world.addPing(g.x, g.z, 0x7ef0c8, { dur: 2.2 }); ui.toast(`已落第 ${game.pendingPatrol.pts.length} 个点`); }
+        return;
+      }
+      if (button === 2) { commitPatrol(); return; }
+    }
     // Alt + 左键：在地面放置战术标记（小地图同步显示，3.2s 后消失）
     if (button === 0 && e.altKey) { placePing(e.clientX, e.clientY); return; }
     if (button === 0 && game.shift) { game.box = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY }; return; }
@@ -360,15 +434,20 @@ function onKey(e) {
   const k = e.key.toLowerCase();
   if (k === 'shift') game.shift = true;
   if (k === 'escape') {
+    if (game.pendingPatrol) { cancelPatrol(); return; }
     if (game.paused) { togglePause(); return; }
     game.pendingBuild = null; game.pendingAbility = null; world.hideCursor();
     ui.setArmedAbility(null); ui.setBuildHint('');
   }
   if (!game.running) return;
   if (game.tutOpen) return;  // 引导期间屏蔽战场快捷键
+  if (k === 'enter' && game.pendingPatrol) { commitPatrol(); return; }
   if (k === 'p') { e.preventDefault(); togglePause(); return; }
   if (k === 'y') { ui.toggleEraPanel(); return; }
-  if (game.paused) return;   // 暂停时屏蔽战场指令，仅 P / Esc / Y 可恢复
+  if (game.paused) return;   // 暂停时屏蔽战场指令，仅 P / Esc / Y / 回车(确认巡逻) 可恢复
+  // G：进入巡逻布点；V：循环切换阵型
+  if (k === 'g') { e.preventDefault(); beginPatrol(); return; }
+  if (k === 'v') { e.preventDefault(); cycleFormation(); return; }
   // 相机平移键（此前 world.keys 从未被写入，WASD / 方向键平移实际不生效）
   if (CAM_KEYS.includes(k)) world.keys[k] = true;
   // 空格：镜头回到己方巢区；F：切换跟随选中单位
