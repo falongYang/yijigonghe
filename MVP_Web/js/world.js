@@ -1050,6 +1050,17 @@ export class World {
     }
   }
 
+  /** 战术地形描边呼吸 + 高台（ridge）描边更亮，让地貌类型在战场上也一眼可辨。 */
+  _updateZonePulses() {
+    for (const v of this.zoneVisuals) {
+      const t = this.time;
+      const seed = (v.type || 'x').length * 1.7;
+      const base = v.type === 'ridge' ? 0.62 : 0.45;
+      if (v.line) v.line.material.opacity = base + 0.3 * Math.abs(Math.sin(t * 1.6 + seed));
+      if (v.fill) v.fill.material.opacity = (v.type === 'ridge' ? 0.15 : 0.19) * (0.7 + 0.3 * Math.abs(Math.sin(t * 1.2 + seed)));
+    }
+  }
+
   /** 中立信息素井：地面占领圈 + 悬浮晶体 + 光柱 + 归属环 + 标签。 */
   _rebuildWells(wells) {
     this._clearGroup(this.wellGroup);
@@ -1154,6 +1165,12 @@ export class World {
       v.prog.scale.setScalar(0.62 + 0.38 * k);
       v.crystal.material.emissiveIntensity = 0.5 + (w.owner ? 0.45 : 0) + (w.contest ? 0.35 : 0);
       v.pulse = w.pulse || 0;
+      // 晶体自转 + 浮动 + 轨道环旋转；争夺中高频闪烁，提示「正在交火争夺此井」
+      v.crystal.rotation.y = this.time * 0.6 + i;
+      v.crystal.position.y = 3.8 + Math.sin(this.time * 2 + i) * 0.3;
+      v.orbit.rotation.z = this.time * 1.1;
+      const contest = w.contest ? 1 : 0;
+      v.beam.material.opacity = 0.12 + 0.1 * contest + 0.06 * Math.abs(Math.sin(this.time * (contest ? 9 : 2) + i));
     }
   }
 
@@ -1430,6 +1447,10 @@ export class World {
       if (!d) continue;
       const heat = n.glow || 0;
       d.claim.material.opacity = 0.06 + 0.55 * heat;
+      // 正在被采集（占用热 > 0）：按概率飘出资源色微粒，让「采集中」在 3D 可见
+      if (heat > 0.05 && Math.random() < (this._quality >= 1 ? 0.22 : 0.1)) {
+        this.addEffect('harvest', { x: n.x, y: 4, z: n.z }, { color: d.col });
+      }
       d.claim.material.color.set(n.owner === SIDES.ENEMY ? 0xff9a5a : n.owner === SIDES.PLAYER ? 0x7ef0a0 : d.col);
       const cs = 1 + 0.07 * Math.sin(this.time * 1.6 + n.id);
       d.claim.scale.set(cs, cs, cs);
@@ -2501,6 +2522,7 @@ export class World {
     this._frameDt = dt;
     this.updateCamera(dt);
     this._updateGridFade();         // 战术网格随镜头距离渐显 / 淡出
+    this._updateZonePulses();       // 战术地形描边呼吸 / 高台更亮
     this._tickEraFade(dt);          // 纪元主题色平滑过渡
     this._tickDayNight(dt);         // 昼夜循环（叠加在纪元色之上）
     this._updateAmbient(dt);

@@ -548,3 +548,27 @@ FX_BUILDERS.critBurst = (world, pos, opts = {}, t0) => {
     return true;
   }, dispose: () => { beam.geometry.dispose(); beam.material.dispose(); } });
 };
+
+FX_BUILDERS.harvest = (world, pos, opts, t0) => {
+    // 资源节点被采集时，从节点飘出对应资源色的小结晶微粒（上升 + 自转 + 淡出），
+    // 让「正在采集」这件事在 3D 里也看得见，不必只靠 HUD 储量条。
+    const col = opts.color || 0x9fe06a;
+    const n = 5, grp = new THREE.Group(), parts = [];
+    for (let i = 0; i < n; i++) {
+      const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.35, 0),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95, depthWrite: false }));
+      c.position.set(pos.x + (Math.random() - 0.5) * 2, (pos.y || 3), pos.z + (Math.random() - 0.5) * 2);
+      grp.add(c);
+      parts.push({ mesh: c, vy: 4 + Math.random() * 3 });
+    }
+    world.scene.add(grp);
+    world.fx.push({ t0, obj: grp, update: (t) => {
+      if (t > 0.9) return false;
+      for (const p of parts) {
+        p.mesh.position.y += p.vy * 0.03;
+        p.mesh.rotation.y += 0.12; p.mesh.rotation.x += 0.08;
+        p.mesh.material.opacity = 0.95 * (1 - t / 0.9);
+      }
+      return true;
+    }, dispose: () => grp.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); }) });
+  };
