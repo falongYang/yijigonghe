@@ -41,5 +41,21 @@ else
 fi
 
 # 3) 推送
-git push -u origin "$BRANCH"
+# 本地出口代理（HTTP_PROXY=http://127.0.0.1:...）偶发 CONNECT 502 / 超时，会让「每轮必推」失败。
+# 先快速探测：代理不可达就直接清空代理变量走直连；默认推送失败时也回退一次（并降级 HTTP/1.1，
+# 规避 "HTTP2 framing layer" 错误）。凭据来自仓库本地 credential.helper，与是否走代理无关。
+do_push() { git push -u origin "$BRANCH"; }
+do_push_direct() {
+  env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
+    git -c http.version=HTTP/1.1 -c http.lowSpeedLimit=0 -c http.lowSpeedTime=180 push -u origin "$BRANCH"
+}
+if [ -n "${HTTPS_PROXY:-${https_proxy:-}}" ] && ! curl -s -o /dev/null --max-time 6 https://github.com/ >/dev/null 2>&1; then
+  echo "· 本地代理不可达，改用直连（HTTP/1.1）"
+  do_push_direct
+elif do_push; then
+  :
+else
+  echo "· 默认推送失败，回退直连（HTTP/1.1）重试"
+  do_push_direct
+fi
 echo "PUSH_OK  $(git rev-parse --short HEAD) → $REMOTE ($BRANCH)"
