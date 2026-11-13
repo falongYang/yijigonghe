@@ -540,7 +540,7 @@ export class Simulation {
    *  兑现 ABILITIES.a_burrow 的 desc 承诺——原实现是立即 AoE，丢掉「3 秒后破土」的延迟手感与战术价值。
    *  该能力不在 AI 候选池（_tickAI 的 cand 列表），仅玩家手动施放，故改动零 AI 平衡影响。 */
   _delayedAmbush(side, x, z) {
-    this.hazards.push({ x, z, r: 7, owner: side, dtype: 'pierce', slow: 0, dps: 0, t: 0.5, delay: 3, fx: 'ambush', dmg: 30, accum: 0 });
+    this.hazards.push({ x, z, r: 7, owner: side, dtype: 'pierce', slow: 0, dps: 0, t: 0, delay: 3, fx: 'ambush', dmg: 30, accum: 0 });
     this._fx('ring', x, 0.4, z, { color: 0x8a7f56, r: 7 });   // 落点微标记（埋伏圈）
   }
   _dmgRadius(x, z, r, dmg, owner, dtype) {
@@ -596,7 +596,7 @@ export class Simulation {
   }
   commandHarvest(ids, nodeId) {
     const n = this.nodes.find(x => x.id === nodeId);
-    for (const id of ids) { const u = this.getUnit(id); if (!u || u.type === 'worker' === false && UNITS[u.type].role !== 'econ') continue; if (n) { u.repairId = null; u.nodeId = n.id; u.state = 'harvest'; u.order = 'manual'; u.target = { x: n.x, z: n.z }; } }
+    for (const id of ids) { const u = this.getUnit(id); if (!u || UNITS[u.type].role !== 'econ') continue; if (n) { u.repairId = null; u.nodeId = n.id; u.state = 'harvest'; u.order = 'manual'; u.target = { x: n.x, z: n.z }; } }
   }
   commandStop(ids) { for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.state = 'idle'; u.order = 'auto'; u.target = null; u.waypoints = []; } }
 
@@ -1240,6 +1240,15 @@ export class Simulation {
   _tickHazards(dt) {
     for (let i = this.hazards.length - 1; i >= 0; i--) {
       const h = this.hazards[i];
+      // 延时型危害（钻地突袭）：先埋伏倒计时，到点一次性结算；期间不造成持续伤害、不消耗 t（避免提前移除）
+      if (h.delay && h.delay > 0) {
+        h.delay -= dt;
+        if (h.delay <= 0) {
+          this._dmgRadius(h.x, h.z, h.r, h.dmg, h.owner, h.dtype);
+          this._fx(h.fx, h.x, 1, h.z, { color: 0x8a7f56 });
+        }
+        continue;
+      }
       h.t -= dt; h.accum += dt;
       if (h.accum >= 0.25) {
         h.accum = 0;
