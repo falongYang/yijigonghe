@@ -12,10 +12,11 @@ import {
   effectiveBuilding, effectiveBuildingCost, researchCost, ERA_NAMES, MAX_ERA, canEngage, pickEnemySpecies, dmgMult,
   ENEMY_ARCHETYPES, DIFFICULTY, CAMPAIGN, applyArchetype, applyDifficulty,
   getMapConfig, SKIRMISH_MAP, ARCHETYPE_UNITS, UNIT_ANIM,
+  UNIT_FEEL, PROJECTILE_SPEC, projectileFor, TARGET_POLICIES,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
 import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor,
-  weatherTimelineFor, mapDynamicsFor } from './maps.js';
+  weatherTimelineFor, mapDynamicsFor, dayPhaseAt, decorFor, ambienceFor } from './maps.js';
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -84,6 +85,9 @@ export class Simulation {
     this.resonancePhase = -1;
     this.ridgeZones = [];
     this.milestones = {};             // 战场里程碑播报去重
+    this.tracers = [];                // 弹道只读记录（渲染层可轮询，不参与结算）
+    this.decor = [];                  // 地图装饰点位（确定性，纯视觉）
+    this.ambience = null;             // 场景氛围基准（粒子 / 风向 / 辉光）
   }
 
   on(fn) { this.listeners.push(fn); }
@@ -132,6 +136,7 @@ export class Simulation {
     this.selectedBuilding = null;
     this.effects.length = 0;
     this.hazards.length = 0;
+    this.tracers.length = 0;
     this.cd = { P: {}, E: {} };
     this.aura = { P: { dmg: 1, t: 0 }, E: { dmg: 1, t: 0 } };
     this.nextId = 1;
@@ -147,7 +152,9 @@ export class Simulation {
       poisonTicks: 0, corrodeHits: 0, slowHits: 0, stunTicks: 0,
       terrainTicks: 0, statusKills: 0,
       // 动态战场统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
-      resonanceHits: 0, weatherShifts: 0, milestones: 0 });
+      resonanceHits: 0, weatherShifts: 0, milestones: 0,
+      // 手感 / 弹道统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
+      shots: 0 });
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
     this._levelFlags = {};   // 等级里程碑播报去重（每局重置）
@@ -163,6 +170,8 @@ export class Simulation {
     this.resonance = null;
     this.resonancePhase = -1;
     this.milestones = {};
+    this.decor = decorFor(mode, chapter);
+    this.ambience = ambienceFor(mode, chapter);
     this.terrainHazards = staticHazardsFor(mode, chapter).map(h => ({ ...h, accum: 0 }));
     // 场景目标：默认 'destroy'（摧毁敌方蚁后巢）＝既有胜负判定，逐字不变。
     // 可选 'survive'（存活到时限）、'harvest'（累计采集达标）、'dominate'（占领全部信息素井并守住）。
@@ -377,6 +386,8 @@ export class Simulation {
     // 敌方单位携带性格专属色（用于渲染自发光）与 sig 标记（专属兵种造型）
     const accent = side === SIDES.ENEMY ? this.archetype.color : 0x000000;
     const sig = (side === SIDES.ENEMY && base.sig && base.archetypeOnly === this.archetype.id) ? base.sig : null;
+    // 初始朝向仍只消耗一次 Math.random（与改造前逐字一致），phase 紧随其后，AI 随机流不受影响。
+    const h0 = Math.random() * 6.28;
     const u = {
       id: this.nextId++, side, type, caste: e.caste, domain: e.domain, armor: e.armor, ability: e.ability,
       x, z, hp: e.hp, maxHp: e.hp, dmg: e.dmg, range: e.range, atkcd: e.atkcd, melee: e.melee,
@@ -390,13 +401,18 @@ export class Simulation {
       carryCap: e.carry, carryRes: 'bio', carrying: 0,
       level: opts.level || 1, elite: !!opts.elite, xp: 0, accent, sig,
       state: 'idle', target: null, waypoints: [], nodeId: null, homeId: null,
-      heading: Math.random() * 6.28, moving: false, atkTimer: 0,
+      heading: h0, moving: false, atkTimer: 0,
       order: 'auto', lastAttacker: null, burrowed: false, phase: Math.random() * 6.28, defendUntil: 0,
       // 行动细节：阵型 / 巡逻路径 / 驻守锚点
       formation: 'auto', patrol: null, patrolIdx: 0, holdX: null, holdZ: null,
       buff: { dmg: 1, tank: 1, spd: 1, t: 0 },
       // 动作表现状态（只读数据层，不参与任何战斗结算）：state/t/seq/prev + 两次瞬时事件窗口
       anim: { state: 'idle', t: 0, seq: 0, prev: null }, animStrike: 0, animHurt: 0,
+      // 手感数据：facing 为视觉朝向（向 heading 平滑插值，侧翼判定仍只认 heading）、
+      // gait/step 步态相位、reload 装填进度、windup 起手窗口、recoil 后坐包络。
+      feel: { facing: h0, gait: 0, step: 0, reload: 0, windup: 0, recoil: 0, shotAt: -1 },
+      // 最近一次直接命中的反馈（飘字 / 受击方向 / 暴击描边；DoT 与溅射不写）
+      lastHit: null,
     };
     this.units.push(u);
     if (base.role === 'econ') this._assignHarvest(u);
@@ -797,6 +813,7 @@ export class Simulation {
     const t = this._nearestEnemyEntity(u.side, u.holdX ?? u.x, u.holdZ ?? u.z, HOLD_LEASH, this._targetOpts(u));
     if (t && dist(u.x, u.z, t.x, t.z) <= u.range * this._terrainRangeMul(u) + (t.size ? t.size * 0.5 : 0)) {
       if (u.atkTimer <= 0) {
+        this._strikeFeel(u);
         this._dealDamage(u, t, u.dmg, u.x, u.z, !u.melee, u.dtype);
         if (u.splash > 0) this._applySplash(u, t, u.dmg);
         u.atkTimer = u.atkcd;
@@ -967,6 +984,7 @@ export class Simulation {
     this._tickEcho();
     this._tickWeather(dt);
     this._tickDynamics(dt);
+    this._tickTracers(dt);
     this._tickAI(dt);
     this._checkEnd();
     // 能力冷却倒计时递减（此前只设置不递减，会导致技能永久处于冷却）
@@ -1083,6 +1101,80 @@ export class Simulation {
     return u && u.anim ? { ...u.anim, spec: UNIT_ANIM[u.anim.state] || null } : null;
   }
 
+  /* ------------------------- 手感 / 弹道 / 场景只读层 ------------------------- */
+  /** 每帧集中推导手感数据。与 _tickAnim 一样放在状态机之后，只读、不写任何战斗数值。
+   *  刻意不消费 Math.random：朝向走最短弧插值，步态是确定性相位累加。 */
+  _tickFeel(u, dt) {
+    const f = u.feel; if (!f) return;
+    const spec = UNIT_FEEL[u.type] || UNIT_FEEL.worker;
+    let d = (u.heading || 0) - f.facing;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    const maxStep = spec.turnRate * dt;
+    f.facing += Math.abs(d) <= maxStep ? d : (d > 0 ? maxStep : -maxStep);
+    // 行进时按移速推进步频，静止时缓慢呼吸；step 为 [-1,1] 的躯干起伏相位。
+    f.gait += (u.moving ? spec.gait * (0.6 + (u.speed || 0) / 20) : 0.25) * dt;
+    f.step = u.moving ? +(Math.sin(f.gait * Math.PI * 2) * spec.bob).toFixed(4) : 0;
+    f.reload = u.atkcd > 0 ? +clamp(1 - Math.max(0, u.atkTimer) / u.atkcd, 0, 1).toFixed(4) : 1;
+    if (f.windup > 0) f.windup = Math.max(0, f.windup - dt);
+    if (f.recoil > 0) f.recoil = Math.max(0, f.recoil - dt / 0.28);
+  }
+
+  /** 一次真实普攻的表现窗口：动画 + 起手 + 后坐只在攻击方法里置位，衰减统一由 _tickFeel 做。 */
+  _strikeFeel(u) {
+    u.animStrike = 0.35;
+    if (!u.feel) return;
+    const spec = UNIT_FEEL[u.type] || UNIT_FEEL.worker;
+    u.feel.windup = spec.windup;
+    u.feel.recoil = 1;
+    u.feel.shotAt = this.time;
+  }
+
+  /** 记录一条远程弹道（只读表现数据）。伤害仍按既定语义在命中当帧结算，
+   *  这里只补齐「从哪飞到哪、飞多久、什么颜色/弧度」，供渲染层画飞行物与拖尾。 */
+  _addTracer(fromX, fromZ, toX, toZ, dtype, side, unitAtk) {
+    if (!this.tracers) return;         // 裸实例（未 reset）容错
+    const spec = projectileFor(dtype);
+    const d = dist(fromX, fromZ, toX, toZ);
+    this.tracers.push({
+      from: { x: fromX, z: fromZ }, to: { x: toX, z: toZ },
+      dtype, key: this._projFor(dtype), side, color: spec.color,
+      speed: spec.speed, arc: spec.arc, trail: spec.trail,
+      life: +Math.min(1.2, 0.12 + d / Math.max(12, spec.speed)).toFixed(3),
+      t: 0, unit: !!unitAtk, at: this.time,
+    });
+    if (this.tracers.length > 160) this.tracers.splice(0, this.tracers.length - 160);
+    if (this.stats && side && unitAtk) this.stats[side].shots++;
+  }
+  _tickTracers(dt) {
+    const a = this.tracers;
+    for (let i = a.length - 1; i >= 0; i--) {
+      a[i].t += dt;
+      if (a[i].t >= a[i].life) a.splice(i, 1);
+    }
+  }
+
+  /** 只读查询：单位手感快照（含规格 / 动画 / 最近命中反馈）；无该单位返回 null。 */
+  feelOf(id) {
+    const u = this.getUnit(id);
+    if (!u || !u.feel) return null;
+    return { ...u.feel, spec: UNIT_FEEL[u.type] || null, heading: u.heading, moving: u.moving,
+      anim: u.anim ? { ...u.anim } : null, lastHit: u.lastHit ? { ...u.lastHit } : null };
+  }
+  /** 只读查询：当前存活的弹道记录数组。调用方不得修改；按 life 自动回收。 */
+  activeTracers() { return this.tracers; }
+  /** 只读查询：全部弹道规格表。 */
+  projectileSpec() { return { ...PROJECTILE_SPEC }; }
+  /** 只读查询：当前昼夜光照快照（纯画面，任何模拟数值都不读它）。 */
+  dayPhase() { return dayPhaseAt(this.mode, this.chapter, this.time); }
+  /** 只读查询：本图确定性装饰点位。 */
+  decorPoints() { return this.decor; }
+  /** 只读查询：场景汇总（B 侧单帧拉一次即可）。 */
+  sceneInfo() {
+    return { day: this.dayPhase(), ambience: this.ambience ? { ...this.ambience } : null,
+      decorCount: this.decor.length, weather: this._wea(), climate: this._clim() };
+  }
+
   _tickAura(dt) {
     for (const s of ['P', 'E']) if (this.aura[s].t > 0) { this.aura[s].t -= dt; if (this.aura[s].t <= 0) this.aura[s].dmg = 1; }
   }
@@ -1194,6 +1286,7 @@ export class Simulation {
     // 放在状态机之后：本帧的 state / moving / carrying / 攻击与受击窗口都已确定，
     // 一次集中推导表现状态，避免把动画写入散落到十几个战斗方法里。
     this._tickAnim(u, dt);
+    this._tickFeel(u, dt);   // 朝向 / 步态 / 装填 / 起手 / 后坐，同为纯表现推导
   }
 
   /** 状态效果结算：中毒叠层 DoT / 腐蚀破甲 / 减速分层 / 眩晕停工。
@@ -1234,7 +1327,13 @@ export class Simulation {
   /** 战术索敌开关：只有敌方 AI 且难度 targeting>0 时启用，玩家单位与手动指令保持原行为。 */
   _targetOpts(u) {
     const w = (u.side === SIDES.ENEMY && this._ai) ? (this._ai.diff.targeting || 0) : 0;
-    return w > 0 ? { tactical: u, tacticalWeight: w } : undefined;
+    if (w <= 0) return undefined;
+    const o = { tactical: u, tacticalWeight: w };
+    // 只有「新增原型」声明了 targetPolicy 才附带偏好；原三档返回对象逐字不变。
+    // 战役沿用原三档，故此分支不会影响任何既有进度曲线。
+    const pol = this.archetype && TARGET_POLICIES[this.archetype.targetPolicy];
+    if (pol) o.policy = pol;
+    return o;
   }
 
   _harvest(u, dt) {
@@ -1292,7 +1391,7 @@ export class Simulation {
     if (dist(u.x, u.z, tgt.x, tgt.z) > reach) {
       this._moveTo(u, tgt.x, tgt.z, dt);
     } else if (u.atkTimer <= 0) {
-      u.animStrike = 0.35;   // 攻击动作窗口（表现层只读，不影响伤害与冷却）
+      this._strikeFeel(u);   // 攻击动作 / 起手 / 后坐窗口（表现层只读，不影响伤害与冷却）
       this._dealDamage(u, tgt, u.dmg, u.x, u.z, !u.melee, u.dtype);
       if (u.splash > 0) this._applySplash(u, tgt, u.dmg);
       u.atkTimer = u.atkcd;
@@ -1410,6 +1509,21 @@ export class Simulation {
       } else {
         score += w * 2;
       }
+      // 原型战术偏好：仅新增原型带 opts.policy，原三档为 undefined → 整段不进入，逐字不变。
+      // 所有修正仍受 radius 硬约束与难度 targeting 权重缩放，不会让 AI 跨图追击。
+      const pol = opts.policy;
+      if (pol) {
+        const def = !isBuilding ? UNITS[t.type] : null;
+        const isWorker = !!(def && def.role === 'econ');
+        // 新策略用 WEAPONS 真值判远程（UNITS 上并无 range 字段）。
+        // 上方既有默认评分的 (def.range>10) 口径刻意保持原样：改它会动默认难度的索敌基线。
+        const wdef = def && WEAPONS[def.weapon];
+        const isRanged = !!(wdef && !wdef.melee);
+        const isHQ = isBuilding && t.type === 'hq';
+        score -= (pol.worker * (isWorker ? 1 : 0) + pol.ranged * (isRanged ? 1 : 0)
+          + pol.building * (isBuilding ? 1 : 0) + pol.hq * (isHQ ? 1 : 0)) * w * 12;
+        if (t.maxHp) score -= (1 - clamp(t.hp / t.maxHp, 0, 1)) * pol.lowHp * w * 6;
+      }
       if (score < bestScore) { bestScore = score; best = t; }
     };
     for (const u of this.units) {
@@ -1495,6 +1609,11 @@ export class Simulation {
     if (unitAtk && tgt.animHurt !== undefined && tgt.hp > 0) tgt.animHurt = 0.22;
     if (tgt.flash !== undefined) tgt.flash = 0.16;
     if (tgt.lastAttacker !== undefined) tgt.lastAttacker = aSide;
+    // 命中反馈：只有「真实单位的直接命中」写最近一次受击信息（飘字 / 受击方向 / 暴击描边）；
+    // DoT、危害、溅射的代理攻击者不写，避免覆盖真正有方向的那一发。
+    if (unitAtk && tgt.poison && tgt.lastHit !== undefined) {
+      tgt.lastHit = { x: fromX, z: fromZ, dmg: Math.round(d), crit, dtype, armor, t: +this.time.toFixed(2) };
+    }
     // 我方巢室受袭分级告警：跨过 75 / 50 / 25% 各播报一次，混战不刷屏，
     // 也不会让玩家在毫无预警的情况下被推平。用既有 log + ring，不新增事件类型。
     // 建造中的巢室 hp 随进度从 1 起跳，按比例会误判为「濒毁」，故排除。
@@ -1520,8 +1639,13 @@ export class Simulation {
     this._emit('dmg', { x: tgt.x, z: tgt.z, amount: Math.max(1, Math.round(d)), victim: tgt.side, atk: aSide,
       y: (tgt.size ? tgt.size : 2) + 1, mult, dtype, armor, crit });
     const y = (tgt.size ? tgt.size : 2) + 1;
-    if (ranged) this._fx(this._projFor(dtype), tgt.x, y, tgt.z, { from: { x: fromX, y: 1, z: fromZ }, color: aSide === SIDES.PLAYER ? 0xaef06a : 0xff8a5a, dtype });
-    else this._fx('hit', tgt.x, y, tgt.z, { color: 0xffd27f });
+    if (ranged) {
+      this._fx(this._projFor(dtype), tgt.x, y, tgt.z, { from: { x: fromX, y: 1, z: fromZ }, color: aSide === SIDES.PLAYER ? 0xaef06a : 0xff8a5a, dtype });
+      // 真实单位普攻 + 箭塔齐射都记弹道；能力 / 危害 / 溅射的 { side } 代理没有 type，不入队。
+      if (unitAtk || (attacker && attacker.type && BUILDINGS[attacker.type])) {
+        this._addTracer(fromX, fromZ, tgt.x, tgt.z, dtype, aSide, unitAtk);
+      }
+    } else this._fx('hit', tgt.x, y, tgt.z, { color: 0xffd27f });
     if (attacker && attacker.xp !== undefined) {
       // 过量击杀不按满额伤害刷经验：只有这一发打穿目标时按「实际承伤比例」折算，
       // 未击杀 / 未过量时与原先 dmg*0.4 完全一致，不改变正常升级节奏。

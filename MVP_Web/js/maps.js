@@ -203,3 +203,124 @@ export const MAP_DYNAMICS = {
 export function mapDynamicsFor(mode, chapter) {
   return (mode === 'campaign' && chapter != null) ? (MAP_DYNAMICS[chapter] || null) : null;
 }
+
+/* --------------------------------------------------------------------------
+ * 昼夜循环（纯画面数据）：四相位光照 / 雾 / 天空 / 星度，按时间平滑插值。
+ * 遭遇战同样有昼夜，但**任何数值都不参与模拟结算**（视野、命中、采集、AI 均不读它），
+ * 因此不会改变既定节奏；由 sim.dayPhase() 透出，B 侧可选消费。
+ * period / offset 逐章微调，让六章的光照节奏与地貌气质不同。
+ * ------------------------------------------------------------------------ */
+export const DAY_PHASES = [
+  { id: 'dawn',  label: '拂晓', sun: 0xffb877, ambient: 0x6a6480, fog: 0xb9a2a0, sky: 0x2b3a5c, intensity: 0.62, fogDensity: 0.018, star: 0.35 },
+  { id: 'day',   label: '正昼', sun: 0xfff2d0, ambient: 0x9aa6a2, fog: 0xc8d2cc, sky: 0x7fb6d8, intensity: 1.00, fogDensity: 0.010, star: 0.00 },
+  { id: 'dusk',  label: '黄昏', sun: 0xff8f5a, ambient: 0x7a6470, fog: 0xb88a78, sky: 0x4b3c62, intensity: 0.68, fogDensity: 0.016, star: 0.20 },
+  { id: 'night', label: '夜幕', sun: 0x8fa8e0, ambient: 0x37405e, fog: 0x2b3550, sky: 0x0c1226, intensity: 0.38, fogDensity: 0.024, star: 1.00 },
+];
+export const DAY_CYCLE = {
+  period: 180,
+  byChapter: [
+    { period: 180, offset: 0.02 },  // 0 焦土：标准昼夜
+    { period: 165, offset: 0.10 },  // 1 沃野：晨光更早
+    { period: 200, offset: 0.22 },  // 2 荒原：长昼
+    { period: 150, offset: 0.34 },  // 3 泽国：雾夜更频繁
+    { period: 140, offset: 0.46 },  // 4 海岸：潮光快速流转
+    { period: 210, offset: 0.58 },  // 5 虚空：近乎恒夜的长周期
+  ],
+};
+const _lerp = (a, b, k) => a + (b - a) * k;
+function _lerpHex(a, b, k) {
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  return ((Math.round(_lerp(ar, br, k)) << 16) | (Math.round(_lerp(ag, bg, k)) << 8) | Math.round(_lerp(ab, bb, k))) >>> 0;
+}
+/** 返回某一时刻的光照快照；颜色为 0xRRGGBB，B 侧可直接喂 THREE.Color。 */
+export function dayPhaseAt(mode, chapter, t = 0) {
+  const ci = (mode === 'campaign' && chapter != null) ? (chapter % DAY_CYCLE.byChapter.length) : 0;
+  const cfg = DAY_CYCLE.byChapter[ci];
+  const period = cfg.period || DAY_CYCLE.period;
+  const tt = Math.max(0, t || 0);
+  const p = ((tt / period + cfg.offset) % 1 + 1) % 1;
+  const scaled = p * DAY_PHASES.length;
+  const i = Math.floor(scaled) % DAY_PHASES.length;
+  const f = scaled - Math.floor(scaled);
+  const k = f * f * (3 - 2 * f);            // smoothstep，避免相位切换时光照跳变
+  const a = DAY_PHASES[i], b = DAY_PHASES[(i + 1) % DAY_PHASES.length];
+  const lerpHex = key => _lerpHex(a[key], b[key], k);
+  const lerp = key => +_lerp(a[key], b[key], k).toFixed(4);
+  return {
+    phase: a.id, label: a.label, next: b.id, nextLabel: b.label,
+    progress: +p.toFixed(4), blend: +k.toFixed(4), cycle: Math.floor(tt / period) + 1,
+    chapter: ci, period,
+    sun: lerpHex('sun'), ambient: lerpHex('ambient'), fog: lerpHex('fog'), sky: lerpHex('sky'),
+    intensity: lerp('intensity'), fogDensity: lerp('fogDensity'), star: lerp('star'),
+  };
+}
+
+/* 场景氛围：粒子类型 / 密度 / 风向 / 辉光色，逐章不同。纯表现，不参与结算。 */
+export const SCENE_AMBIENCE = [
+  { particle: 'ember',  density: 0.45, wind: { x: 0.35, z: -0.18 }, glow: 0xff9a5a, sound: 'ash'   },
+  { particle: 'pollen', density: 0.70, wind: { x: 0.18, z: 0.22  }, glow: 0xffe6a0, sound: 'field' },
+  { particle: 'dust',   density: 0.55, wind: { x: 0.55, z: 0.05  }, glow: 0xd8c39a, sound: 'wind'  },
+  { particle: 'mist',   density: 0.85, wind: { x: -0.12, z: 0.15 }, glow: 0x9fd0dc, sound: 'marsh' },
+  { particle: 'spray',  density: 0.90, wind: { x: 0.62, z: -0.30 }, glow: 0x9fc8ff, sound: 'surf'  },
+  { particle: 'echo',   density: 0.65, wind: { x: 0.00, z: 0.00  }, glow: 0xc7b3ff, sound: 'void'  },
+];
+export function ambienceFor(mode, chapter) {
+  const i = (mode === 'campaign' && chapter != null) ? (chapter % SCENE_AMBIENCE.length) : 0;
+  const a = SCENE_AMBIENCE[i];
+  return { ...a, wind: { ...a.wind }, chapter: i };
+}
+
+/* --------------------------------------------------------------------------
+ * 地图装饰点位：确定性布点，纯视觉（草簇 / 石砾 / 菌菇 / 枯枝 / 水洼 / 孢子 /
+ * 残骸 / 晶簇）。用自有 hash，绝不消费 Math.random，避免污染 AI 固定随机流。
+ * 硬约束：避开资源点、水域、双方巢区、静态危害区与地图边缘，避免挡住交互与行军。
+ * 与 rts.js 的 MAP.W/H 口径同步；此处不 import rts 以规避循环依赖。
+ * ------------------------------------------------------------------------ */
+const DECOR_KINDS = ['tuft', 'pebble', 'fungus', 'twig', 'puddle', 'spore', 'bone', 'crystal'];
+export const MAP_DECOR = [
+  { count: 96,  weights: [3, 4, 1, 2, 0, 1, 2, 0], tint: 0x9a8362 },  // 0 焦土
+  { count: 128, weights: [6, 2, 2, 2, 1, 3, 0, 0], tint: 0x7fae68 },  // 1 沃野
+  { count: 84,  weights: [1, 6, 0, 2, 0, 0, 3, 1], tint: 0xb5a182 },  // 2 荒原
+  { count: 110, weights: [4, 1, 4, 2, 4, 3, 0, 0], tint: 0x6f9e94 },  // 3 泽国
+  { count: 104, weights: [2, 4, 1, 1, 5, 1, 1, 0], tint: 0x8fa8b8 },  // 4 海岸
+  { count: 92,  weights: [0, 2, 2, 0, 1, 4, 1, 6], tint: 0xa48fd0 },  // 5 虚空
+];
+const DECOR_HALF_W = 94, DECOR_HALF_H = 67;   // == rts.HALF_W / HALF_H
+const DECOR_BASE_Z = DECOR_HALF_H * 0.62;
+function _dhash(a, b, c) {
+  let x = (Math.imul(a, 374761393) + Math.imul(b, 668265263) + Math.imul(c, 1442695041)) | 0;
+  x = Math.imul(x ^ (x >>> 13), 1274126177) | 0;
+  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+}
+export function decorFor(mode, chapter) {
+  const ci = (mode === 'campaign' && chapter != null) ? (chapter % MAP_DECOR.length) : 0;
+  const cfg = MAP_DECOR[ci];
+  const rules = MAP_RULES[ci];
+  const water = rules.water || [];
+  const hazards = STATIC_HAZARDS[ci] || [];
+  const wsum = cfg.weights.reduce((a, b) => a + b, 0);
+  const salt = mode === 'campaign' ? 17 : 3;
+  const out = [];
+  const maxTry = cfg.count * 12;
+  for (let i = 0; i < maxTry && out.length < cfg.count; i++) {
+    const x = (_dhash(ci, i, salt) * 2 - 1) * (DECOR_HALF_W - 6);
+    const z = (_dhash(ci, i, salt + 1) * 2 - 1) * (DECOR_HALF_H - 6);
+    if (rules.nodes.some(n => Math.hypot(x - n.x, z - n.z) < 9)) continue;
+    if (water.some(w => Math.hypot(x - w.x, z - w.z) < w.r + 3)) continue;
+    if (hazards.some(h => Math.hypot(x - h.x, z - h.z) < h.r + 3)) continue;
+    if (Math.hypot(x, z - DECOR_BASE_Z) < 20 || Math.hypot(x, z + DECOR_BASE_Z) < 20) continue;
+    let roll = _dhash(ci, i, salt + 2) * wsum, kind = DECOR_KINDS[0];
+    for (let k = 0; k < cfg.weights.length; k++) {
+      roll -= cfg.weights[k];
+      if (roll <= 0) { kind = DECOR_KINDS[k]; break; }
+    }
+    out.push({
+      id: `d${i}`, x: +x.toFixed(2), z: +z.toFixed(2), kind,
+      scale: +(0.6 + _dhash(ci, i, salt + 3) * 0.9).toFixed(3),
+      rot: +(_dhash(ci, i, salt + 4) * Math.PI * 2).toFixed(3),
+      tint: cfg.tint, shade: +(0.82 + _dhash(ci, i, salt + 5) * 0.36).toFixed(3),
+    });
+  }
+  return out;
+}

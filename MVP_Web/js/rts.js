@@ -406,6 +406,60 @@ export const UNIT_ANIM = {
 };
 export const ANIM_STATES = Object.keys(UNIT_ANIM);
 
+/* --------------------------------------------------------------------------
+ * 单位「手感」规格：转向速率、步频、起伏、起手、后坐、拖尾，按四域派生。
+ * 纯表现数据：sim 只把它们用于推导 u.feel（朝向插值 / 相位 / 衰减包络），
+ * 绝不参与伤害、冷却、索敌、命中判定；B 侧不消费时原有动画完全不受影响。
+ * 与 UNIT_ANIM 的分工：ANIM 决定「播哪段动作」，FEEL 决定「动作怎么动」。
+ * ------------------------------------------------------------------------ */
+const FEEL_BY_DOMAIN = {
+  land:        { turnRate: 7.0, gait: 2.2, bob: 0.10, windup: 0.16, recoil: 0.55, trail: 0.25 },
+  sea:         { turnRate: 4.2, gait: 1.4, bob: 0.16, windup: 0.22, recoil: 0.35, trail: 0.55 },
+  air:         { turnRate: 9.5, gait: 3.4, bob: 0.22, windup: 0.10, recoil: 0.25, trail: 0.70 },
+  underground: { turnRate: 5.5, gait: 1.8, bob: 0.06, windup: 0.20, recoil: 0.45, trail: 0.18 },
+};
+export const UNIT_FEEL = Object.fromEntries(Object.values(UNITS).map(u => {
+  const d = FEEL_BY_DOMAIN[u.domain] || FEEL_BY_DOMAIN.land;
+  const econ = u.role === 'econ';
+  // UNITS 只声明 weapon；射程与近战标志在 WEAPONS 上（u.range 是 effectiveUnit 才派生的）。
+  const w = WEAPONS[u.weapon];
+  const ranged = w ? !w.melee : (u.range || 0) > 10;
+  return [u.id, {
+    turnRate: +(d.turnRate * (econ ? 1.15 : 1)).toFixed(2),
+    gait:     +(d.gait * (econ ? 1.10 : 1)).toFixed(2),
+    bob:      +(d.bob * (econ ? 0.75 : 1)).toFixed(2),
+    windup:   +(d.windup * (ranged ? 1.25 : 1)).toFixed(2),
+    recoil:   +(d.recoil * (ranged ? 1.20 : 1)).toFixed(2),
+    trail:    d.trail,
+    scale:    (u.visual && u.visual.size) || 1,
+  }];
+}));
+
+/* 弹道只读规格：键与 sim._projFor 的输出一致（acid/sting/bolt/bomb/melee/psi）。
+ * speed 仅用于推算弹道寿命与视觉插值，不改变伤害「结算当帧」这一既定语义。 */
+export const PROJECTILE_SPEC = {
+  acid:  { speed: 34, arc: 0.18, trail: 0.70, color: 0x9be05a, hit: 'acid' },
+  sting: { speed: 46, arc: 0.08, trail: 0.50, color: 0xffe27f, hit: 'hit'  },
+  bolt:  { speed: 52, arc: 0.06, trail: 0.40, color: 0xaef06a, hit: 'hit'  },
+  bomb:  { speed: 26, arc: 0.42, trail: 0.90, color: 0xff8a5a, hit: 'bomb' },
+  melee: { speed: 0,  arc: 0.00, trail: 0.00, color: 0xffd27f, hit: 'hit'  },
+  psi:   { speed: 40, arc: 0.00, trail: 0.80, color: 0xc7b3ff, hit: 'ring' },
+};
+const PROJ_BY_DTYPE = { acid: 'acid', sting: 'sting', pierce: 'bolt', bomb: 'bomb', bite: 'melee', psi: 'psi' };
+export function projectileFor(dtype) {
+  return PROJECTILE_SPEC[PROJ_BY_DTYPE[dtype] || 'bolt'] || PROJECTILE_SPEC.bolt;
+}
+
+/* 战术目标偏好：只有「新增原型」声明 targetPolicy 才生效；原三档为 undefined，
+ * sim._tacticalTarget 中整段加权分支不会进入，默认对局逐字不变。
+ * 数值为「偏好权重」（正数=更优先），在评分里按难度 targeting 强度缩放。 */
+export const TARGET_POLICIES = {
+  hq:       { id: 'hq',       label: '直捣蚁后', worker: 0.0, building: 0.0, hq: 2.0, ranged: 0.0, lowHp: 0.5 },
+  economy:  { id: 'economy',  label: '断粮奇袭', worker: 1.8, building: 0.0, hq: 0.0, ranged: 0.0, lowHp: 0.6 },
+  counters: { id: 'counters', label: '剪除攻城', worker: 0.0, building: 0.2, hq: 0.0, ranged: 1.6, lowHp: 0.8 },
+  balanced: { id: 'balanced', label: '均衡绞杀', worker: 0.5, building: 0.2, hq: 0.6, ranged: 0.6, lowHp: 1.0 },
+};
+
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };
 // 兵营/各域巢可产兵种（按纪元解锁）
@@ -594,19 +648,19 @@ export const ENEMY_ARCHETYPES = {
     id: 'rusher', name: '速攻型', color: 0xff8a3a,
     desc: '兵营前置、连续 early rush，科技落后但开局压迫极强。',
     attackInterval: [16, 26], soldierReq: [3, 12], buildSpeed: 0.72,
-    abilityUse: 0.9, expandBias: 0.5, towerBias: 0.3, techPath: 'rush',
+    abilityUse: 0.9, expandBias: 0.5, towerBias: 0.3, techPath: 'rush', targetPolicy: 'hq',
   },
   turtle: {
     id: 'turtle', name: '龟缩型', color: 0x8a9ab0,
     desc: '塔阵与工事先行，极晚进攻，靠纵深防线拖垮对手。',
     attackInterval: [78, 120], soldierReq: [12, 22], buildSpeed: 1.05,
-    abilityUse: 0.5, expandBias: 1.2, towerBias: 2.4, techPath: 'turtle',
+    abilityUse: 0.5, expandBias: 1.2, towerBias: 2.4, techPath: 'turtle', targetPolicy: 'counters',
   },
   balanced: {
     id: 'balanced', name: '均衡型', color: 0xa88ad0,
     desc: '史官堂前置抢纪元，兵力与经济同步推进，无明显短板。',
     attackInterval: [34, 56], soldierReq: [7, 16], buildSpeed: 0.95,
-    abilityUse: 0.75, expandBias: 1.1, towerBias: 1.0, techPath: 'tech',
+    abilityUse: 0.75, expandBias: 1.1, towerBias: 1.0, techPath: 'tech', targetPolicy: 'balanced',
   },
 };
 // 战役章节仍使用原三档性格，新增原型只在遭遇战显式指定时出现，不改变既有进度曲线
