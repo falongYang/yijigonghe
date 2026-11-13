@@ -298,6 +298,22 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 #econ-status .es-refine { color: #7ef0c8; border-color: rgba(126,240,200,.4); }
 #econ-status .es-trade { color: #ffb070; border-color: rgba(255,176,112,.4); }
 
+/* 天气 HUD：当前气象 + 视野/远程修正 + 预报（top-left，位于经济浮标之下） */
+#weather-hud { position: fixed; top: 84px; left: 12px; z-index: 6; min-width: 132px;
+  background: rgba(14,20,10,.82); border: 1px solid rgba(180,205,255,.28); border-radius: 10px; padding: 7px 11px;
+  box-shadow: 0 0 18px rgba(120,150,210,.18); }
+#weather-hud .wh-row { display: flex; align-items: center; gap: 7px; font-size: 13px; color: #fff; }
+#weather-hud .wh-ic { font-size: 16px; filter: drop-shadow(0 0 5px currentColor); }
+#weather-hud .wh-row b { font-weight: 700; letter-spacing: .5px; }
+#weather-hud .wh-mods { display: flex; gap: 8px; margin-top: 4px; }
+#weather-hud .wh-mods span { font-size: 11px; padding: 2px 7px; border-radius: 12px; background: rgba(255,255,255,.08); color: #cdd8b8; }
+#weather-hud .wh-mods span.up { color: #9fe06a; background: rgba(126,240,106,.12); }
+#weather-hud .wh-mods span.down { color: #ff9a5a; background: rgba(255,154,90,.12); }
+#weather-hud .wh-fc { display: block; margin-top: 4px; font-size: 11px; color: #a9b8d0; }
+#weather-hud .wh-fc b { color: #d6e2f5; }
+#weather-hud .wh-fc.dim { color: #8a947f; }
+
+
 .end-btns { display: flex; gap: 12px; justify-content: center; }
 #btn-end-menu { margin: 0; }
 

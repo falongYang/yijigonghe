@@ -20,6 +20,10 @@ function costStr(cost) { return RES_ORDER.filter(r => cost[r]).map(r => `${cost[
 function canAfford(res, cost) { for (const r of RES_ORDER) if (cost[r] && (res[r] || 0) < cost[r]) return false; return true; }
 const resHex = r => '#' + ((RESOURCES[r] || RESOURCES.bio).hex).toString(16).padStart(6, '0');
 
+// 天气图标 / 强调色（与昼夜时段图标风格一致的字形；读 A 侧 sim.weather 只读，不新增事件）
+const WEATHER_ICON = { clear: '☼', rain: '☂', wind: '❀', mist: '≋', storm: '⚡', resonance: '❂' };
+const WEATHER_COLOR = { clear: '#ffe9a8', rain: '#8fb4c8', wind: '#9fe0c0', mist: '#cfe2f0', storm: '#8a9bd0', resonance: '#c7b3ff' };
+
 export class UI {
   constructor(game, hooks) {
     this.game = game;
@@ -1085,6 +1089,7 @@ export class UI {
     }
     $('#mission-obj').textContent = '目标：' + (o.label || '');
     this._updateObjective(s);   // 立即渲染首帧进度，避免开局面板空白
+    this._updateWeather(s);     // 立即渲染天气 HUD，避免开局面板空白
   }
 
   /** 目标实时进度：读 A 侧 sim.objectiveProgress()（只读，不新增事件），按类型呈现倒计时 / 采集量 / 占井守时。 */
@@ -1120,6 +1125,37 @@ export class UI {
     if (s.tradeDone && s.tradeDone > 0) bits.push(`<span class="es-chip es-trade">⇄ 资源贸易 ×${s.tradeDone}</span>`);
     if (bits.length) { el.innerHTML = bits.join(''); el.classList.remove('hidden'); }
     else el.classList.add('hidden');
+  }
+
+  /** 天气 HUD：当前气象 + 视野/远程修正 + 预报（读 A 侧 sim.weather / weatherTimeline / weatherIdx，只读，不新增事件）。 */
+  _updateWeather(s) {
+    const el = document.getElementById('weather-hud');
+    if (!el) return;
+    const w = s.weather;                 // {id,name,desc,visionMul,hitMul}
+    if (!w) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    const vis = (w.visionMul != null) ? w.visionMul : 1;
+    const hit = (w.hitMul != null) ? w.hitMul : 1;
+    const pct = v => (v >= 1 ? '+' + Math.round((v - 1) * 100) : Math.round((v - 1) * 100)) + '%';
+    const visCls = vis >= 1 ? 'up' : 'down';
+    const hitCls = hit >= 1 ? 'up' : 'down';
+    const ic = WEATHER_ICON[w.id] || '☼';
+    const col = WEATHER_COLOR[w.id] || '#cfe0ff';
+    // 预报：A 侧天气时间线（战役专属；遭遇战恒空 → 显示「气象稳定」）
+    const tl = s.weatherTimeline, idx = s.weatherIdx || 0;
+    let fc;
+    if (tl && tl.length > idx) {
+      const step = tl[idx];
+      const left = Math.max(0, Math.ceil(step.at - s.time));
+      const nm = (step.next && step.next.name) || '未知';
+      fc = `<span class="wh-fc">${left}s 后转 <b>${nm}</b></span>`;
+    } else {
+      fc = `<span class="wh-fc dim">气象稳定</span>`;
+    }
+    el.innerHTML =
+      `<div class="wh-row"><span class="wh-ic" style="color:${col}">${ic}</span><b>${w.name}</b></div>` +
+      `<div class="wh-mods"><span class="${visCls}">视野 ${pct(vis)}</span><span class="${hitCls}">远程 ${pct(hit)}</span></div>` +
+      fc;
   }
 
   // 战场地图名（六章差异化地图）：传入配置对象时附带主题 tooltip，点击可重看简报
@@ -1273,6 +1309,7 @@ export class UI {
 
     this._updateObjective(s);
     this._updateEconStatus(s);
+    this._updateWeather(s);
 
     this._refreshSelection();
     this._drawMinimap();

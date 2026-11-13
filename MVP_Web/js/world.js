@@ -253,6 +253,14 @@ export class World {
     this._dayPeriod = 200;      // 整局昼夜循环周期（秒）
     this.dayFactor = 1; this.dayPhase = '白昼'; this.dayIcon = '☀';
 
+    // 动态天气（读 A 侧 sim.weather 只读，不新增事件/特效类型）：驱动雾色与远近压缩 + 降水粒子叠加
+    this._weatherCur = null;          // 当前天气对象 {id,name,desc,visionMul,hitMul}
+    this._weatherId = null;           // 上一次应用的天气 id（变化时才重建粒子层）
+    this._weatherTint = new THREE.Color(0xffffff);   // 平滑过渡的目标色调
+    this._weatherVis = 0;             // 0..1 额外雾化强度（平滑）
+    this._fogBaseNear = 200; this._fogBaseFar = 460; // 地图基准雾远近（loadMap 写入）
+    this.weatherDyn = null; this._weatherDynCfg = null; this._weatherDynVel = null;
+
     this.unitMeshes = new Map();
     this.buildingMeshes = new Map();
     this.pickables = [];
@@ -555,6 +563,104 @@ export class World {
     this.weatherPts.rotation.y = t * 0.01;
   }
 
+  /* --------------------- 动态天气（读 A 侧 sim.weather，只读） --------------------- */
+  /** 天气 → 雾色调与额外雾化强度（与地图静态粒子层「互不干扰」，仅叠加在昼夜天色之上）。 */
+  _weatherTintSpec(id) {
+    return ({
+      clear:     { tint: 0xffffff, vis: 0.00 },
+      rain:      { tint: 0x8fb4c8, vis: 0.38 },
+      wind:      { tint: 0xc2dcc8, vis: 0.10 },
+      mist:      { tint: 0xcfe2f0, vis: 0.55 },
+      storm:     { tint: 0x6f7fa8, vis: 0.62 },
+      resonance: { tint: 0xc7b3ff, vis: 0.06 },
+    })[id] || { tint: 0xffffff, vis: 0.0 };
+  }
+  /** 天气 → 独立降水/气流粒子层参数（clear/mist/resonance 无额外粒子，由静态层或纯雾色表达）。 */
+  _weatherDynSpec(id) {
+    return ({
+      clear:     { n: 0 },
+      rain:      { n: 420, color: 0xaecbe0, op: 0.50, size: 1.4, add: false, y: [2, 44], vel: { x: 0.4, y: -26, z: 0.3 } },
+      wind:      { n: 280, color: 0xcfe6d8, op: 0.32, size: 1.7, add: false, y: [1, 32], vel: { x: 20, y: 0.6, z: 2.4 } },
+      mist:      { n: 0 },   // 薄雾由 map-art 静态粒子层表现
+      storm:     { n: 620, color: 0x9fb2dc, op: 0.62, size: 1.8, add: true,  y: [2, 50], vel: { x: 1.4, y: -34, z: 1.0 } },
+      resonance: { n: 0 },
+    })[id] || { n: 0 };
+  }
+  /** 每帧从 sim 读取当前天气（只读）；天气 id 变化时才重建独立粒子层，避免逐帧重建。 */
+  _syncWeather(sim) {
+    const w = sim.weather;          // {id,name,desc,visionMul,hitMul}（A 侧 reset 时按章节重取）
+    if (!w) return;
+    if (w.id !== this._weatherId) {
+      this._weatherId = w.id;
+      this._rebuildWeatherDyn(w.id);
+    }
+    this._weatherCur = w;
+  }
+  /** 重建独立降水/气流粒子层（与静态 _rebuildWeather 互不干扰）。 */
+  _rebuildWeatherDyn(id) {
+    const spec = this._weatherDynSpec(id);
+    if (this.weatherDyn) {
+      this.weatherGroup.remove(this.weatherDyn);
+      this.weatherDyn.geometry.dispose(); this.weatherDyn.material.dispose();
+      this.weatherDyn = null; this._weatherDynVel = null;
+    }
+    this._weatherDynCfg = spec;
+    if (!spec.n) return;            // 无降水粒子（晴空/薄雾/共振）→ 仅雾色变化
+    const N = spec.n, pos = new Float32Array(N * 3), vel = [];
+    for (let i = 0; i < N; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * MAP.W * 1.15;
+      pos[i * 3 + 1] = spec.y[0] + Math.random() * (spec.y[1] - spec.y[0]);
+      pos[i * 3 + 2] = (Math.random() - 0.5) * MAP.H * 1.15;
+      vel.push({
+        x: spec.vel.x * (0.6 + Math.random() * 0.8),
+        y: spec.vel.y * (0.7 + Math.random() * 0.6),
+        z: spec.vel.z * (0.6 + Math.random() * 0.8),
+      });
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const m = new THREE.PointsMaterial({
+      size: spec.size, map: this._dustTex(), transparent: true, depthWrite: false,
+      opacity: spec.op, color: spec.color, blending: spec.add ? THREE.AdditiveBlending : THREE.NormalBlending, fog: false,
+    });
+    this.weatherDyn = new THREE.Points(g, m);
+    this.weatherDyn.frustumCulled = false;
+    this._weatherDynVel = vel;
+    this.weatherGroup.add(this.weatherDyn);
+  }
+  /** 天气可视化：在 _tickDayNight 每帧重置的昼夜天色之上，平滑叠加雾色调与远近压缩，并推进降水粒子。 */
+  _tickWeatherFx(dt) {
+    const w = this._weatherCur;
+    const spec = this._weatherTintSpec(w ? w.id : 'clear');
+    const k = 1 - Math.exp(-dt / 0.45);
+    this._weatherTint.lerp(new THREE.Color(spec.tint), k);
+    this._weatherVis += (spec.vis - this._weatherVis) * (1 - Math.exp(-dt / 0.7));
+    if (this.scene.fog && this._fogBaseFar) {
+      const base = this.scene.fog.color;                 // 当前昼夜天色（_tickDayNight 刚写入）
+      const tgt = base.clone().lerp(this._weatherTint, 0.5 * this._weatherVis);
+      this.scene.fog.color.copy(tgt);
+      const visMul = (w && w.visionMul != null) ? w.visionMul : 1;
+      const farT = this._fogBaseFar * (0.55 + 0.45 * visMul) * (1 - 0.30 * this._weatherVis);
+      const nearT = this._fogBaseNear * (0.7 + 0.3 * visMul);
+      const fk = 1 - Math.exp(-dt / 0.8);
+      this.scene.fog.far += (farT - this.scene.fog.far) * fk;
+      this.scene.fog.near += (nearT - this.scene.fog.near) * fk;
+    }
+    if (this.weatherDyn && this._weatherDynCfg && this._weatherDynCfg.n) {
+      const sp = this._weatherDynCfg, p = this.weatherDyn.geometry.attributes.position.array, vel = this._weatherDynVel, t = this.time;
+      const top = sp.y[1], bot = sp.y[0], span = MAP.W * 1.15;
+      for (let i = 0; i < vel.length; i++) {
+        const v = vel[i];
+        p[i * 3] += v.x * dt; p[i * 3 + 1] += v.y * dt; p[i * 3 + 2] += v.z * dt;
+        if (p[i * 3 + 1] < bot) { p[i * 3 + 1] = top; p[i * 3] = (Math.random() - 0.5) * span; p[i * 3 + 2] = (Math.random() - 0.5) * span; }
+        else if (p[i * 3 + 1] > top) { p[i * 3 + 1] = bot; }
+        if (p[i * 3] > MAP.W * 0.6) p[i * 3] -= span; else if (p[i * 3] < -MAP.W * 0.6) p[i * 3] += span;
+      }
+      this.weatherDyn.geometry.attributes.position.needsUpdate = true;
+      this.weatherDyn.rotation.y = t * 0.02;
+    }
+  }
+
   /** 地面斑块：按地图配色在地面散布若干柔性圆盘，软化大面积纯色地面、强化生物群系辨识。
    *  焦土用焦黑灼痕、泽国/海岸用浅色湿斑、虚空用发光苔斑，其余用苔绿/土色斑。 */
   _rebuildDecals(cfg) {
@@ -831,6 +937,8 @@ export class World {
     this.baseBg = new THREE.Color(cfg.bg);
     this.scene.fog.near = cfg.fog[0];
     this.scene.fog.far = cfg.fog[1];
+    this._fogBaseNear = cfg.fog[0]; this._fogBaseFar = cfg.fog[1];
+    this._weatherId = null; this._weatherCur = null; this._weatherVis = 0; this._weatherTint.set(0xffffff);
     this._recolorTerrain(cfg);
     this._rebuildScatter(cfg);
     this._rebuildProps(cfg);
@@ -2039,6 +2147,7 @@ export class World {
   /** 每帧：同步全部单位/建筑的可视状态（位置/血条/选择环），并回收已消失实体。
    *  frozen=true 时（暂停）不生成新的扬尘，避免特效因时间冻结而无法回收。 */
   syncFrame(sim, frozen = false) {
+    this._syncWeather(sim);          // 只读读取 A 侧当前天气（含动态时间线切换），不新增事件
     const uids = new Set(sim.units.map(u => u.id));
     for (const id of [...this.unitMeshes.keys()]) if (!uids.has(id)) this.removeUnit(id);
     const bids = new Set(sim.buildings.map(b => b.id));
@@ -2682,6 +2791,7 @@ export class World {
     this._updateZonePulses();       // 战术地形描边呼吸 / 高台更亮
     this._tickEraFade(dt);          // 纪元主题色平滑过渡
     this._tickDayNight(dt);         // 昼夜循环（叠加在纪元色之上）
+    this._tickWeatherFx(dt);        // 天气雾化 / 降水叠加（每帧在昼夜之后平滑过渡，读 A 侧 sim.weather 只读）
     this._updateAmbient(dt);
     this._updateFx();
     this._updateDying(dt);     // 单位死亡倒地演出（独立于 sim 推进，暂停时随帧冻结）
