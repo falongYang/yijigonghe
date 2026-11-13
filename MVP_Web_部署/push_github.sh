@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # yijigonghe — 每轮开发结束后提交并推送到 GitHub
 # 用法: bash MVP_Web_部署/push_github.sh "本轮改动说明"
-# 凭据：HTTPS 用 macOS 钥匙串里的 PAT，或把 origin 改为 SSH 并用已登记公钥。
+# 凭据：PAT 存于 /Users/loganyang/.git-credentials（权限 600），由仓库本地
+#       credential.helper=store 读取；remote 保持干净 URL 不含 token。
+#       注意：PAT 必须可写（classic 带 repo scope，或 fine-grained 且 Contents: Read and write
+#       并授权本仓库），只读 PAT 会在 push 时返回 403。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

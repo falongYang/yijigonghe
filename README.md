@@ -53,7 +53,9 @@ SSHPW='<服务器密码>' bash deploy_mvp.sh
 bash MVP_Web_部署/push_github.sh "本轮改动说明"
 ```
 
-不带参数时自动生成带时间戳的提交信息。首次使用前需要配置好 `origin` 与凭据（HTTPS + Personal Access Token 存入 macOS 钥匙串，或 SSH 公钥）。
+不带参数时自动生成带时间戳的提交信息。凭据已配置在 `/Users/loganyang/.git-credentials`（权限 600，由仓库本地 `credential.helper=store` 读取，`origin` 保持干净 URL 不含 token）。
+
+> **PAT 权限要求**：必须是可写 token —— classic PAT 勾 `repo` scope，或 fine-grained PAT 设置 `Contents: Read and write` 并在 Repository access 中勾选本仓库。只读 token 会通过 API 鉴权，但 `git push` 会返回 `403 Permission ... denied`。
 
 ## 并行开发边界
 
