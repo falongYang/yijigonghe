@@ -121,7 +121,11 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .help-cols h4 { color: #9fe0a0; margin: 10px 0 4px; font-size: 14px; }
 .help-cols p { font-size: 13px; line-height: 1.7; color: #c4cdb4; }
 #btn-help-close { margin-top: 18px; }
-.end-inner { text-align: center; }
+.end-inner { text-align: center; max-height: min(90vh, 860px); overflow-y: auto; }
+/* 结算统计分组增多后，小屏/低视口下允许面板内部滚动，避免内容被裁切 */
+#end .end-inner::-webkit-scrollbar { width: 6px; }
+#end .end-inner::-webkit-scrollbar-track { background: transparent; }
+#end .end-inner::-webkit-scrollbar-thumb { background: rgba(126,240,160,.25); border-radius: 3px; }
 #end-kicker { letter-spacing: 6px; color: #ffd27f; font-size: 14px; }
 #end-title { font-size: 26px; margin: 8px 0; }
 #end-desc { color: #c4cdb4; line-height: 1.7; margin-bottom: 16px; }

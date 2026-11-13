@@ -640,7 +640,8 @@ export class UI {
         box.innerHTML = `<span>纪元<b>${s.era.P + 1}</b></span><span>存活<b>${Math.floor(s.time)}s</b></span><span>兵力<b>${s.pop(SIDES.PLAYER)}</b></span>`
           + (st ? `<span>击杀<b>${st.kills}</b></span><span>损失<b>${st.losses}</b></span><span>采集<b>${st.harvested}</b></span>`
             + `<span>造成伤害<b>${Math.round(st.dmgDealt || 0)}</b></span><span>承受伤害<b>${Math.round(st.dmgTaken || 0)}</b></span>`
-            + `<span>维修耐久<b>${Math.round(st.repaired || 0)}</b></span><span>井产信息素<b>${Math.round(st.wellPh || 0)}</b></span>` : '');
+            + `<span>维修耐久<b>${Math.round(st.repaired || 0)}</b></span><span>井产信息素<b>${Math.round(st.wellPh || 0)}</b></span>` : '')
+          + `<span>环境<b>${s.climate?.name || '—'}</b></span>`;
       }
       if (this.tip) this.tip.classList.add('hidden');
     }
@@ -728,6 +729,11 @@ export class UI {
     $('#end-title').textContent = title;
     $('#end-desc').textContent = desc;
     const st0 = s.stats && s.stats.P;
+    const stE = s.stats && s.stats.E;
+    const climName = s.climate?.name || '—';
+    const climDesc = String(s.climate?.desc || '').replace(/"/g, '&quot;');
+    // 战局统计：在原有基础项之外，补上战术索敌/调度与掠夺抑制的可观测数据；
+    // 再单列「敌方动态」，把 AI 波次节奏、智能能力、后勤维修与基地回防的计数呈现出来。
     const statRows = st0 ? `
       <div class="end-stat-sep">战局统计</div>
       <div><span>击杀 / 损失</span><b>${st0.kills} / ${st0.losses}</b></div>
@@ -735,7 +741,14 @@ export class UI {
       <div><span>累计采集</span><b>${st0.harvested}</b></div>
       <div><span>能力 / 掠夺</span><b>${st0.abilities} / ${st0.raided}</b></div>
       <div><span>造成伤害 / 承受伤害</span><b>${Math.round(st0.dmgDealt || 0)} / ${Math.round(st0.dmgTaken || 0)}</b></div>
-      <div><span>维修耐久 / 井产信息素</span><b>${Math.round(st0.repaired || 0)} / ${Math.round(st0.wellPh || 0)}</b></div>` : '';
+      <div><span>维修耐久 / 井产信息素</span><b>${Math.round(st0.repaired || 0)} / ${Math.round(st0.wellPh || 0)}</b></div>
+      <div><span>克制命中 / 掠夺突袭</span><b>${st0.critHits || 0} / ${st0.raids || 0}</b></div>
+      <div><span>节点调度 / 伤害抑制</span><b>${st0.nodeSwitches || 0} / ${st0.overkillSaved || 0}</b></div>`
+      + (stE ? `
+      <div class="end-stat-sep">敌方动态 · AI 行为</div>
+      <div><span>进攻波次 / 智能能力</span><b>${stE.waves || 0} / ${stE.smartCasts || 0}</b></div>
+      <div><span>后勤维修 / 基地回防</span><b>${stE.repairs || 0} / ${stE.defenses || 0}</b></div>
+      <div><span>敌方损失</span><b>${stE.losses || 0}</b></div>` : '') : '';
     $('#end-stats').innerHTML = `
       <div><span>模式</span><b>${s.mode === 'campaign' ? '战役·第' + (s.chapter + 1) + '章' : '遭遇战'}</b></div>
       <div><span>我方纪元</span><b>${ERA_NAMES[s.era.P]}</b></div>
@@ -744,7 +757,9 @@ export class UI {
       <div><span>敌方兵力</span><b>${s.pop(SIDES.ENEMY)}</b></div>
       <div><span>我方峰值兵力</span><b>${s.peakPop[SIDES.PLAYER]}</b></div>
       <div><span>敌方峰值兵力</span><b>${s.peakPop[SIDES.ENEMY]}</b></div>
-      <div><span>存活时长</span><b>${Math.floor(s.time)}s</b></div>${statRows}`;
+      <div><span>存活时长</span><b>${Math.floor(s.time)}s</b></div>
+      <div><span>难度</span><b>${s.difficulty?.name || '标准'}</b></div>
+      <div title="${climDesc}"><span>战场环境</span><b>${climName}</b></div>${statRows}`;
     $('#end').classList.remove('hidden');
   }
 
