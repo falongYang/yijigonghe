@@ -310,6 +310,10 @@ export class World {
     // 鼠标拖拽平移中：暂停屏幕边缘滚屏，避免两种平移叠加导致镜头漂移
     this.dragPan = false;
     this.weatherPts = null; this._weatherVel = []; this._weatherCfg = null;
+    // 死亡演出：sim 已移除单位后，本体再播放约 0.5s 倒地 / 下沉 / 淡出再释放
+    this._dying = new Map();
+    // 贴地软阴影（共享几何，每个单位独立克隆低成本的半透圆盘，飞行蚁随高度放大淡出）
+    this._shadowGeo = new THREE.CircleGeometry(1, 20);
 
     this._buildLights();
     this._buildTerrain();
@@ -1491,6 +1495,16 @@ export class World {
     const group = new THREE.Group();
     group.add(body);
 
+    // 贴地软阴影：每个单位脚下一块低成本半透圆盘，让蚁体「落」在地面上而非悬空
+    const shadow = new THREE.Mesh(this._shadowGeo, new THREE.MeshBasicMaterial({ color: 0x0a0a06, transparent: true, opacity: 0.30, depthWrite: false }));
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.05;
+    const shScale = (RING_R[u.caste] || 2.6) * 1.15;
+    shadow.scale.set(shScale, shScale, shScale);
+    shadow.raycast = () => {};   // 阴影不参与拾取
+    shadow.visible = u.domain !== 'underground';
+    group.add(shadow);
+
     // 采集货载：经济单位背着资源时，头顶浮出对应颜色的小结晶（生=翠绿/矿=琥珀/素=品紫）
     let cargo = null;
     const isEcon = UNITS[u.type] && UNITS[u.type].role === 'econ';
@@ -1585,8 +1599,9 @@ export class World {
 
     group.position.set(u.x, 0, u.z);
     this.scene.add(group);
-    this.unitMeshes.set(u.id, { group, body, bar, fill, ring, eliteRing, statusRing, pips: null, wings, cargo, mound,
-      burrowMix: u.burrowed ? 1 : 0, side: u.side, caste: u.caste, bodyIsClone: isClone, accent, spawnAt: this.time });
+    this.unitMeshes.set(u.id, { group, body, bar, fill, ring, eliteRing, statusRing, pips: null, wings, cargo, mound, shadow,
+      burrowMix: u.burrowed ? 1 : 0, side: u.side, caste: u.caste, bodyIsClone: isClone, accent, spawnAt: this.time,
+      heading: u.heading || 0, bank: 0, knock: 0 });
     this.pickables.push(body);
     this._syncUnit(u, true, false);
   }
@@ -1594,24 +1609,65 @@ export class World {
   removeUnit(id) {
     const m = this.unitMeshes.get(id);
     if (!m) return;
-    this.scene.remove(m.group);
+    // 死亡演出：不直接销毁，转入 _dying 队列播放倒地 / 下沉 / 淡出（约 0.55s）后再释放。
+    // 若已在进行死亡演出则忽略（syncFrame 每帧都会对缺 id 的单位调用本函数）。
+    if (this._dying.has(id)) return;
+    this.unitMeshes.delete(id);
     const i = this.pickables.indexOf(m.body);
     if (i >= 0) this.pickables.splice(i, 1);
-    // 只释放「每单位独有」的几何与材质；body.geometry 与 ring/bar 几何来自共享缓存，不能 dispose
+    // 演出期间隐藏血条 / 选择环 / 状态环 / 货载等 UI 层，避免穿插穿帮
+    if (m.bar) m.bar.visible = false;
+    if (m.ring) m.ring.visible = false;
+    if (m.eliteRing) m.eliteRing.visible = false;
+    if (m.statusRing) m.statusRing.visible = false;
+    if (m.pips) m.pips.visible = false;
+    if (m.cargo) m.cargo.visible = false;
+    if (m.shadow) m.shadow.visible = false;
+    this._dying.set(id, { m, t0: this.time });
+  }
+
+  /** 死亡演出：本体侧翻倒地 + 下沉 + 淡出，约 0.55s 后真正释放网格。 */
+  _updateDying(dt) {
+    for (const [id, rec] of this._dying) {
+      const { m, t0 } = rec;
+      const el = this.time - t0;
+      const dur = 0.55;
+      if (el <= 0) continue;
+      const k = Math.min(1, el / dur);
+      // 整体侧翻倒地（banking 渐归零），地下单位从土里翻出再消散
+      m.group.rotation.z = m.bank * (1 - k) + 1.35 * k;
+      if (m.body) {
+        m.body.rotation.z = 0.9 * k;
+        m.body.scale.setScalar(Math.max(0.05, 1 - k * 0.55));
+        if (m.body.material) {
+          m.body.material.transparent = true;
+          m.body.material.opacity = Math.min(m.body.material.opacity ?? 1, 1 - k);
+        }
+      }
+      if (m.shadow) { m.shadow.visible = true; m.shadow.material.opacity = 0.30 * (1 - k); }
+      if (m.burrowMix > 0) m.group.position.y = -2.4 * m.burrowMix * (1 - k) + 0.25 * k;
+      if (el >= dur) { this._disposeUnitMesh(m); this._dying.delete(id); }
+    }
+  }
+
+  // 只释放「每单位独有」的几何与材质；body.geometry / ring / bar / wing / eye 几何来自共享缓存，不能 dispose
+  _disposeUnitMesh(m) {
+    this.scene.remove(m.group);
     if (m.bodyIsClone && m.body.material) m.body.material.dispose();
     if (m.cargo) { m.cargo.geometry.dispose(); m.cargo.material.dispose(); }
     if (m.mound) { m.mound.geometry.dispose(); m.mound.material.dispose(); }
     if (m.statusRing) { m.statusRing.geometry.dispose(); m.statusRing.material.dispose(); }
-    m.fill.material.dispose();
-    m.ring.material.dispose();
-    m.eliteRing.material.dispose();
-    m.bar.children[0].material.dispose();   // 血条底
+    if (m.shadow) m.shadow.material.dispose();
+    if (m.fill) m.fill.material.dispose();
+    if (m.ring) m.ring.material.dispose();
+    if (m.eliteRing) m.eliteRing.material.dispose();
+    if (m.bar) m.bar.children[0].material.dispose();   // 血条底
     if (m.pips) {                            // 5 颗星点共享一份 pipGeo，只 dispose 一次
       m.pips.children[0].geometry.dispose();
       for (const p of m.pips.children) p.material.dispose();
     }
-    this.unitMeshes.delete(id);
   }
+
 
   spawnBuilding(b) {
     const geo = this._bGeo(b.type);
@@ -1688,7 +1744,18 @@ export class World {
       }
     }
     m.group.position.y = y;
-    if (u.heading !== undefined) m.group.rotation.y = Math.atan2(-Math.sin(u.heading), Math.cos(u.heading));
+    // —— 朝向平滑插值（最短弧）+ 行进转弯 banking 侧倾 ——
+    let target = m.heading;
+    if (u.heading !== undefined) target = Math.atan2(-Math.sin(u.heading), Math.cos(u.heading));
+    let dh = target - m.heading;
+    while (dh > Math.PI) dh -= Math.PI * 2;
+    while (dh < -Math.PI) dh += Math.PI * 2;
+    m.heading += dh * Math.min(1, this._frameDt * 11);
+    m.group.rotation.y = m.heading;
+    // 行进中转向时整体侧倾（视觉转弯倾摆），静止回正；死亡演出时由 _updateDying 覆盖
+    const bankTarget = u.moving ? clamp(-dh * 9, -0.34, 0.34) : 0;
+    m.bank += (bankTarget - m.bank) * Math.min(1, this._frameDt * 8);
+    m.group.rotation.z = m.bank;
     // 潜行下沉时把血条/光环/等级星点抬回地面；出土后复位，避免 UI 一起钻进土里
     if (u.domain === 'underground') {
       const lift = y < -0.01 ? -y : 0, bh = UNIT_HEIGHT[u.caste] || 5.2;
@@ -1721,6 +1788,18 @@ export class World {
       lunge = Math.sin(p * Math.PI) * 1.1;
     }
     m.body.position.x = lunge;
+    // 攻击姿态差异：近战啃咬绕竖轴小幅摆头；远程/喷吐先微微后仰蓄力再弹回
+    if (u.state === 'attack') {
+      const isMelee = u.dtype === 'bite';
+      if (isMelee) {
+        m.body.rotation.y = Math.sin(this.time * 26 + u.id) * 0.22;
+      } else {
+        const charge = u.atkcd ? clamp(1 - (u.atkTimer < u.atkcd * 0.66 ? u.atkTimer / (u.atkcd * 0.66) : 0), 0, 1) : 0;
+        m.body.rotation.x += -0.22 * charge * Math.sin(this.time * 16 + u.id * 2);
+      }
+    } else {
+      m.body.rotation.y = 0;
+    }
 
     // 飞行蚁翅膀扇动：移动时频率与幅度都提升（加速感），悬停时慢扇
     if (m.wings) {
@@ -1810,6 +1889,19 @@ export class World {
       if (sc) {
         m.statusRing.material.color.setHex(sc);
         m.statusRing.material.opacity = op * (0.76 + 0.24 * Math.sin(this.time * 4 + u.id));
+      }
+    }
+    // 贴地软阴影：飞行蚁随离地高度放大并变淡，地面单位贴地，地下单位潜行时收起
+    if (m.shadow) {
+      if (u.domain === 'air') {
+        const h = Math.max(0, m.group.position.y);
+        m.shadow.scale.setScalar((RING_R[u.caste] || 2.6) * 1.15 * (1 + h * 0.05));
+        m.shadow.material.opacity = 0.30 * clamp(1 - h * 0.045, 0.08, 1);
+      } else if (u.domain === 'underground') {
+        m.shadow.visible = m.burrowMix < 0.5;
+      } else {
+        m.shadow.visible = true;
+        m.shadow.material.opacity = 0.30;
       }
     }
     m.bar.quaternion.copy(this.camera.quaternion);
@@ -2407,6 +2499,7 @@ export class World {
     this._tickDayNight(dt);         // 昼夜循环（叠加在纪元色之上）
     this._updateAmbient(dt);
     this._updateFx();
+    this._updateDying(dt);     // 单位死亡倒地演出（独立于 sim 推进，暂停时随帧冻结）
     this.renderer.render(this.scene, this.camera);
     if (dt > 0) this._trackPerf();   // 暂停冻结时不参与帧率统计
   }

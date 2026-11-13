@@ -213,6 +213,21 @@ export const ABILITIES = {
   a_resonance:  { name: '纪元共鸣', cost: 24, cd: 40, desc: '全族群 10 秒伤害 +10%（纪元科技爆发）。' },
 };
 
+/* 视觉规格契约：把每个能力的「特效类型 + 配色 + 尺寸 + 动效时长」集中声明，
+ * 供 B 侧 world/fx/ui 渲染消费（A 侧只定义数据，不渲染）。新增能力务必在此补一条。 */
+export const ABILITY_VISUAL = {
+  a_frenzy:    { fx: 'ring',   color: 0xff7a3a, size: 2.2, dur: 0.6 },
+  a_harden:     { fx: 'ring',   color: 0x9fd0ff, size: 2.4, dur: 0.7 },
+  a_acidpool:   { fx: 'acidpool', color: 0x9fe06a, size: 8,   dur: 6 },
+  a_whirl:      { fx: 'whirl',  color: 0x6fc8e0, size: 10,  dur: 4 },
+  a_venom:      { fx: 'venom',  color: 0xb6ff6f, size: 7,   dur: 3.5 },
+  a_dive:       { fx: 'dive',   color: 0xffd27f, size: 5,   dur: 1.2 },
+  a_bomb:       { fx: 'bomb',   color: 0xff9a5a, size: 6,   dur: 1.4 },
+  a_burrow:     { fx: 'ambush', color: 0x8a7f56, size: 7,   dur: 3 },
+  a_rally:      { fx: 'ring',   color: 0xffd27f, size: 3,   dur: 0.8 },
+  a_resonance:  { fx: 'ring',   color: 0xc0a0ff, size: 5,   dur: 1.0 },
+};
+
 /* ----------------------------- 建筑类型 ----------------------------- */
 export const BUILDINGS = {
   hq: {
@@ -256,8 +271,13 @@ export const BUILDINGS = {
     role: '地下 · 产掘蚁', domain: 'underground', depot: true, produces: ['uw', 'uA', 'uB'],
     color: 0x5a4a36, desc: '深入土层，生产掘蚁（采矿物）与隧道蚁/钻地刺蚁（钻地突袭）。',
   },
+  refinery: {
+    id: 'refinery', name: '精炼巢室', hp: 520, size: 4.4, cost: { bio: 220, min: 80 }, build: 9,
+    role: '精炼 · 全军强化', domain: 'land',
+    color: 0xb08a4a, desc: '将生物质精炼为信息素化合物：建成即令该族群所有作战单位伤害 +8%（多座不叠加）。',
+  },
 };
-export const BUILD_ORDER = ['nursery', 'barracks', 'tower', 'tech', 'seanest', 'airnest', 'ugnest'];
+export const BUILD_ORDER = ['nursery', 'barracks', 'tower', 'tech', 'seanest', 'airnest', 'ugnest', 'refinery'];
 
 /* ----------------------------- 兵种类型（13 种） ----------------------------- */
 /* 字段：
@@ -273,63 +293,99 @@ export const UNITS = {
     cost: { bio: 55 }, build: 4.5, role: 'econ', pop: 1, desc: '采集生物质并运回巢，无战斗能力。' },
   s1: { id: 's1', name: '兵蚁', caste: 'soldier', domain: 'land', hp: 165, speed: 9, dmg: 18,
     weapon: 'w_bite', armor: 'chitin', ability: 'a_frenzy', tech: 0,
+    critChance: 0.15, critMul: 1.6, flankBonus: 0.18,
+    visual: { fx: 'hit', color: 0xf0a040, size: 1.0 },
     cost: { bio: 95 }, build: 6, role: 'combat', pop: 2, evolveTo: 's3',
-    evo: { level: 3, era: 1, min: 40 }, desc: '基础近战，可狂暴；纪元2 / Lv.3 可进化为巨颚卫。' },
+    evo: { level: 3, era: 1, min: 40 }, desc: '基础近战，可狂暴；15% 暴击、侧翼夹击 +18%、纪元2 / Lv.3 可进化为巨颚卫。' },
   s2: { id: 's2', name: '酸蚁', caste: 'soldier2', domain: 'land', hp: 130, speed: 10, dmg: 24,
     weapon: 'w_acid', armor: 'chitin', ability: 'a_acidpool', tech: 1,
-    cost: { bio: 170 }, build: 9, role: 'combat', pop: 2, desc: '远程酸液，可泼洒酸池；克制软甲。' },
+    critChance: 0.12, critMul: 1.5, slowOnHit: 0.14,
+    visual: { fx: 'acid', color: 0x9fe06a, size: 1.0 },
+    cost: { bio: 170 }, build: 9, role: 'combat', pop: 2, desc: '远程酸液，可泼洒酸池；12% 暴击、命中减速 14%、克制软甲（酸蚀破甲）。' },
   s3: { id: 's3', name: '巨颚卫', caste: 'soldier3', domain: 'land', hp: 330, speed: 7.5, dmg: 44,
     weapon: 'w_major', armor: 'armored', ability: 'a_harden', tech: 2,
-    cost: { bio: 280, min: 40 }, build: 14, role: 'combat', pop: 4, desc: '重装巨颚，甲壳硬化；克制装甲。' },
+    pierce: 0.30, lifesteal: 0.10, flankBonus: 0.15,
+    visual: { fx: 'hit', color: 0xffcf6a, size: 1.4 },
+    cost: { bio: 280, min: 40 }, build: 14, role: 'combat', pop: 4, desc: '重装巨颚，甲壳硬化；破甲 30%、吸血 10%、克制装甲。' },
   // —— 海 ——
   sw: { id: 'sw', name: '桨蚁', caste: 'worker', domain: 'sea', hp: 72, speed: 11, dmg: 5,
     weapon: 'w_bite', armor: 'soft', ability: null, tech: 0, carry: 24,
+    visual: { fx: 'hit', color: 0x6fd0e0, size: 1.0 },
     cost: { bio: 60 }, build: 4.5, role: 'econ', pop: 1, desc: '在水域采集藻类食物（生物质）。' },
   sA: { id: 'sA', name: '桨卫', caste: 'soldier', domain: 'sea', hp: 160, speed: 9, dmg: 18,
     weapon: 'w_rower', armor: 'shell', ability: 'a_whirl', tech: 1,
+    slowOnHit: 0.12,
+    visual: { fx: 'whirl', color: 0x6fc8e0, size: 1.1 },
     cost: { bio: 110, min: 20 }, build: 6, role: 'combat', pop: 2, evolveTo: 'sB',
-    evo: { level: 3, era: 1, min: 40 }, desc: '水栖近战，可涡卷减速；壳甲抗撕咬。' },
+    evo: { level: 3, era: 1, min: 40 }, desc: '水栖近战，可涡卷减速；命中减速 12%、壳甲抗撕咬。' },
   sB: { id: 'sB', name: '潜袭蚁', caste: 'soldier2', domain: 'sea', hp: 128, speed: 10, dmg: 26,
     weapon: 'w_diver', armor: 'shell', ability: 'a_venom', tech: 2,
-    cost: { bio: 190, min: 50 }, build: 9, role: 'combat', pop: 2, desc: '远程毒针，可喷毒雾。' },
+    poisonOnHit: 0.6, lifesteal: 0.06,
+    visual: { fx: 'sting', color: 0xb6ff6f, size: 1.1 },
+    cost: { bio: 190, min: 50 }, build: 9, role: 'combat', pop: 2, desc: '远程毒针，可喷毒雾；命中中毒、吸血 6%。' },
   // —— 空 ——
   aw: { id: 'aw', name: '浮蚁', caste: 'worker', domain: 'air', hp: 60, speed: 14, dmg: 4,
     weapon: 'w_bite', armor: 'flying', ability: null, tech: 0, carry: 20,
+    visual: { fx: 'hit', color: 0xc8d4f0, size: 1.0 },
     cost: { bio: 60 }, build: 4.5, role: 'econ', pop: 1, desc: '空中轻量采集，悬停卸货。' },
   aA: { id: 'aA', name: '飞蚁', caste: 'soldier', domain: 'air', hp: 120, speed: 13, dmg: 17,
     weapon: 'w_flyer', armor: 'flying', ability: 'a_dive', tech: 1,
+    critChance: 0.18, critMul: 1.6, flankBonus: 0.20,
+    visual: { fx: 'dive', color: 0xffd27f, size: 1.0 },
     cost: { bio: 120, min: 30 }, build: 6, role: 'combat', pop: 2, evolveTo: 'aB',
-    evo: { level: 3, era: 1, min: 40 }, desc: '飞行近战，可俯冲轰炸；克制装甲薄弱目标。' },
+    evo: { level: 3, era: 1, min: 40 }, desc: '飞行近战，可俯冲轰炸；18% 暴击、侧翼 +20%、克制装甲薄弱目标。' },
   aB: { id: 'aB', name: '滑翔蚁', caste: 'soldier2', domain: 'air', hp: 110, speed: 13, dmg: 22,
     weapon: 'w_glider', armor: 'flying', ability: 'a_bomb', tech: 2,
-    cost: { bio: 210, min: 60 }, build: 9, role: 'combat', pop: 2, desc: '滑翔远程，投下种荚范围爆破。' },
+    poisonOnHit: 0.5, lifesteal: 0.10,
+    visual: { fx: 'bomb', color: 0xff9a5a, size: 1.1 },
+    cost: { bio: 210, min: 60 }, build: 9, role: 'combat', pop: 2, desc: '滑翔远程，投下种荚范围爆破；命中中毒、吸血 10%。' },
   // —— 地下 ——
   uw: { id: 'uw', name: '掘蚁', caste: 'worker', domain: 'underground', hp: 74, speed: 10, dmg: 5,
     weapon: 'w_bite', armor: 'soft', ability: null, tech: 0, carry: 24,
+    visual: { fx: 'hit', color: 0x9a7a52, size: 1.0 },
     cost: { bio: 55 }, build: 4.5, role: 'econ', pop: 1, desc: '在地下采掘矿物（需矿物节点）。' },
   uA: { id: 'uA', name: '隧道蚁', caste: 'soldier', domain: 'underground', hp: 165, speed: 8.5, dmg: 19,
     weapon: 'w_tunnel', armor: 'chitin', ability: 'a_burrow', tech: 1,
+    pierce: 0.20, flankBonus: 0.15,
+    visual: { fx: 'ambush', color: 0x8a7f56, size: 1.1 },
     cost: { bio: 110, min: 20 }, build: 6, role: 'combat', pop: 2, evolveTo: 'uB',
-    evo: { level: 3, era: 1, min: 40 }, desc: '钻地道近战，可钻地突袭；克制装甲。' },
+    evo: { level: 3, era: 1, min: 40 }, desc: '钻地道近战，可钻地突袭；破甲 20%、侧翼 +15%、克制装甲。' },
   uB: { id: 'uB', name: '钻地刺蚁', caste: 'soldier3', domain: 'underground', hp: 320, speed: 7, dmg: 42,
     weapon: 'w_burrow', armor: 'armored', ability: 'a_burrow', tech: 2,
-    cost: { bio: 200, min: 60 }, build: 14, role: 'combat', pop: 4, desc: '重装钻地，破土突袭造成额外伤害。' },
+    pierce: 0.25, lifesteal: 0.08,
+    visual: { fx: 'ambush', color: 0xb8a06a, size: 1.4 },
+    cost: { bio: 200, min: 60 }, build: 14, role: 'combat', pop: 4, desc: '重装钻地，破土突袭造成额外伤害；破甲 25%、吸血 8%。' },
 
   /* —— 三种敌人性格的「专属兵种」（玩家不可生产，仅对应性格的敌方可造）——
    * sig 字段用于在几何层附加性格化造型（红角突刺 / 甲群护盾 / 重甲壳）。 */
   charger: { id: 'charger', name: '狂袭蚁', caste: 'soldier', domain: 'land', hp: 150, speed: 16, dmg: 22,
     weapon: 'w_bite', armor: 'chitin', ability: 'a_frenzy', tech: 1,
+    critChance: 0.20, critMul: 1.7, flankBonus: 0.20,
+    visual: { fx: 'hit', color: 0xff6a4a, size: 1.1 },
     cost: { bio: 130 }, build: 7, role: 'combat', pop: 2, archetypeOnly: 'aggressive', sig: 'aggressive',
-    desc: '掠食型专属：高速冲锋，撕咬狂暴，先发制人碾碎防线。' },
+    desc: '掠食型专属：高速冲锋，20% 暴击、侧翼 +20%、撕咬狂暴，先发制人碾碎防线。' },
   brood: { id: 'brood', name: '殖群卫', caste: 'soldier2', domain: 'land', hp: 140, speed: 13, dmg: 20,
     weapon: 'w_rower', armor: 'shell', ability: 'a_whirl', tech: 1,
+    slowOnHit: 0.16,
+    visual: { fx: 'whirl', color: 0x6ad0a0, size: 1.1 },
     cost: { bio: 140 }, build: 7, role: 'combat', pop: 2, archetypeOnly: 'expansionist', sig: 'expansionist',
-    desc: '拓殖型专属：甲群护盾，涡卷控场，以数量与韧性碾压。' },
+    desc: '拓殖型专属：甲群护盾，涡卷控场，命中减速 16%，以数量与韧性碾压。' },
   siege: { id: 'siege', name: '炮甲蚁', caste: 'soldier3', domain: 'land', hp: 300, speed: 6.5, dmg: 38,
     weapon: 'w_major', armor: 'armored', ability: 'a_harden', tech: 2,
+    pierce: 0.35,
+    visual: { fx: 'hit', color: 0xc0a060, size: 1.4 },
     cost: { bio: 300 }, build: 13, role: 'combat', pop: 4, archetypeOnly: 'defensive', sig: 'defensive',
-    desc: '守城型专属：重甲近战压制，甲壳硬化，与塔阵构成核心防线。' },
+    desc: '守城型专属：重甲近战压制，破甲 35%、甲壳硬化，与塔阵构成核心防线。' },
 };
+
+/* 单位视觉规格（聚合 UNITS 上的 visual 字段，便于 B 侧一次性读取）。
+ * 注：原定义位于 UNITS 之前，会因 ES 暂时性死区（TDZ）在模块顶层求值时报
+ * 「Cannot access 'UNITS' before initialization」，导致 rts.js 整模块加载失败、
+ * 游戏白屏。现已移至 UNITS 声明之后（仅调整求值顺序，未改动任何单位数据）。 */
+export const UNIT_VISUAL = Object.fromEntries(
+  Object.values(UNITS).map(u => [u.id, u.visual || { fx: 'hit', color: 0xffffff, size: 1 }])
+);
+
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };
 // 兵营/各域巢可产兵种（按纪元解锁）
@@ -395,6 +451,13 @@ export function effectiveUnit(uid, sp, era, opts = {}) {
     melee: WEAPONS[base.weapon].melee,
     dtype: WEAPONS[base.weapon].dtype,
     splash: WEAPONS[base.weapon].splash,
+    // —— 战斗细节 traits（加性：未声明则默认 0/无，既有单位行为不变）——
+    critChance: base.critChance || 0, critMul: base.critMul || 1.5,
+    pierce: base.pierce || 0,
+    flankBonus: base.flankBonus || 0,
+    lifesteal: base.lifesteal || 0,
+    poisonOnHit: base.poisonOnHit || 0,    // 命中附带中毒 DoT（dps，持续 3s）
+    slowOnHit: base.slowOnHit || 0,        // 命中附带减速（幅度，持续 2s）
     carry: base.carry ? Math.round(base.carry * r.workerCarry) : 0,
     cost: effectiveCost(uid, sp),
     build: base.build,
