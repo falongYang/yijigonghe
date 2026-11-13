@@ -948,6 +948,18 @@ export class UI {
     const zc = { ridge: 0, mire: 0, water: 0 };
     for (const q of mapZones(cfg)) if (zc[q.type] != null) zc[q.type]++;
     const wells = mapWells(cfg).length;
+    // A 侧新增场景条件：逐章天气（视野/远程命中系数）、静态危害地块、作战目标。
+    // 全部容错读取，旧存档 / 遭遇战缺字段时该段自动省略，不改变既有简报布局。
+    const sC = this.sim || {};
+    const wea = sC.weather, thz = sC.terrainHazards || [];
+    const objLabel = sC.objective && sC.objective.label;
+    const condRows = [];
+    if (wea && wea.id !== 'clear') {
+      condRows.push(`<span>天气 · <b>${wea.name}</b> ${wea.desc || ''}<em>视野 ×${(wea.visionMul || 1).toFixed(2)} · 远程命中 ×${(wea.hitMul || 1).toFixed(2)}</em></span>`);
+    }
+    if (thz.length) condRows.push(`<span class="mb-hazard">⚠ 地形危害 · <b>${thz.length}</b> 处熔岩/酸池，驻留其中持续受损</span>`);
+    if (objLabel) condRows.push(`<span>作战目标 · <b>${objLabel}</b></span>`);
+    const condHtml = condRows.length ? `<div class="mb-cond">${condRows.join('<br>')}</div>` : '';
     box.innerHTML = `<div class="mb-kicker">战场侦察 · BATTLEFIELD BRIEF</div>
       <div class="mb-title">${cfg.name || '未知战场'}</div>
       <span class="mb-tag">${cfg.tag || '四域战场'}</span>
@@ -958,6 +970,7 @@ export class UI {
         <span>地下 <b>${counts.underground}</b></span><span>水域 <b>${water}</b></span></div>
       <div class="mb-terrain">战术地形：高台 <b>${zc.ridge}</b> · 泥沼 <b>${zc.mire}</b> · 浅滩 <b>${zc.water}</b> · 信息素井 <b>${wells}</b><br>
         <span>高台远程射程 +18% · 泥沼 / 浅滩拖慢地面行军（空 / 地下 / 水域免疫）· 驻兵占井持续产信息素</span></div>
+      ${condHtml}
       <div class="mb-reslegend"><span>资源点颜色</span>
         <i style="background:${resHex('bio')}"></i>生物质<i style="background:${resHex('min')}"></i>矿物<i style="background:${resHex('ph')}"></i>信息素
         <span class="mb-reslegend-note">环上刻度 = 剩余储量，采空后自动再生</span></div>`;

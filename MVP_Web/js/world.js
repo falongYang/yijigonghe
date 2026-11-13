@@ -255,8 +255,10 @@ export class World {
     this.obstacleMeshes = new Map();        // id -> { mesh, kind } 战术掩体
     this.fx = [];
     this.hazardMeshes = [];      // 地面危险区可视化（酸池/毒雾/涡卷等）
+    this.terrainHazardMeshes = [];  // 静态危害地块（章节配置的熔岩/酸池），常驻地面呈现
     this.rallyMeshes = new Map(); // 集结旗标（按建筑 id）
     this.hazardGeo = new THREE.CircleGeometry(1, 30);
+    this._thzRingGeo = new THREE.RingGeometry(0.86, 1.0, 32);  // 静态危害描边环（共享几何）
     this.intro = null;           // 战斗入场运镜
     this._footAcc = 0;
     // 镜头跟随
@@ -2336,6 +2338,36 @@ export class World {
       const s = h.r;   // hazardGeo 为半径 1 的圆盘，缩放即实际作用半径
       m.scale.set(s, s, s);
     }
+    // —— 静态危害地块（A 侧 sim.terrainHazards，按章节配置的熔岩 / 酸池）——
+    // 与技能危害分层：常驻半透底盘 + 缓慢呼吸描边环，颜色按 type 区分；
+    // 每帧按数量增删，resetBattle 亦显式清理，跨章节换图不会残留。
+    const thz = sim.terrainHazards || [];
+    while (this.terrainHazardMeshes.length < thz.length) {
+      const g = new THREE.Group();
+      const disc = new THREE.Mesh(this.hazardGeo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }));
+      disc.rotation.x = -Math.PI / 2; disc.renderOrder = 5;
+      const ring = new THREE.Mesh(this._thzRingGeo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.renderOrder = 6;
+      g.add(disc, ring); this.scene.add(g);
+      this.terrainHazardMeshes.push({ g, disc, ring });
+    }
+    while (this.terrainHazardMeshes.length > thz.length) {
+      const v = this.terrainHazardMeshes.pop();
+      this.scene.remove(v.g); v.disc.material.dispose(); v.ring.material.dispose();
+    }
+    for (let i = 0; i < thz.length; i++) {
+      const h = thz[i], v = this.terrainHazardMeshes[i];
+      const col = h.type === 'acid' ? 0x9fe06a : 0xff6a3a;   // 酸池青绿 / 熔岩橙红
+      const rate = h.type === 'acid' ? 1.6 : 2.4;             // 熔岩翻涌更急
+      const br = 0.5 + 0.5 * Math.sin(this.time * rate + i * 1.7);
+      v.g.visible = true;
+      v.g.position.set(h.x, 0, h.z);
+      v.disc.position.y = 0.28; v.disc.scale.set(h.r, h.r, h.r);
+      v.ring.position.y = 0.32; v.ring.scale.set(h.r * 1.04, h.r * 1.04, h.r * 1.04);
+      v.disc.material.color.setHex(col); v.ring.material.color.setHex(col);
+      v.disc.material.opacity = 0.20 + 0.12 * br;
+      v.ring.material.opacity = 0.42 + 0.28 * br;
+    }
   }
 
   // ---------------------------------------------------------------- 入场运镜
@@ -2362,6 +2394,10 @@ export class World {
     this.rallyMeshes.clear();
     for (const m of this.hazardMeshes) { this.scene.remove(m); m.material.dispose(); }
     this.hazardMeshes.length = 0;
+    for (const v of this.terrainHazardMeshes) {
+      this.scene.remove(v.g); v.disc.material.dispose(); v.ring.material.dispose();
+    }
+    this.terrainHazardMeshes.length = 0;
     for (const f of this.fx) { this.scene.remove(f.obj); if (f.dispose) f.dispose(); }
     this.fx.length = 0;
     for (const p of this.pings) this._disposePing(p);

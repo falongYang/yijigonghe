@@ -463,6 +463,11 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .mb-terrain { margin-top: 9px; padding-top: 8px; border-top: 1px dashed rgba(126,240,160,.24); font-size: 11.5px; color: #c8d8ae; line-height: 1.7; }
 .mb-terrain b { color: #ffd27f; }
 .mb-terrain span { color: #8a9678; font-size: 10.5px; }
+/* 场景条件：逐章天气 / 静态危害 / 作战目标（A 侧数据的表现层呈现） */
+.mb-cond { margin-top: 8px; padding: 7px 9px; border: 1px solid rgba(126,240,200,.22); border-radius: 6px; background: rgba(20,34,26,.35); font-size: 11px; color: #c8d8ae; line-height: 1.75; }
+.mb-cond b { color: #ffd27f; }
+.mb-cond em { color: #8fb8c8; font-style: normal; font-size: 10.5px; margin-left: 6px; }
+.mb-cond .mb-hazard { color: #ff9a7a; }
 .mb-reslegend { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 8px; font-size: 10.5px; color: #b9c9a4; }
 .mb-reslegend > span:first-child { color: #8a9678; margin-right: 2px; }
 .mb-reslegend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-left: 7px; border: 1px solid rgba(255,255,255,.35); vertical-align: -1px; }
