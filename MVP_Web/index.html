@@ -69,6 +69,26 @@
         <button id="btn-help" class="ghost">玩法说明</button>
       </div>
     </div>
+
+    <!-- 指挥官档案：本地身份 + 战绩（无后端，代号与战绩保存在本机浏览器） -->
+    <aside id="commander-card" aria-label="指挥官档案">
+      <div class="cc-head">
+        <span id="cc-badge" class="cc-badge" title="按累计胜场进阶">◌</span>
+        <div class="cc-id">
+          <label for="cc-name">指挥官代号 · 本机档案</label>
+          <input id="cc-name" type="text" maxlength="12" autocomplete="off" autocapitalize="off"
+                 spellcheck="false" placeholder="输入代号" aria-describedby="cc-hint">
+        </div>
+        <button id="cc-toggle" class="cc-fold" type="button" aria-expanded="false" title="展开 / 收起战绩">⌄</button>
+      </div>
+      <p id="cc-welcome" class="cc-welcome"></p>
+      <div id="cc-body" class="cc-body hidden">
+        <div id="cc-stats" class="cc-stats"></div>
+        <div id="cc-recent" class="cc-recent"></div>
+        <button id="cc-reset" class="cc-reset" type="button">重置战绩</button>
+      </div>
+      <p id="cc-hint" class="cc-hint">代号仅保存在本机 · 不上传</p>
+    </aside>
   </div>
 
   <!-- 主 HUD -->
@@ -95,6 +115,7 @@
 
     <!-- 右上控制 -->
     <div id="topright">
+      <span id="cmd-chip" class="cmd-chip" title="本机指挥官档案（可在开始页修改代号）"></span>
       <div id="speeds">
         <button class="tbtn on" data-s="1">▶</button>
         <button class="tbtn" data-s="2">2×</button>
@@ -178,6 +199,7 @@
       <div id="pause-stats" class="pause-stats"></div>
       <div id="settings" class="settings">
         <div class="set-title">偏好设置（自动保存）</div>
+        <div id="pause-profile" class="pause-profile"></div>
         <label class="set-row"><span>音量</span><input id="set-volume" type="range" min="0" max="100" value="50"><b id="set-volume-val">50%</b></label>
         <label class="set-check"><input id="set-edgepan" type="checkbox"><span>鼠标贴边自动平移镜头</span></label>
         <label class="set-check"><input id="set-floats" type="checkbox"><span>显示浮动伤害数字</span></label>
@@ -247,6 +269,7 @@
       <p id="end-kicker">胜利</p>
       <h2 id="end-title"></h2>
       <p id="end-desc"></p>
+      <div id="end-profile" class="end-profile"></div>
       <div id="end-stats"></div>
       <div class="end-btns">
         <button id="btn-end-restart" class="primary">再来一局</button>

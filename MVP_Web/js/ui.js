@@ -11,6 +11,7 @@ import {
 } from './rts.js';
 import { SIDES } from './rts.js';
 import { Sound } from './audio.js';
+import { Profile, cleanName, fmtTime, summary } from './profile.js';
 
 const $ = sel => document.querySelector(sel);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
@@ -51,6 +52,143 @@ export class UI {
     this._wire();
     this._initMinimap();
     this._initSettings();
+    // 指挥官档案：本机身份 + 战绩（开始页档案卡 / HUD 徽记 / 结算页写回）
+    this._profile = Profile.get();
+    this._profileNew = this._profile.isNew;
+    this._endRecSig = '';
+    this._initProfile();
+  }
+
+  // ------------------------------------------------- 指挥官档案（本地身份 / 战绩）
+  _initProfile() {
+    const input = document.getElementById('cc-name');
+    const fold = document.getElementById('cc-toggle');
+    const body = document.getElementById('cc-body');
+    const reset = document.getElementById('cc-reset');
+    const hint = document.getElementById('cc-hint');
+    if (input) {
+      input.value = this._profile.name;
+      const commit = () => this._saveProfileName(input.value);
+      // 打字时阻断冒泡：避免代号里的 w/a/s/d/f 等字符被当成战场快捷键
+      input.addEventListener('keydown', e => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); commit(); input.blur(); }
+        else if (e.key === 'Escape') { e.preventDefault(); input.value = this._profile.name; input.blur(); }
+      });
+      input.addEventListener('blur', commit);
+      input.addEventListener('input', () => {
+        if (!hint) return;
+        const v = cleanName(input.value);
+        hint.textContent = v.length < 2 ? '代号至少 2 个字符 · 仅保存在本机' : '按 Enter 或点击别处保存 · 仅保存在本机';
+      });
+    }
+    if (fold && body) {
+      fold.onclick = () => {
+        const on = body.classList.contains('hidden');
+        body.classList.toggle('hidden', !on);
+        fold.setAttribute('aria-expanded', String(on));
+        fold.textContent = on ? '⌃' : '⌄';
+        Sound.play('select');
+      };
+    }
+    if (reset) {
+      reset.onclick = () => {
+        if (!this._resetArmed) {
+          this._resetArmed = true;
+          reset.textContent = '确认重置？再点一次';
+          reset.classList.add('armed');
+          clearTimeout(this._resetT);
+          this._resetT = setTimeout(() => {
+            this._resetArmed = false; reset.textContent = '重置战绩'; reset.classList.remove('armed');
+          }, 4000);
+          return;
+        }
+        clearTimeout(this._resetT);
+        this._resetArmed = false;
+        reset.textContent = '重置战绩'; reset.classList.remove('armed');
+        this._profile = Profile.reset();
+        this._renderProfile();
+        this.toast('战绩已重置，指挥官代号保留');
+      };
+    }
+    this._renderProfile();
+  }
+
+  _saveProfileName(raw) {
+    const input = document.getElementById('cc-name');
+    if (cleanName(raw) === this._profile.name) { if (input) input.value = this._profile.name; return; }
+    const r = Profile.setName(raw);
+    if (!r.ok) {
+      if (input) input.value = this._profile.name;      // 非法输入回滚，不写盘
+      this.toast(r.error);
+    } else {
+      this._profile = r.profile;
+      this._profileNew = false;
+      this.toast('指挥官代号已保存：' + r.name);
+      Sound.play('select');
+    }
+    this._renderProfile();
+  }
+
+  _renderProfile() {
+    const p = this._profile && this._profile.name ? this._profile : (this._profile = Profile.get());
+    const s = summary(p), b = s.badge;
+    const setVar = (node, v) => { if (node && node.style && node.style.setProperty) node.style.setProperty('--cc-color', v); };
+    setVar(document.getElementById('commander-card'), b.color);
+    const badge = document.getElementById('cc-badge');
+    if (badge) { badge.textContent = b.glyph; badge.title = `${b.label} · 累计 ${b.wins} 胜`; }
+    const input = document.getElementById('cc-name');
+    if (input && document.activeElement !== input) input.value = p.name;
+    const welcome = document.getElementById('cc-welcome');
+    if (welcome) welcome.textContent = this._profileNew
+      ? '新指挥官 · 已生成临时代号，点击上方即可修改'
+      : (p.games ? `欢迎回来 · 已征战 ${p.games} 局 · 胜率 ${s.winRate}%` : '欢迎回来 · 首战即将开始');
+    const stats = document.getElementById('cc-stats');
+    if (stats) stats.innerHTML =
+      `<div><b>${s.games}</b><span>场次</span></div><div><b>${s.winRate}%</b><span>胜率</span></div>` +
+      `<div><b>${s.bestWin}</b><span>最快取胜</span></div><div><b>${s.kills}</b><span>累计击杀</span></div>`;
+    const recent = document.getElementById('cc-recent');
+    if (recent) {
+      recent.innerHTML = p.recent.length
+        ? '<div class="cc-rh">最近对局</div>' + p.recent.slice(0, 3).map(r =>
+          `<div class="cc-r"><i class="cc-dot ${r.win ? 'win' : 'lose'}"></i>` +
+          `<span>${r.win ? '胜' : '负'} · ${r.mode === 'campaign' ? `第${r.chapter + 1}章` : '遭遇战'} · ${r.species || '—'}</span>` +
+          `<b>${fmtTime(r.sec)}</b></div>`).join('')
+        : '<div class="cc-empty">暂无对局记录 · 打完一局自动写入</div>';
+    }
+    const chip = document.getElementById('cmd-chip');
+    if (chip) {
+      chip.textContent = `${b.glyph} ${p.name}`;
+      chip.title = `${b.label} · ${p.games} 局 / 胜率 ${s.winRate}%（本机档案，可在开始页修改代号）`;
+      setVar(chip, b.color);
+    }
+    const pp = document.getElementById('pause-profile');
+    if (pp) {
+      setVar(pp, b.color);
+      pp.innerHTML = `<span class="pp-badge">${b.glyph}</span> 指挥官 <b>${p.name}</b>` +
+        ` · ${b.label} · ${p.games} 局 / ${s.winRate}% 胜率 <small>（返回菜单可修改代号）</small>`;
+    }
+  }
+
+  /** 结算写回档案：返回本局是否刷新纪录 / 晋升徽记，供结算页展示。 */
+  _recordMatch(s, win, st) {
+    const sig = `${Math.round(Number(s.time) || 0)}|${win}|${Math.round(Number(st && st.kills) || 0)}`;
+    if (this._endRecSig === sig && this._endRec) return this._endRec;
+    const rec = Profile.record({
+      win,
+      seconds: Math.round(Number(s.time) || 0),
+      kills: Math.round(Number(st && st.kills) || 0),
+      mode: String(s.mode || 'skirmish'),
+      chapter: Math.max(0, Math.round(Number(s.chapter) || 0)),
+      species: String((s.sp && s.sp.P && (s.sp.P.name || s.sp.P.id)) || ''),
+      difficulty: String((s.difficulty && s.difficulty.name) || ''),
+    });
+    this._endRecSig = sig;
+    this._endRec = rec;
+    this._profile = rec.profile;
+    this._profileNew = false;
+    if (typeof this._renderProfile === 'function') this._renderProfile();
+    return rec;
   }
 
   /** 静音偏好持久化：刷新页面后仍保持用户上次的选择。 */
@@ -505,6 +643,8 @@ export class UI {
       this.selectSpecies(0);   // 默认选中首个蚁种，使「进入战场」按钮默认可用
     }
     this._refreshStartBtn();
+    this._endRecSig = ''; this._endRec = null;   // 新一局允许再次结算写回
+    this._renderProfile();                        // 返回菜单时刷新档案卡最新战绩
   }
   hideStart() { $('#start').classList.add('hidden'); }
 
@@ -907,6 +1047,20 @@ export class UI {
       <div><span>存活时长</span><b>${Math.floor(s.time)}s</b></div>
       <div><span>难度</span><b>${s.difficulty?.name || '标准'}</b></div>
       <div title="${climDesc}"><span>战场环境</span><b>${climName}</b></div>${statRows}`;
+    // 本机指挥官档案：本局战绩写回 + 新纪录 / 徽记晋升提示
+    // 容错：极简上下文（无原型方法）或存储异常时不阻断结算面板，并清掉上一局回执
+    const rec = typeof this._recordMatch === 'function' ? this._recordMatch(s, win, st0) : null;
+    const ep = document.getElementById('end-profile');
+    if (ep) {
+      if (!rec) { ep.innerHTML = ''; }
+      else {
+        const bits = [`<span class="ep-cc">${rec.badge.glyph} ${rec.profile.name}</span>`,
+          `本局已计入档案 · ${rec.summary.games} 局 / 胜率 ${rec.summary.winRate}%`];
+        if (rec.newBestWin) bits.push('<span class="ep-hl">★ 最快取胜新纪录</span>');
+        if (rec.rankUp) bits.push(`<span class="ep-hl">✦ 徽记晋升 · ${rec.badge.label}</span>`);
+        ep.innerHTML = bits.join('<span class="ep-sep">·</span>');
+      }
+    }
     $('#end').classList.remove('hidden');
   }
 

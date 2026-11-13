@@ -348,7 +348,15 @@ function clearBox() { if (boxDiv) { boxDiv.remove(); boxDiv = null; } }
 
 // A=攻击移动、S=停止，二者让给战场指令；相机平移改用方向键 + W/D + 屏幕边缘滚屏
 const CAM_KEYS = ['w', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift'];
+/** 焦点在输入框 / 可编辑区域时，键盘应交给输入控件，不触发战场快捷键或相机平移。 */
+function isTextEntry(target) {
+  const n = target && (target.nodeType === 3 ? target.parentElement : target);
+  if (!n || !n.tagName) return false;
+  const tag = String(n.tagName).toLowerCase();
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || n.isContentEditable === true;
+}
 function onKey(e) {
+  if (isTextEntry(e.target)) return;
   const k = e.key.toLowerCase();
   if (k === 'shift') game.shift = true;
   if (k === 'escape') {

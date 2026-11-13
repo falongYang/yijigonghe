@@ -56,6 +56,59 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 #btn-start.ready { animation: sp-pulse 1.7s ease-in-out infinite; }
 @keyframes sp-pulse { 0%,100% { box-shadow: 0 4px 14px rgba(0,0,0,.4), 0 0 0 0 rgba(126,240,160,.55); } 50% { box-shadow: 0 4px 14px rgba(0,0,0,.4), 0 0 0 12px rgba(126,240,160,0); } }
 
+/* ---------------- 指挥官档案：开始页本机身份卡 ---------------- */
+/* 绝对定位浮在选种页右上角，不占用单屏弹性布局的高度，避免挤压轮播与开局按钮 */
+#commander-card { --cc-color: #9aa489; position: absolute; top: 14px; right: 16px; width: 246px; z-index: 5;
+  background: linear-gradient(160deg, rgba(24,32,18,.94), rgba(12,16,9,.93));
+  border: 1px solid rgba(126,240,160,.24); border-radius: 12px; padding: 10px 12px 9px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.03);
+  text-align: left; backdrop-filter: blur(6px); animation: cc-in .5s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes cc-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+.cc-head { display: flex; align-items: center; gap: 9px; }
+.cc-badge { flex: 0 0 34px; width: 34px; height: 34px; display: grid; place-items: center; font-size: 20px; line-height: 1;
+  color: var(--cc-color); border: 1px solid var(--cc-color); border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, rgba(255,255,255,.14), transparent 70%);
+  box-shadow: 0 0 12px -2px var(--cc-color); transition: color .3s, border-color .3s, box-shadow .3s; }
+.cc-id { flex: 1 1 auto; min-width: 0; }
+.cc-id label { display: block; color: #8a9678; font-size: 10px; letter-spacing: 1px; margin-bottom: 2px; }
+#cc-name { width: 100%; box-sizing: border-box; background: rgba(0,0,0,.28); color: #eaf2dc; font-size: 13px; font-weight: 700;
+  border: 1px solid rgba(255,255,255,.14); border-radius: 6px; padding: 4px 7px; outline: none; user-select: text; }
+#cc-name::placeholder { color: #6f7a60; }
+#cc-name:focus { border-color: var(--cc-color); box-shadow: 0 0 0 2px rgba(126,240,160,.22); }
+.cc-fold { flex: 0 0 24px; height: 24px; border: 1px solid rgba(255,255,255,.14); border-radius: 6px;
+  background: rgba(255,255,255,.06); color: #cdd8b8; cursor: pointer; font-size: 13px; line-height: 1; }
+.cc-fold:hover { background: rgba(126,200,106,.24); }
+.cc-welcome { color: #cdd8b8; font-size: 11px; margin: 7px 0 0; line-height: 1.4; }
+.cc-body { margin-top: 8px; border-top: 1px solid rgba(255,255,255,.1); padding-top: 8px; }
+.cc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.cc-stats div { text-align: center; background: rgba(255,255,255,.045); border-radius: 6px; padding: 5px 2px; }
+.cc-stats b { display: block; color: #eaf2dc; font-size: 13px; font-variant-numeric: tabular-nums; }
+.cc-stats span { display: block; color: #8a9678; font-size: 9.5px; margin-top: 1px; }
+.cc-recent { margin-top: 8px; }
+.cc-rh { color: #7ef0a0; font-size: 10px; letter-spacing: 1px; margin-bottom: 4px; }
+.cc-r { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: #c4cdb4; padding: 2px 0; }
+.cc-r span { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-r b { color: #dfe6d2; font-variant-numeric: tabular-nums; font-weight: 600; }
+.cc-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 6px; }
+.cc-dot.win { background: #7ef0a0; box-shadow: 0 0 5px #7ef0a0; }
+.cc-dot.lose { background: #ff8a7a; }
+.cc-empty { color: #7f8a70; font-size: 10.5px; }
+.cc-reset { margin-top: 8px; background: none; border: 0; color: #8a9678; font-size: 10px;
+  text-decoration: underline; cursor: pointer; padding: 2px 0; }
+.cc-reset:hover { color: #cdd8b8; }
+.cc-reset.armed { color: #ffb070; text-decoration: none; }
+.cc-hint { color: #6f7a60; font-size: 9.5px; margin: 6px 0 0; }
+@media (max-width: 980px) {
+  #commander-card { width: 190px; top: 8px; right: 8px; padding: 7px 9px; }
+  .cc-stats { grid-template-columns: repeat(2, 1fr); }
+  .cc-hint, .cc-recent { display: none; }
+}
+@media (max-width: 620px) {
+  #commander-card { width: 152px; }
+  .cc-welcome { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { #commander-card { animation: none; } }
+
 /* ---------------- HUD ---------------- */
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
 #hud > * { pointer-events: auto; }
@@ -76,6 +129,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 
 /* 右上 */
 #topright { position: fixed; top: 12px; right: 12px; display: flex; gap: 8px; align-items: center; }
+/* HUD 指挥官徽记：与开始页档案卡共用进阶颜色变量 */
+.cmd-chip { --cc-color: #9aa489; color: var(--cc-color); border: 1px solid rgba(255,255,255,.16);
+  background: rgba(14,20,10,.62); border-radius: 8px; padding: 5px 9px; font-size: 11.5px; font-weight: 700;
+  white-space: nowrap; max-width: 148px; overflow: hidden; text-overflow: ellipsis; letter-spacing: .5px; }
 #speeds { display: flex; gap: 4px; background: rgba(14,20,10,.82); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 4px; }
 .tbtn { background: transparent; border: none; color: #cdd8b8; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 13px; }
 .tbtn.on { background: #4f9a3e; color: #fff; }
@@ -150,6 +207,13 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 #end-kicker { letter-spacing: 6px; color: #ffd27f; font-size: 14px; }
 #end-title { font-size: 26px; margin: 8px 0; }
 #end-desc { color: #c4cdb4; line-height: 1.7; margin-bottom: 16px; }
+/* 结算页档案回执：本局写回 + 新纪录 / 徽记晋升高亮 */
+.end-profile { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 7px;
+  margin: 0 auto 14px; padding: 8px 12px; max-width: 640px; font-size: 11.5px; color: #9aa489;
+  background: rgba(126,240,160,.06); border: 1px solid rgba(126,240,160,.18); border-radius: 9px; }
+.end-profile .ep-cc { color: #eaf2dc; font-weight: 700; }
+.end-profile .ep-sep { color: #5f6a52; }
+.end-profile .ep-hl { color: #ffd27f; font-weight: 700; }
 #end-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin: 0 auto 20px; max-width: 560px; }
 #end-stats div { background: rgba(255,255,255,.05); border-radius: 8px; padding: 10px; }
 #end-stats span { display: block; color: #9aa489; font-size: 12px; }
@@ -407,6 +471,11 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .pause-inner { max-height: 92vh; overflow-y: auto; }
 .settings { margin: 4px 0 20px; padding: 12px 14px; border: 1px solid rgba(126,240,160,.22); border-radius: 10px; background: rgba(126,240,160,.05); text-align: left; }
 .set-title { color: #7ef0a0; font-size: 11.5px; letter-spacing: 2px; margin-bottom: 9px; }
+.pause-profile { color: #9aa489; font-size: 11px; margin: -3px 0 10px; padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,.08); }
+.pause-profile b { color: #eaf2dc; }
+.pause-profile small { color: #6f7a60; }
+.pause-profile .pp-badge { color: var(--cc-color, #9fe0a0); font-size: 13px; }
 .set-row { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #c4cdb4; margin: 7px 0; }
 .set-row > span { width: 76px; flex: 0 0 76px; }
 .set-row input[type=range] { flex: 1; accent-color: #7ef0a0; }
