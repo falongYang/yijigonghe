@@ -274,7 +274,7 @@ export const UNITS = {
   s1: { id: 's1', name: '兵蚁', caste: 'soldier', domain: 'land', hp: 165, speed: 9, dmg: 18,
     weapon: 'w_bite', armor: 'chitin', ability: 'a_frenzy', tech: 0,
     cost: { bio: 95 }, build: 6, role: 'combat', pop: 2, evolveTo: 's3',
-    evo: { level: 3, era: 1, min: 40 }, desc: '基础近战，可狂暴；纪元2/5级可进化为巨颚卫。' },
+    evo: { level: 3, era: 1, min: 40 }, desc: '基础近战，可狂暴；纪元2 / Lv.3 可进化为巨颚卫。' },
   s2: { id: 's2', name: '酸蚁', caste: 'soldier2', domain: 'land', hp: 130, speed: 10, dmg: 24,
     weapon: 'w_acid', armor: 'chitin', ability: 'a_acidpool', tech: 1,
     cost: { bio: 170 }, build: 9, role: 'combat', pop: 2, desc: '远程酸液，可泼洒酸池；克制软甲。' },
@@ -328,7 +328,7 @@ export const UNITS = {
   siege: { id: 'siege', name: '炮甲蚁', caste: 'soldier3', domain: 'land', hp: 300, speed: 6.5, dmg: 38,
     weapon: 'w_major', armor: 'armored', ability: 'a_harden', tech: 2,
     cost: { bio: 300 }, build: 13, role: 'combat', pop: 4, archetypeOnly: 'defensive', sig: 'defensive',
-    desc: '守城型专属：重甲远程压制，甲壳硬化，与塔阵构成核心防线。' },
+    desc: '守城型专属：重甲近战压制，甲壳硬化，与塔阵构成核心防线。' },
 };
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };

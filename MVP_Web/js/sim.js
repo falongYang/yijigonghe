@@ -4,7 +4,7 @@
  */
 import { SPECIES_BY_ID } from './data.js';
 import {
-  MAP, HALF_W, HALF_H, SIDES, START_BIO, START_MIN, START_PH,
+  MAP, HALF_W, HALF_H, SIDES, START_BIO, START_MIN, START_PH, POP_CAP,
   RESOURCES, RES_ORDER, DOMAINS, DOMAIN_ORDER, WEAPONS, DMG_TYPES, ARMOR_TYPES,
   ARMOR_MULT, ABILITIES, BUILDINGS, BUILD_ORDER, UNITS, UNIT_ORDER,
   XP_PER_LEVEL, MAX_LEVEL, LEVEL_HP, LEVEL_DMG, ELITE_HP, ELITE_DMG,
@@ -26,6 +26,11 @@ const REPAIR_RANGE = 3.2;
 const DEPOSIT_RANGE = 8.5;
 const GATHER_RATE = 10;       // 每秒采集量（再生资源场，故适度下调以保证可再生）
 const AGGRO = 22;             // 自动索敌半径
+// 溅射系数经固定随机流压测定稿（/tmp/antworld/robust.mjs，3 种子 × 2 密度）：
+// max≥2 且 ratio≥0.08 时，密集靶场会在半数场景把胜负整个翻转（AI 战术索敌被范围伤害放大）；
+// 0.10 / 最多 1 个额外目标 → 6/6 保持基线胜负、总伤害 98.3%、溅射仍可观测。
+const SPLASH_RATIO = 0.10;         // 溅射伤害占主目标伤害的比例（仅 w_glider 等配了 splash 的武器）
+const SPLASH_MAX_TARGETS = 1;      // 每次攻击最多波及的额外目标数：密集簇不把总输出翻倍
 const PLAYER_BASE = { x: 0, z: HALF_H * 0.62 };
 const ENEMY_BASE = { x: 0, z: -HALF_H * 0.62 };
 const BURROW_IDLE_SPEED = 1.45;          // 潜行提速
@@ -103,9 +108,11 @@ export class Simulation {
     this.peakPop = { P: 0, E: 0 };
     const blank = () => ({ kills: 0, losses: 0, built: 0, harvested: 0, abilities: 0, evolved: 0, raided: 0, repaired: 0, wellPh: 0,
       dmgDealt: 0, dmgTaken: 0, critHits: 0, smartCasts: 0, defenses: 0, nodeSwitches: 0,
-      overkillSaved: 0, raids: 0, waves: 0, repairs: 0 });
+      overkillSaved: 0, raids: 0, waves: 0, repairs: 0,
+      splashHits: 0, levelUps: 0, alarms: 0 });
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
+    this._levelFlags = {};   // 等级里程碑播报去重（每局重置）
     this.map = getMapConfig(mode, chapter);
     this.climate = getMapClimate(mode, chapter);
     // 战术地形与信息素井用同一套确定性配置生成：模拟、3D 渲染与小地图读取的都是这一份。
@@ -179,7 +186,8 @@ export class Simulation {
   /** 侦测视野（轻量战争迷雾）：敌方单位 / 建筑仅在己方视野半径内可见，
    *  超视距则隐藏（不影响逻辑，只影响渲染与小地图）。敌方蚁后巢始终可见，作为胜利目标。 */
   _updateVision() {
-    if (!this.units.length) return;
+    // 不因「玩家单位暂时全灭」提前返回：巢室本身仍是视野源，否则敌方单位会停留在上一帧的
+    // 可见状态（旧数据造成隔墙透视）。sources 为空时 seen() 恒 false，语义本来就是「没有视野」。
     const sources = [];
     for (const u of this.units) {
       if (u.side !== SIDES.PLAYER) continue;
@@ -307,6 +315,7 @@ export class Simulation {
       buildTime: BUILDINGS[type].build, queue: [], research: null,
       cooldown: 0, attack: e.attack || null, lastAttacker: null, phGen: e.phGen || 0,
       rally: null,   // 集结点（仅玩家侧生产建筑可设置，作战单位生产后前往）
+      alarmStep: 0,  // 受袭分级告警已播报的最高档（0/1/2/3 → 75/50/25%）
     };
     this.buildings.push(b);
     if (!done && this.stats) this.stats[side].built++;   // 初始巢不计入建造数
@@ -446,7 +455,7 @@ export class Simulation {
     const bdef = BUILDINGS[b.type];
     if (bdef.domain && bdef.domain === specialtyOf(this.sp.P.id)) need = Math.max(0, need - 1);
     if (this.era.P < need) { this._toast(`「${UNITS[unitType].name}」需纪元 ${need + 1}（研究史官堂解锁）`); return false; }
-    if (this.pop(SIDES.PLAYER) >= 110) { this._toast('人口已达上限'); return false; }
+    if (this.pop(SIDES.PLAYER) >= POP_CAP) { this._toast('人口已达上限'); return false; }
     const cost = effectiveCost(unitType, this.sp.P);
     if (!this.canAfford(SIDES.PLAYER, cost)) { this._toast(`资源不足，需 ${this._costStr(cost)}`); return false; }
     this.spend(SIDES.PLAYER, cost);
@@ -815,7 +824,7 @@ export class Simulation {
       if (b.research.t <= 0) { const side = b.side, newEra = b.research.era; b.research = null; this._applyEra(side, newEra); }
     }
     if (b.attack) {
-      b.cooldown -= dt;
+      b.cooldown = Math.max(0, b.cooldown - dt);   // 长期无目标时不让冷却累积成巨大负数
       if (b.cooldown <= 0) {
         const tgt = this._nearestEnemyEntity(b.side, b.x, b.z, b.attack.range + b.size * 0.5);
         if (tgt) { this._dealDamage(b, tgt, b.attack.dmg, b.x, b.z, true, b.attack.dtype); b.cooldown = b.attack.atkcd; }
@@ -932,8 +941,34 @@ export class Simulation {
       this._moveTo(u, tgt.x, tgt.z, dt);
     } else if (u.atkTimer <= 0) {
       this._dealDamage(u, tgt, u.dmg, u.x, u.z, !u.melee, u.dtype);
+      if (u.splash > 0) this._applySplash(u, tgt, u.dmg);
       u.atkTimer = u.atkcd;
     }
+  }
+
+  /** 溅射：w_glider 等武器配了 splash 半径且属性卡已展示「溅射」，但此前战斗结算从未消费该字段。
+   *  主目标结算后，对落点半径内的其他敌方单位按 SPLASH_RATIO 结算一次递减伤害。
+   *  约束：只打敌方、不重复结算主目标、不打建筑/障碍、不误伤友军；
+   *  用「无 xp 的攻击者代理」走 _dealDamage 统一口径（统计 / 飘字 / 尸体总闸），
+   *  但不会让攻击者因溅射再刷一遍经验；能力自带 _dmgRadius，不经过此路径。 */
+  _applySplash(u, tgt, dmg) {
+    const r = u.splash || 0;
+    if (r <= 0 || !tgt || !tgt.side) return;
+    const enemy = u.side === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER;
+    const candidates = [];
+    for (const o of this.units) {
+      if (o === tgt || o.side !== enemy || o.hp <= 0 || !this.isTargetable(o)) continue;
+      const d = dist(o.x, o.z, tgt.x, tgt.z);
+      if (d <= r) candidates.push({ o, d });
+    }
+    // 取最近的有限个目标：既兑现「范围爆破」的手感，又不让密集阵型把单体武器的输出放大数倍
+    candidates.sort((a, b) => a.d - b.d);
+    let hits = 0;
+    for (const { o } of candidates.slice(0, SPLASH_MAX_TARGETS)) {
+      this._dealDamage({ side: u.side }, o, dmg * SPLASH_RATIO, tgt.x, tgt.z, false, u.dtype);
+      hits++;
+    }
+    if (hits && this.stats && this.stats[u.side]) this.stats[u.side].splashHits += hits;
   }
 
   _attackMove(u, dt) {
@@ -1047,6 +1082,20 @@ export class Simulation {
     tgt.hp -= d;
     if (tgt.flash !== undefined) tgt.flash = 0.16;
     if (tgt.lastAttacker !== undefined) tgt.lastAttacker = aSide;
+    // 我方巢室受袭分级告警：跨过 75 / 50 / 25% 各播报一次，混战不刷屏，
+    // 也不会让玩家在毫无预警的情况下被推平。用既有 log + ring，不新增事件类型。
+    // 建造中的巢室 hp 随进度从 1 起跳，按比例会误判为「濒毁」，故排除。
+    if (aSide === SIDES.ENEMY && tgt.side === SIDES.PLAYER && tgt.alarmStep !== undefined
+        && tgt.state !== 'constructing' && tgt.hp > 0 && BUILDINGS[tgt.type]) {
+      const ratio = tgt.hp / tgt.maxHp;
+      const step = ratio <= 0.25 ? 3 : ratio <= 0.5 ? 2 : ratio <= 0.75 ? 1 : 0;
+      if (step > tgt.alarmStep) {
+        tgt.alarmStep = step;
+        this._log(`警报：我方「${BUILDINGS[tgt.type].name}」耐久跌破 ${[0, 75, 50, 25][step]}%，请回防！`, 'bad');
+        this._fx('ring', tgt.x, 0.5, tgt.z, { color: 0xff6b5a, r: tgt.size + 3 });
+        if (this.stats) this.stats.P.alarms++;
+      }
+    }
     // 战局统计：实际结算伤害（已含增益、护甲与武器克制）
     if (this.stats) {
       if (aSide && this.stats[aSide]) {
@@ -1083,7 +1132,24 @@ export class Simulation {
       u.maxHp = e.hp; u.hp = clamp(e.hp * ratio, 1, e.hp);
       u.dmg = e.dmg;
       this._fx('levelup', u.x, 2, u.z, { color: this.sp[u.side].color });
+      if (this.stats && this.stats[u.side]) this.stats[u.side].levelUps++;
+      this._levelMilestone(u);
     }
+    // 满级后经验不再无限累积：封顶到最高阈值，属性/存档里显示稳定的满经验值
+    if (u.level >= MAX_LEVEL) u.xp = Math.min(u.xp, XP_PER_LEVEL[MAX_LEVEL]);
+  }
+
+  /** 等级里程碑：界面目前不展示单位等级，而升级在战斗中极频繁。
+   *  只在「首只单位达到可进化门槛 Lv.3」与「首只单位满级」各播报一次，避免逐次升级刷屏。 */
+  _levelMilestone(u) {
+    if (u.side !== SIDES.PLAYER) return;
+    if (!this._levelFlags) this._levelFlags = {};
+    const key = u.level >= MAX_LEVEL ? 'max' : u.level >= 3 ? 'evo' : null;
+    if (!key || this._levelFlags[key]) return;
+    this._levelFlags[key] = true;
+    this._log(key === 'max'
+      ? `老兵诞生：「${UNITS[u.type].name}」达到满级 Lv.${MAX_LEVEL}，成长已至上限。`
+      : `老兵诞生：首只「${UNITS[u.type].name}」升至 Lv.3，满足进化等级门槛。`, 'good');
   }
 
   _reap() {
@@ -1143,6 +1209,14 @@ export class Simulation {
         } else {
           this._log(`${b.side === SIDES.PLAYER ? '我方' : '敌方'}「${BUILDINGS[b.type].name}」被摧毁。`, 'bad');
         }
+      }
+      // 在建 / 在制 / 研究中的投入随建筑损毁一并损失，给一句明确交代（原先只报摧毁，投入静默蒸发）
+      if (b.side === SIDES.PLAYER) {
+        const lost = [];
+        if (b.state === 'constructing') lost.push('建造进度');
+        if (b.queue.length) lost.push(`${b.queue.length} 项生产队列`);
+        if (b.research) lost.push('纪元研究');
+        if (lost.length) this._log(`「${BUILDINGS[b.type].name}」损毁，${lost.join('、')}一并损失。`, 'bad');
       }
       this.buildings.splice(i, 1);
       if (this.selectedBuilding === b.id) this.selectedBuilding = null;
