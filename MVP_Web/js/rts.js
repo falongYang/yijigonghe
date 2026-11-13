@@ -564,8 +564,34 @@ export const ENEMY_ARCHETYPES = {
     attackInterval: [62, 104], soldierReq: [10, 20], buildSpeed: 1.0,
     abilityUse: 0.45, expandBias: 1.0, towerBias: 1.7,
   },
+  /* —— 追加三种战术原型（只增不改：上面三档数值逐字保持原样）——
+   * techPath 决定 AI 的建造顺序与科技节奏；未声明该字段的原三档走既有固定计划，零影响。
+   * rusher  速攻：兵营前置、跳过史官堂 rush，早早压上但科技落后。
+   * turtle  龟缩：塔阵前置、延迟研究，靠工事消耗对手。
+   * balanced 均衡：史官堂前置抢纪元，兵力与经济同步。
+   */
+  rusher: {
+    id: 'rusher', name: '速攻型', color: 0xff8a3a,
+    desc: '兵营前置、连续 early rush，科技落后但开局压迫极强。',
+    attackInterval: [16, 26], soldierReq: [3, 12], buildSpeed: 0.72,
+    abilityUse: 0.9, expandBias: 0.5, towerBias: 0.3, techPath: 'rush',
+  },
+  turtle: {
+    id: 'turtle', name: '龟缩型', color: 0x8a9ab0,
+    desc: '塔阵与工事先行，极晚进攻，靠纵深防线拖垮对手。',
+    attackInterval: [78, 120], soldierReq: [12, 22], buildSpeed: 1.05,
+    abilityUse: 0.5, expandBias: 1.2, towerBias: 2.4, techPath: 'turtle',
+  },
+  balanced: {
+    id: 'balanced', name: '均衡型', color: 0xa88ad0,
+    desc: '史官堂前置抢纪元，兵力与经济同步推进，无明显短板。',
+    attackInterval: [34, 56], soldierReq: [7, 16], buildSpeed: 0.95,
+    abilityUse: 0.75, expandBias: 1.1, towerBias: 1.0, techPath: 'tech',
+  },
 };
+// 战役章节仍使用原三档性格，新增原型只在遭遇战显式指定时出现，不改变既有进度曲线
 export const ARCHETYPE_ORDER = ['aggressive', 'expansionist', 'defensive'];
+export const EXTRA_ARCHETYPES = ['rusher', 'turtle', 'balanced'];
 
 /* ----------------------------- 难度 ----------------------------- */
 // targeting / defense / abilitySmart：AI「智能程度」分级（0=不启用，1=全量）。

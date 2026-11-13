@@ -134,3 +134,35 @@ export function getMapClimate(mode, chapter) {
   if (mode === 'campaign' && chapter != null) return MAP_CLIMATES[chapter % MAP_CLIMATES.length];
   return MAP_CLIMATES[0];
 }
+
+/* --------------------------------------------------------------------------
+ * 逐章「天气」：影响视野半径与远程命中（纯数值，不新增 MAP_THEMES 字段）。
+ * hitMul<1 表示恶劣天气让远程弹道更易失准；只作用于真实单位的远程普攻，
+ * 能力/危害/溅射不经此结算，避免改变既定能力平衡。
+ * 表现层雾效与粒子由 map-art.js 的 weather 字段提供（同名不同对象，互不干扰）。
+ * ------------------------------------------------------------------------ */
+export const CLIMATE_WEATHER = {
+  scorch:    { id: 'clear',     name: '晴空', desc: '视野与命中均为基准。',           visionMul: 1.00, hitMul: 1.00 },
+  verdant:   { id: 'rain',      name: '细雨', desc: '雨幕削弱远程命中、略缩视野。',   visionMul: 0.90, hitMul: 0.96 },
+  highland:  { id: 'wind',      name: '劲风', desc: '高风扰动远程弹道，视野更开阔。', visionMul: 1.05, hitMul: 0.94 },
+  wetland:   { id: 'mist',      name: '薄雾', desc: '雾气大幅压缩视野。',             visionMul: 0.78, hitMul: 0.98 },
+  tide:      { id: 'storm',     name: '风暴', desc: '雷暴压低视野与远程命中。',       visionMul: 0.84, hitMul: 0.92 },
+  echo:      { id: 'resonance', name: '共振', desc: '地脉回响，视野与命中皆基准。',   visionMul: 1.00, hitMul: 1.00 },
+};
+/** 遭遇战取第 0 章晴空（全 1.0），故默认对局零影响。 */
+export function getMapWeather(mode, chapter) {
+  const c = getMapClimate(mode, chapter);
+  return CLIMATE_WEATHER[c.id] || CLIMATE_WEATHER.scorch;
+}
+
+/* 静态危害地块：战役特定章节的熔岩/酸池区，站在其中的单位持续受灼。
+ * 以章节号为键的独立真源（不塞进 MAP_THEMES，保持表现层结构冻结）；
+ * 由 sim._tickTerrain 消费；遭遇战（第 0 章）为空，不影响默认对局。 */
+export const STATIC_HAZARDS = {
+  // 只落在「远离资源点 / 双方巢区」的空旷战术地带：工蚁采集路线不穿越，避免经济塌陷。
+  3: [ { x: 40, z: 45, r: 6, dps: 5, type: 'lava' }, { x: -40, z: -45, r: 6, dps: 5, type: 'lava' } ],
+  5: [ { x: -42, z: 42, r: 7, dps: 4, type: 'acid' }, { x: 42, z: -42, r: 7, dps: 4, type: 'acid' } ],
+};
+export function staticHazardsFor(mode, chapter) {
+  return (mode === 'campaign' && chapter != null) ? (STATIC_HAZARDS[chapter] || []) : [];
+}

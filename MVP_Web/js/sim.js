@@ -14,10 +14,19 @@ import {
   getMapConfig, SKIRMISH_MAP, ARCHETYPE_UNITS,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
-import { MAP_CLIMATES, getMapClimate } from './maps.js';
+import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor } from './maps.js';
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* 战斗细节常量（全部加性，未声明 trait 的单位不参与） */
+const CORRODE_SHRED = 0.40;      // 腐蚀：削减 40% 护甲抗性
+const POISON_STACK_DPS = 0.25;   // 中毒每层 dps = 基础伤害 × trait × 该系数
+const POISON_MAX_STACKS = 3;
+const POISON_T = 3;              // 中毒持续秒数
+const HOLD_LEASH = 18;           // 驻守：只打该半径内目标，不追击
+const TERRAIN_TICK = 0.25;       // 静态危害结算步长
+// 天气对远程的影响只作用于「真实单位远程普攻」，能力/危害/溅射不受影响。
 
 const HARVEST_RANGE = 3.6;
 const REPAIR_RATE = 11;          // 每只工蚁每秒修复的耐久
@@ -60,6 +69,12 @@ export class Simulation {
     this.mode = 'skirmish'; this.chapter = null; this.archetype = null; this.difficulty = null;
     this.echo = null; this.echoFired = false;
     this.climate = MAP_CLIMATES[0];   // 六章环境规则（reset 时按章节重取）
+    this.weather = null;              // 逐章天气（reset 时按章节重取）
+    this.terrainHazards = [];         // 静态危害地块（熔岩 / 酸池），reset 时按章节生成
+    this.objective = null;            // 场景目标（reset 时按 opts 装配）
+    this.tradeDone = 0;               // 资源贸易累计次数
+    this.refined = { P: false, E: false };  // 精炼巢室：全军强化标记
+    this._fxRng = 1;                  // 战斗细节专用确定性随机流（不占用 AI 的 Math.random 序列）
     this._lastRaidLogAt = -99;        // 掠夺播报节流
   }
 
@@ -70,6 +85,15 @@ export class Simulation {
   _fx(type, x, y, z, opts = {}) { this.effects.push({ type, pos: { x, y, z }, opts }); }
   /** 当前环境规则；未 reset 的裸实例退化为基准环境，保证所有系数始终是有限数。 */
   _clim() { return this.climate || MAP_CLIMATES[0]; }
+  /** 当前天气；裸实例退化为全 1.0 的晴空。 */
+  _wea() { return this.weather || { id: 'clear', name: '晴空', desc: '', visionMul: 1, hitMul: 1 }; }
+  /** 战斗细节专用 RNG：xorshift32，独立于全局 Math.random，保证 AI 的随机序列不被战斗掷骰污染。 */
+  _crand() {
+    let x = this._fxRng | 0;
+    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+    this._fxRng = x | 0;
+    return ((x >>> 0) % 100000) / 100000;
+  }
 
   reset(playerId, opts = {}) {
     const { mode = 'skirmish', chapter = null, archetype = null, difficulty = 'normal' } = opts;
@@ -109,12 +133,37 @@ export class Simulation {
     const blank = () => ({ kills: 0, losses: 0, built: 0, harvested: 0, abilities: 0, evolved: 0, raided: 0, repaired: 0, wellPh: 0,
       dmgDealt: 0, dmgTaken: 0, critHits: 0, smartCasts: 0, defenses: 0, nodeSwitches: 0,
       overkillSaved: 0, raids: 0, waves: 0, repairs: 0,
-      splashHits: 0, levelUps: 0, alarms: 0 });
+      splashHits: 0, levelUps: 0, alarms: 0,
+      // 战斗细节统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
+      critRolls: 0, pierceHits: 0, flankHits: 0, lifestealHp: 0,
+      poisonTicks: 0, corrodeHits: 0, slowHits: 0, stunTicks: 0,
+      terrainTicks: 0, statusKills: 0 });
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
     this._levelFlags = {};   // 等级里程碑播报去重（每局重置）
+    this._fxRng = 1;         // 战斗掷骰确定性复位
+    this.tradeDone = 0;
+    this.refined = { P: false, E: false };
     this.map = getMapConfig(mode, chapter);
     this.climate = getMapClimate(mode, chapter);
+    this.weather = getMapWeather(mode, chapter);
+    this.terrainHazards = staticHazardsFor(mode, chapter).map(h => ({ ...h, accum: 0 }));
+    // 场景目标：默认 'destroy'（摧毁敌方蚁后巢）＝既有胜负判定，逐字不变。
+    // 可选 'survive'（存活到时限）、'harvest'（累计采集达标）、'dominate'（占领全部信息素井并守住）。
+    this.objective = {
+      type: opts.objective || 'destroy',
+      surviveT: opts.surviveT || 240,
+      harvestGoal: opts.harvestGoal || 4000,
+      dominateHold: opts.dominateHold || 20,
+      holdT: 0, label: '',
+    };
+    const OBJ_LABEL = {
+      destroy: '摧毁敌方蚁后巢',
+      survive: `存活 ${this.objective.surviveT} 秒`,
+      harvest: `累计采集 ${this.objective.harvestGoal} 生物质`,
+      dominate: `占领全部信息素井并守住 ${this.objective.dominateHold} 秒`,
+    };
+    this.objective.label = OBJ_LABEL[this.objective.type] || OBJ_LABEL.destroy;
     // 战术地形与信息素井用同一套确定性配置生成：模拟、3D 渲染与小地图读取的都是这一份。
     this.zones = mapZones(this.map);
     this.wells = mapWells(this.map).map(w => ({ ...w, owner: null, progress: 0, contest: false, pulse: 0 }));
@@ -129,6 +178,9 @@ export class Simulation {
     const modeName = this.mode === 'campaign' ? `战役·第${this.chapter + 1}章「${CAMPAIGN[this.chapter].name}」` : '遭遇战';
     this._log(`【${modeName}】「${this.sp.P.name}」(专长·${DOMAINS[specialtyOf(playerId)].key}) 对阵「${this.sp.E.name}」(${archName}/${diffName}) · 四域战争：采集 → 建造 → 出兵 → 研究纪元 → 能力 → 进化 → 掠夺。`, 'key');
     this._log(`【战场环境·${this.climate.name}】${this.climate.desc}`, 'info');
+    if (this.weather && this.weather.id !== 'clear') this._log(`【天气·${this.weather.name}】${this.weather.desc}`, 'info');
+    if (this.terrainHazards.length) this._log(`【地形警示】本图存在 ${this.terrainHazards.length} 处熔岩/酸池，驻留其中会持续受损。`, 'bad');
+    this._log(`【作战目标】${this.objective.label}。`, 'key');
     this._emit('reset', { mode: this.mode, chapter: this.chapter, archetype: this.archetype.id, difficulty: this.difficulty.id });
     this._updateVision();
   }
@@ -189,14 +241,15 @@ export class Simulation {
     // 不因「玩家单位暂时全灭」提前返回：巢室本身仍是视野源，否则敌方单位会停留在上一帧的
     // 可见状态（旧数据造成隔墙透视）。sources 为空时 seen() 恒 false，语义本来就是「没有视野」。
     const sources = [];
+    const vm = this._wea().visionMul;   // 天气视野修正（遭遇战晴空 = 1.0，零影响）
     for (const u of this.units) {
       if (u.side !== SIDES.PLAYER) continue;
       if (u.domain === 'underground' && u.burrowed) continue;   // 潜行单位不提供视野
-      sources.push({ x: u.x, z: u.z, r: u.domain === 'air' ? 42 : 30 });
+      sources.push({ x: u.x, z: u.z, r: (u.domain === 'air' ? 42 : 30) * vm });
     }
     for (const b of this.buildings) {
       if (b.side !== SIDES.PLAYER) continue;
-      sources.push({ x: b.x, z: b.z, r: b.type === 'hq' ? 50 : 44 });
+      sources.push({ x: b.x, z: b.z, r: (b.type === 'hq' ? 50 : 44) * vm });
     }
     const seen = (x, z) => {
       for (const s of sources) {
@@ -262,8 +315,21 @@ export class Simulation {
     const diff = this.difficulty;
     // 性格决定塔阵偏置：守城型多造塔
     const towers = arch.towerBias >= 1.5 ? 3 : (arch.towerBias >= 0.9 ? 2 : 1);
-    const plan = ['nursery', 'barracks', 'tech', nestByDomain[spec] || 'tower'];
+    let plan = ['nursery', 'barracks', 'tech', nestByDomain[spec] || 'tower'];
     for (let i = 0; i < towers; i++) plan.push('tower');
+    // 科技路径：只有新增原型声明了 techPath 才重排建造计划；原三档不声明 → 计划逐字不变。
+    // 研究节奏用独立字段控制，不动 thinkMul（那会牵动全局节奏与回归基线）。
+    let techDelay = 1;
+    if (arch.techPath === 'rush') {
+      plan = ['barracks', 'nursery', nestByDomain[spec] || 'tower', 'tech', 'tower'];
+      techDelay = 1.6;
+    } else if (arch.techPath === 'turtle') {
+      plan = ['nursery', 'tower', 'tower', 'barracks', 'tech', 'tower', nestByDomain[spec] || 'tower'];
+      techDelay = 1.35;
+    } else if (arch.techPath === 'tech') {
+      plan = ['nursery', 'tech', 'barracks', nestByDomain[spec] || 'tower', 'tower'];
+      techDelay = 0.7;
+    }
     const aint = arch.attackInterval;
     this._ai = {
       spec,
@@ -271,10 +337,12 @@ export class Simulation {
       arch, diff,
       buildPlan: plan,
       buildIdx: 0, buildTimer: 5 * diff.thinkMul * arch.buildSpeed,
-      prodTimer: 2, researchTimer: 18 * diff.thinkMul, abilityTimer: 16 * diff.thinkMul,
+      techDelay,   // 科技路径的研究节奏倍率（原三档 = 1，零影响）
+      prodTimer: 2, researchTimer: 18 * diff.thinkMul * techDelay, abilityTimer: 16 * diff.thinkMul,
       attackTimer: aint[0] * diff.thinkMul + 10,   // +10s 首波宽限，避免开局即被压
       attackInterval: aint, soldierReq: arch.soldierReq[0], soldierReqMax: arch.soldierReq[1],
       abilityUse: arch.abilityUse, expandBias: arch.expandBias,
+      abilityPhase: 0,  // 难度专属能力的轮换相位（避免固定候选顺序饿死），不消费 RNG
       sigCount: 0, defTimer: 0, defAbilityTimer: 0, defending: false,
       waveReinforce: diff.waveReinforce || 0,   // 波次节奏（默认档只发首波）
       repair: diff.repair || 0, repairTimer: 0,               // 敌方后勤维修（默认档关闭/半开）
@@ -293,16 +361,32 @@ export class Simulation {
       id: this.nextId++, side, type, caste: e.caste, domain: e.domain, armor: e.armor, ability: e.ability,
       x, z, hp: e.hp, maxHp: e.hp, dmg: e.dmg, range: e.range, atkcd: e.atkcd, melee: e.melee,
       dtype: e.dtype, splash: e.splash, speed: e.speed,
+      // 战斗细节 traits（来自 effectiveUnit；未声明则为 0，行为等价）
+      critChance: e.critChance, critMul: e.critMul, pierce: e.pierce, flankBonus: e.flankBonus,
+      lifesteal: e.lifesteal, poisonOnHit: e.poisonOnHit, slowOnHit: e.slowOnHit,
+      // 状态效果：中毒（可叠层）/ 腐蚀破甲 / 减速 / 眩晕
+      poison: { stacks: 0, t: 0, dps: 0, src: null },
+      corrodeT: 0, slowT: 0, stunT: 0,
       carryCap: e.carry, carryRes: 'bio', carrying: 0,
       level: opts.level || 1, elite: !!opts.elite, xp: 0, accent, sig,
       state: 'idle', target: null, waypoints: [], nodeId: null, homeId: null,
       heading: Math.random() * 6.28, moving: false, atkTimer: 0,
       order: 'auto', lastAttacker: null, burrowed: false, phase: Math.random() * 6.28, defendUntil: 0,
+      // 行动细节：阵型 / 巡逻路径 / 驻守锚点
+      formation: 'auto', patrol: null, patrolIdx: 0, holdX: null, holdZ: null,
       buff: { dmg: 1, tank: 1, spd: 1, t: 0 },
     };
     this.units.push(u);
     if (base.role === 'econ') this._assignHarvest(u);
     return u;
+  }
+
+  /** 单位升级/进化/纪元跃迁后同步战斗 traits（保证暴击/破甲/吸血随形态更新）。 */
+  _syncTraits(u) {
+    const e = effectiveUnit(u.type, this.sp[u.side], this.era[u.side], { level: u.level, elite: u.elite });
+    u.critChance = e.critChance; u.critMul = e.critMul; u.pierce = e.pierce;
+    u.flankBonus = e.flankBonus; u.lifesteal = e.lifesteal;
+    u.poisonOnHit = e.poisonOnHit; u.slowOnHit = e.slowOnHit;
   }
 
   _makeBuilding(side, type, x, z, done = false) {
@@ -518,8 +602,8 @@ export class Simulation {
       case 'a_acidpool': this._addHazard(x, z, 8, 16, side, 'acid', 0, 6, 'acidpool'); this._fx('acidpool', x, 0.4, z, { color: 0x9fe06a }); break;
       case 'a_whirl': this._addHazard(x, z, 10, 3, side, 'bite', 0.5, 4, 'whirl'); this._fx('whirl', x, 0.6, z, { color: 0x6fc8e0 }); break;
       case 'a_venom': this._addHazard(x, z, 7, 20, side, 'sting', 0, 3.5, 'venom'); this._fx('venom', x, 1, z, { color: 0xb6ff6f }); break;
-      case 'a_dive': this._dmgRadius(x, z, 7, 42, side, 'bite'); this._fx('dive', x, 6, z, { color: 0xffd27f }); break;
-      case 'a_bomb': this._dmgRadius(x, z, 9, 34, side, 'bomb'); this._fx('bomb', x, 5, z, { color: 0xff9a5a }); break;
+      case 'a_dive': this._dmgRadius(x, z, 7, 42, side, 'bite', { stun: 0.5 }); this._fx('dive', x, 6, z, { color: 0xffd27f }); break;
+      case 'a_bomb': this._dmgRadius(x, z, 9, 34, side, 'bomb', { stun: 0.7 }); this._fx('bomb', x, 5, z, { color: 0xff9a5a }); break;
       case 'a_burrow': this._delayedAmbush(side, x, z); break;
       default: break;
     }
@@ -543,19 +627,52 @@ export class Simulation {
     this.hazards.push({ x, z, r: 7, owner: side, dtype: 'pierce', slow: 0, dps: 0, t: 0, delay: 3, fx: 'ambush', dmg: 30, accum: 0 });
     this._fx('ring', x, 0.4, z, { color: 0x8a7f56, r: 7 });   // 落点微标记（埋伏圈）
   }
-  _dmgRadius(x, z, r, dmg, owner, dtype) {
-    for (const u of this.units) { if (u.side === owner) continue; if (dist(u.x, u.z, x, z) <= r + (u.size || 0)) this._dealDamage({ side: owner }, u, dmg, x, z, true, dtype); }
+  _dmgRadius(x, z, r, dmg, owner, dtype, opts = {}) {
+    for (const u of this.units) {
+      if (u.side === owner || u.hp <= 0) continue;
+      if (dist(u.x, u.z, x, z) <= r + (u.size || 0)) {
+        this._dealDamage({ side: owner }, u, dmg, x, z, true, dtype);
+        // 爆破/俯冲的冲击眩晕：仅对存活单位生效，短促且不改冷却与花费
+        if (opts.stun > 0 && u.hp > 0 && u.stunT !== undefined) u.stunT = Math.max(u.stunT, opts.stun);
+      }
+    }
     for (const b of this.buildings) { if (b.side === owner || b.state === 'constructing') continue; if (dist(b.x, b.z, x, z) <= r + b.size * 0.5) this._dealDamage({ side: owner }, b, dmg, x, z, true, dtype); }
   }
 
-  /** 多选阵型：按近似方阵分散落点，避免整队挤在同一坐标上互相推挤。 */
-  _formationPoint(i, n, x, z) {
+  /** 给单位挂载状态（供未来事件/命令使用，A 侧唯一入口）。 */
+  applyStatus(unitId, kind, value = 2) {
+    const u = this.getUnit(unitId);
+    if (!u || u.hp <= 0) return false;
+    if (kind === 'stun') u.stunT = Math.max(u.stunT || 0, value);
+    else if (kind === 'slow') { u.slowT = Math.max(u.slowT || 0, value); u.slowMul = 0.6; }
+    else if (kind === 'corrode') u.corrodeT = Math.max(u.corrodeT || 0, value);
+    else if (kind === 'poison' && u.poison) {
+      u.poison.stacks = Math.min(POISON_MAX_STACKS, u.poison.stacks + 1);
+      u.poison.t = POISON_T; u.poison.dps = Math.max(u.poison.dps, 4 * u.poison.stacks);
+    } else return false;
+    return true;
+  }
+
+  /** 多选阵型：按形态分散落点，避免整队挤在同一坐标上互相推挤。
+   *  auto=近似方阵（原行为逐字不变）；line=横列；column=纵队；wedge=楔形；spread=松散方阵。 */
+  _formationPoint(i, n, x, z, formation = 'auto') {
     if (n <= 1) return { x, z };
-    const cols = Math.ceil(Math.sqrt(n));
-    const rows = Math.ceil(n / cols);
-    const gap = 3.6;
-    const ox = ((i % cols) - (cols - 1) / 2) * gap;
-    const oz = (Math.floor(i / cols) - (rows - 1) / 2) * gap;
+    const gap = formation === 'spread' ? 5.2 : 3.6;
+    let ox, oz;
+    if (formation === 'line') {
+      ox = (i - (n - 1) / 2) * gap; oz = 0;
+    } else if (formation === 'column') {
+      ox = 0; oz = (i - (n - 1) / 2) * gap;
+    } else if (formation === 'wedge') {
+      const row = Math.floor((Math.sqrt(8 * i + 1) - 1) / 2);
+      const first = row * (row + 1) / 2;
+      ox = (i - first - row / 2) * gap; oz = -row * gap;
+    } else {
+      const cols = Math.ceil(Math.sqrt(n));
+      const rows = Math.ceil(n / cols);
+      ox = ((i % cols) - (cols - 1) / 2) * gap;
+      oz = (Math.floor(i / cols) - (rows - 1) / 2) * gap;
+    }
     return { x: clamp(x + ox, -HALF_W + 3, HALF_W - 3), z: clamp(z + oz, -HALF_H + 3, HALF_H - 3) };
   }
 
@@ -564,7 +681,8 @@ export class Simulation {
     const n = ids.length;
     ids.forEach((id, i) => {
       const u = this.getUnit(id); if (!u) return; u.repairId = null;
-      const p = opts.formation === false ? { x, z } : this._formationPoint(i, n, x, z);
+      const p = opts.formation === false ? { x, z }
+        : this._formationPoint(i, n, x, z, opts.formation || u.formation || 'auto');
       if (opts.append) {
         if (!u.waypoints) u.waypoints = [];
         u.waypoints.push(p);
@@ -589,7 +707,8 @@ export class Simulation {
     const n = ids.length;
     ids.forEach((id, i) => {
       const u = this.getUnit(id); if (!u) return; u.repairId = null;
-      const p = opts.formation === false ? { x, z } : this._formationPoint(i, n, x, z);
+      const p = opts.formation === false ? { x, z }
+        : this._formationPoint(i, n, x, z, opts.formation || u.formation || 'auto');
       u.waypoints = []; u.state = 'attackmove'; u.order = 'manual'; u.target = p;
       if (u.domain === 'underground') u.burrowed = false;
     });
@@ -598,7 +717,84 @@ export class Simulation {
     const n = this.nodes.find(x => x.id === nodeId);
     for (const id of ids) { const u = this.getUnit(id); if (!u || UNITS[u.type].role !== 'econ') continue; if (n) { u.repairId = null; u.nodeId = n.id; u.state = 'harvest'; u.order = 'manual'; u.target = { x: n.x, z: n.z }; } }
   }
-  commandStop(ids) { for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.state = 'idle'; u.order = 'auto'; u.target = null; u.waypoints = []; } }
+  commandStop(ids) { for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.state = 'idle'; u.order = 'auto'; u.target = null; u.waypoints = []; u.patrol = null; } }
+
+  /** 驻守：原地守住当前位置，只攻击 HOLD_LEASH 内的目标，绝不追击出圈（守住隘口/巢口）。 */
+  commandHold(ids) {
+    let n = 0;
+    for (const id of ids) {
+      const u = this.getUnit(id); if (!u || UNITS[u.type].role === 'econ') continue;
+      u.repairId = null; u.waypoints = []; u.patrol = null; u.target = null;
+      u.holdX = u.x; u.holdZ = u.z; u.state = 'hold'; u.order = 'manual'; n++;
+      this._fx('ring', u.x, 0.3, u.z, { color: 0x7ef0c8, r: 3 });
+    }
+    if (n) this._toast(`${n} 只单位进入驻守：只打防区内目标，不追击。`);
+    return n;
+  }
+  /** 巡逻：在给定点之间循环往返，途中遇敌则交战，脱离后自动回到巡逻路线。 */
+  commandPatrol(ids, points) {
+    const pts = (points || []).filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.z))
+      .map(p => ({ x: clamp(p.x, -HALF_W + 3, HALF_W - 3), z: clamp(p.z, -HALF_H + 3, HALF_H - 3) }));
+    if (!pts.length) return 0;
+    let n = 0;
+    for (const id of ids) {
+      const u = this.getUnit(id); if (!u || UNITS[u.type].role === 'econ') continue;
+      u.repairId = null; u.waypoints = []; u.target = null;
+      u.patrol = pts.map(p => ({ ...p })); u.patrolIdx = 0; u.state = 'patrol'; u.order = 'manual'; n++;
+      this._fx('ring', pts[0].x, 0.3, pts[0].z, { color: 0x7ec8f0, r: 3 });
+    }
+    if (n) this._toast(`${n} 只单位开始巡逻（${pts.length} 个路径点）。`);
+    return n;
+  }
+  /** 阵型：设置选中单位后续行军落点的散布形态，并立刻以该阵型重排到指定点。 */
+  commandFormation(ids, formation = 'auto', x, z) {
+    const valid = ['auto', 'line', 'wedge', 'column', 'spread'];
+    const f = valid.includes(formation) ? formation : 'auto';
+    const n = ids.length;
+    let applied = 0;
+    ids.forEach((id, i) => {
+      const u = this.getUnit(id); if (!u) return;
+      u.formation = f; applied++;
+      if (Number.isFinite(x) && Number.isFinite(z)) {
+        const p = this._formationPoint(i, n, x, z, f);
+        u.repairId = null; u.waypoints = []; u.state = 'move'; u.order = 'manual'; u.target = p;
+        u.burrowed = false;
+      }
+    });
+    return applied;
+  }
+  /** 集结：把选中的建筑集结点统一设到某点（与 setRally 等价，批量版）。 */
+  commandRally(buildingIds, x, z) {
+    let n = 0;
+    for (const id of buildingIds) if (this.setRally(id, x, z)) n++;
+    return n;
+  }
+
+  _holdUnit(u, dt) {
+    // 防区内出现敌人则原地开火；目标出圈立刻放弃，不追击（与 _attack 的移动逻辑区分）
+    const t = this._nearestEnemyEntity(u.side, u.holdX ?? u.x, u.holdZ ?? u.z, HOLD_LEASH, this._targetOpts(u));
+    if (t && dist(u.x, u.z, t.x, t.z) <= u.range * this._terrainRangeMul(u) + (t.size ? t.size * 0.5 : 0)) {
+      if (u.atkTimer <= 0) {
+        this._dealDamage(u, t, u.dmg, u.x, u.z, !u.melee, u.dtype);
+        if (u.splash > 0) this._applySplash(u, t, u.dmg);
+        u.atkTimer = u.atkcd;
+      }
+    } else if (t) {
+      // 在防区内但够不着：小幅向目标挪动，仍不越过防区边界
+      const dx = t.x - u.x, dz = t.z - u.z, d = Math.hypot(dx, dz) || 1;
+      const nx = u.x + dx / d * Math.min(1.2, d), nz = u.z + dz / d * Math.min(1.2, d);
+      if (dist(nx, nz, u.holdX, u.holdZ) <= HOLD_LEASH * 0.5) { u.x = nx; u.z = nz; u.heading = Math.atan2(dz, dx); u.moving = true; }
+    }
+  }
+  _patrolUnit(u, dt) {
+    const pts = u.patrol;
+    if (!pts || !pts.length) { u.state = 'idle'; u.order = 'auto'; return; }
+    // 途中遇敌：切到 attack 交战，交战结束由 _attack 回 idle 再被 _autoUnit 重新拉回巡逻
+    const t = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO * 0.7, this._targetOpts(u));
+    if (t) { u.target = { id: t.id, x: t.x, z: t.z }; u.state = 'attack'; u.retPatrol = true; return; }
+    const p = pts[u.patrolIdx % pts.length];
+    this._moveTo(u, p.x, p.z, dt, () => { u.patrolIdx = (u.patrolIdx + 1) % pts.length; });
+  }
 
   // ------------------------------------------------------------ 工蚁维修巢室
   /** 选中受损己方建筑时，派最近的工蚁去维修；返回派出的工蚁数。 */
@@ -723,6 +919,7 @@ export class Simulation {
     u.maxHp = e.hp; u.hp = e.hp; u.dmg = e.dmg; u.speed = e.speed; u.range = e.range;
     u.atkcd = e.atkcd; u.melee = e.melee; u.dtype = e.dtype; u.splash = e.splash;
     u.elite = false; u.xp = 0;
+    this._syncTraits(u);
     this._fx('evolve', u.x, 2, u.z, { color: this.sp.P.color });
     this._log(`进化成功：「${UNITS[to].name}」！`, 'good');
     this._emit('evolve', { id: u.id });
@@ -737,8 +934,13 @@ export class Simulation {
     this._tickNodes(dt);
     this._tickWells(dt);
     this._tickAura(dt);
+    // 精炼巢室：每帧重算双方「全军强化」标记（建成即生效、被拆即失效、多座不叠加）
+    for (const s of ['P', 'E']) {
+      this.refined[s] = this.buildings.some(b => b.side === s && b.type === 'refinery' && b.state === 'idle' && b.hp > 0);
+    }
     for (const u of this.units) this._tickUnit(u, dt);
     this._tickHazards(dt);
+    this._tickTerrain(dt);
     this._reap();
     this._tickEcho();
     this._tickAI(dt);
@@ -849,6 +1051,7 @@ export class Simulation {
       const e = effectiveUnit(u.type, this.sp[side], newEra, { level: u.level, elite: u.elite });
       u.maxHp = e.hp; u.hp = clamp(e.hp * ratio, 1, e.hp);
       u.dmg = e.dmg; u.speed = e.speed;
+      this._syncTraits(u);
     }
   }
 
@@ -862,6 +1065,7 @@ export class Simulation {
     // 战术掩体受击闪白衰减（与单位共用 0.16 包络）
     for (const ob of this.obstacles) if (ob.flash > 0) ob.flash -= dt;
     if (u.buff.t > 0) { u.buff.t -= dt; if (u.buff.t <= 0) { u.buff.dmg = 1; u.buff.tank = 1; u.buff.spd = 1; } }
+    this._tickStatuses(u, dt);
     // 地下掘蚁：静止/移动时潜行（不可锁定、提速）
     if (u.domain === 'underground') {
       const surfaced = u.state === 'attack' || u.state === 'harvest' || u.state === 'return' || u.order === 'manual';
@@ -880,11 +1084,42 @@ export class Simulation {
       case 'repair': this._repair(u, dt); break;
       case 'attack': this._attack(u, dt); break;
       case 'attackmove': this._attackMove(u, dt); break;
+      case 'hold': this._holdUnit(u, dt); break;
+      case 'patrol': this._patrolUnit(u, dt); break;
+    }
+  }
+
+  /** 状态效果结算：中毒叠层 DoT / 腐蚀破甲 / 减速分层 / 眩晕停工。
+   *  中毒 DoT 用「无 traits 的代理」走 _dealDamage 统一口径（统计 / 飘字 / 尸体总闸），
+   *  不会再触发第二次中毒或暴击；能力自带的酸池 / 毒雾仍走 _tickHazards，互不重复。 */
+  _tickStatuses(u, dt) {
+    if (u.corrodeT > 0) u.corrodeT = Math.max(0, u.corrodeT - dt);
+    if (u.slowT > 0) { u.slowT = Math.max(0, u.slowT - dt); if (u.slowT <= 0) u.slowMul = 1; }
+    if (u.stunT > 0) {
+      u.stunT = Math.max(0, u.stunT - dt);
+      if (this.stats && this.stats[u.side]) this.stats[u.side].stunTicks += dt;
+      return;   // 眩晕期间不行动（索敌 / 移动 / 攻击全停），但上面的计时照常衰减
+    }
+    const p = u.poison;
+    if (p && p.t > 0 && p.stacks > 0 && u.hp > 0) {
+      p.t -= dt;
+      p.acc = (p.acc || 0) + dt;
+      if (p.acc >= 0.5) {
+        const step = p.acc; p.acc = 0;
+        const before = u.hp;
+        this._dealDamage({ side: p.src || (u.side === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER) },
+          u, p.dps * step, u.x, u.z, true, 'psi');
+        if (this.stats && p.src && this.stats[p.src]) this.stats[p.src].poisonTicks++;
+        if (before > 0 && u.hp <= 0 && this.stats && p.src && this.stats[p.src]) this.stats[p.src].statusKills++;
+      }
+      if (p.t <= 0) { p.stacks = 0; p.dps = 0; p.acc = 0; p.src = null; }
     }
   }
 
   _autoUnit(u, dt) {
     if (UNITS[u.type].role === 'econ') { this._assignHarvest(u); return; }
+    // 巡逻单位若因故回到 idle（如集结/停止后再自主），重新接上巡逻路线
+    if (u.patrol && u.patrol.length && u.order !== 'manual') { u.state = 'patrol'; u.order = 'manual'; return; }
     const t = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO, this._targetOpts(u));
     if (t) { u.target = { id: t.id, x: t.x, z: t.z }; u.state = 'attack'; if (u.domain === 'underground') u.burrowed = false; }
   }
@@ -938,7 +1173,10 @@ export class Simulation {
     // 原实现会置 state='auto'，但状态机并无该分支，单位将永久静止 —— 统一回到 idle 由 _autoUnit 重新索敌。
     if (!tgt || tgt.hp <= 0) {
       if (tgt && this.stats && this.stats[u.side]) this.stats[u.side].overkillSaved++;
-      u.state = 'idle'; u.target = null;
+      // 巡逻单位交战结束后回到巡逻路线（不丢命令）；其余单位照旧回 idle 重新索敌。
+      if (u.retPatrol && u.patrol && u.patrol.length) { u.state = 'patrol'; u.order = 'manual'; u.retPatrol = false; }
+      else u.state = 'idle';
+      u.target = null;
       return;
     }
     if (u.domain === 'underground') u.burrowed = false;
@@ -1010,7 +1248,9 @@ export class Simulation {
       }
     }
     const vl = Math.hypot(vx, vz) || 1; vx /= vl; vz /= vl;
-    let sp = u.speed * u.buff.spd * (u.burrowed ? BURROW_IDLE_SPEED : 1) * this._terrainSpeedMul(u);
+    // 命中减速（slowMul）与地形减速叠乘；眩晕由 _tickStatuses 直接挡住整帧行动。
+    let sp = u.speed * u.buff.spd * (u.slowT > 0 ? (u.slowMul || 1) : 1)
+      * (u.burrowed ? BURROW_IDLE_SPEED : 1) * this._terrainSpeedMul(u);
     const step = sp * dt;
     u.x = clamp(u.x + vx * step, -HALF_W + 2, HALF_W - 2);
     u.z = clamp(u.z + vz * step, -HALF_H + 2, HALF_H - 2);
@@ -1081,12 +1321,62 @@ export class Simulation {
     if (!tgt || tgt.hp <= 0) return;
     const aSide = attacker && attacker.side ? attacker.side : null;
     const armor = tgt.armor || (BUILDINGS[tgt.type] ? 'chitin' : 'soft');
+    // 真实单位攻击者带 critChance 字段，才拥有战斗 traits；溅射 / 危害 / 范围伤害
+    // 传的是 {side} 代理，建筑攻击者也没有 traits —— 二者保持原结算路径逐字不变。
+    const unitAtk = !!(attacker && attacker.critChance !== undefined);
+    const st = this.stats && aSide ? this.stats[aSide] : null;
     let d = dmg;
     if (aSide) d *= this.aura[aSide].dmg;
     if (tgt.buff) d *= tgt.buff.tank;
-    const mult = dmgMult(dtype, armor);
+    const baseMult = dmgMult(dtype, armor);
+    let mult = baseMult;
+    // 破甲 trait + 腐蚀状态：只把「护甲抗性（mult<1）」按比例拉回 1，不放大已有克制。
+    if (mult < 1) {
+      if (unitAtk && attacker.pierce > 0) { mult += (1 - mult) * attacker.pierce; if (st) st.pierceHits++; }
+      if (tgt.corrodeT > 0) { mult += (1 - mult) * CORRODE_SHRED; if (st) st.corrodeHits++; }
+    }
     d *= mult;
+    // 暴击：专用确定性随机流，不扰动 AI 的 Math.random 序列。
+    let crit = false;
+    if (unitAtk && attacker.critChance > 0 && this._crand() < attacker.critChance) {
+      crit = true; d *= attacker.critMul || 1.5;
+      if (st) st.critRolls++;
+      this._fx('critBurst', tgt.x, (tgt.size ? tgt.size : 2) + 1, tgt.z, { color: 0xffe27f });
+    }
+    // 侧翼夹击：从目标背后 / 侧后方命中（与目标朝向夹角 > 120°）触发加成。
+    if (unitAtk && attacker.flankBonus > 0 && tgt.poison && tgt.heading !== undefined) {
+      const ang = Math.atan2(fromZ - tgt.z, fromX - tgt.x);
+      let diff = Math.abs(ang - (tgt.heading || 0));
+      if (diff > Math.PI) diff = Math.PI * 2 - diff;
+      if (diff > 2.1) { d *= 1 + attacker.flankBonus; if (st) st.flankHits++; }
+    }
+    // 天气：只削弱真实单位的远程普攻命中，能力 / 危害 / 溅射 / 塔不受影响。
+    if (unitAtk && ranged) d *= this._wea().hitMul;
+    // 精炼巢室：全军作战单位 +8% 伤害（双方对等，多座不叠加）。
+    if (aSide && this.refined[aSide] && attacker && UNITS[attacker.type] && UNITS[attacker.type].role === 'combat') d *= 1.08;
     tgt.hp -= d;
+    // 吸血：按实际结算伤害回复攻击者（不超上限、尸体不回血）。
+    if (unitAtk && attacker.lifesteal > 0 && attacker.hp > 0 && attacker.maxHp) {
+      const heal = Math.min(d * attacker.lifesteal, attacker.maxHp - attacker.hp);
+      if (heal > 0) { attacker.hp += heal; if (st) st.lifestealHp += heal; }
+    }
+    // 命中附带状态：仅对「存活的真实单位目标」生效。
+    if (unitAtk && tgt.poison && tgt.hp > 0) {
+      if (attacker.poisonOnHit > 0) {
+        const p = tgt.poison;
+        p.stacks = Math.min(POISON_MAX_STACKS, p.stacks + 1);
+        p.t = POISON_T;
+        p.dps = dmg * attacker.poisonOnHit * POISON_STACK_DPS * p.stacks;
+        p.src = aSide;
+      }
+      if (attacker.slowOnHit > 0) {
+        tgt.slowT = Math.max(tgt.slowT, 2);
+        tgt.slowMul = 1 - attacker.slowOnHit;
+        if (st) st.slowHits++;
+      }
+    }
+    // 酸蚀：任何酸属性命中都给单位挂 3 秒破甲（与武器 / 能力文案呼应）。
+    if (dtype === 'acid' && tgt.corrodeT !== undefined && tgt.hp > 0) tgt.corrodeT = 3;
     if (tgt.flash !== undefined) tgt.flash = 0.16;
     if (tgt.lastAttacker !== undefined) tgt.lastAttacker = aSide;
     // 我方巢室受袭分级告警：跨过 75 / 50 / 25% 各播报一次，混战不刷屏，
@@ -1112,7 +1402,7 @@ export class Simulation {
       if (tgt.side && this.stats[tgt.side]) this.stats[tgt.side].dmgTaken += d;
     }
     this._emit('dmg', { x: tgt.x, z: tgt.z, amount: Math.max(1, Math.round(d)), victim: tgt.side, atk: aSide,
-      y: (tgt.size ? tgt.size : 2) + 1, mult, dtype, armor });
+      y: (tgt.size ? tgt.size : 2) + 1, mult, dtype, armor, crit });
     const y = (tgt.size ? tgt.size : 2) + 1;
     if (ranged) this._fx(this._projFor(dtype), tgt.x, y, tgt.z, { from: { x: fromX, y: 1, z: fromZ }, color: aSide === SIDES.PLAYER ? 0xaef06a : 0xff8a5a, dtype });
     else this._fx('hit', tgt.x, y, tgt.z, { color: 0xffd27f });
@@ -1138,6 +1428,7 @@ export class Simulation {
       const e = effectiveUnit(u.type, this.sp[u.side], this.era[u.side], { level: u.level, elite: u.elite });
       u.maxHp = e.hp; u.hp = clamp(e.hp * ratio, 1, e.hp);
       u.dmg = e.dmg;
+      this._syncTraits(u);
       this._fx('levelup', u.x, 2, u.z, { color: this.sp[u.side].color });
       if (this.stats && this.stats[u.side]) this.stats[u.side].levelUps++;
       this._levelMilestone(u);
@@ -1269,12 +1560,104 @@ export class Simulation {
     }
   }
 
+  /** 静态危害地块：熔岩 / 酸池，双方单位与建筑驻留其中持续受灼（战役特定章节）。
+   *  用「中立代理」走 _dealDamage 统一口径，故不会给任何一方刷击杀/经验，也不触发我方告警。
+   *  按 TERRAIN_TICK 节流结算，避免每帧对每个单位全表扫描刷伤害事件。 */
+  _tickTerrain(dt) {
+    if (!this.terrainHazards.length) return;
+    for (const h of this.terrainHazards) {
+      h.accum += dt;
+      if (h.accum < TERRAIN_TICK) continue;
+      const step = h.accum; h.accum = 0;
+      h.fxAcc = (h.fxAcc || 0) + step;
+      const showFx = h.fxAcc >= 1;
+      if (showFx) h.fxAcc = 0;
+      const dtype = h.type === 'lava' ? 'bomb' : 'acid';
+      const neutral = h.type === 'lava' ? 'E' : 'P';   // 归属仅用于 dtype 与色泽，不产生阵营收益
+      for (const u of this.units) {
+        if (u.hp <= 0 || !this.isTargetable(u)) continue;
+        if (u.domain === 'air') continue;               // 空域单位不触地，免疫地面危害
+        if (dist(u.x, u.z, h.x, h.z) <= h.r + (u.size || 1)) {
+          this._dealDamage({ side: neutral }, u, h.dps * step, h.x, h.z, true, dtype);
+          if (dtype === 'acid' && u.corrodeT !== undefined) u.corrodeT = 3;
+        }
+      }
+      for (const b of this.buildings) {
+        if (b.hp <= 0 || b.state === 'constructing') continue;
+        if (dist(b.x, b.z, h.x, h.z) <= h.r + b.size * 0.5) this._dealDamage({ side: neutral }, b, h.dps * step, h.x, h.z, true, dtype);
+      }
+      if (showFx) this._fx('ring', h.x, 0.4, h.z, { color: h.type === 'lava' ? 0xff7a3a : 0x9fe06a, r: h.r });
+    }
+  }
+
   _checkEnd() {
     const pHQ = this.buildings.find(b => b.side === SIDES.PLAYER && b.type === 'hq');
     const eHQ = this.buildings.find(b => b.side === SIDES.ENEMY && b.type === 'hq');
-    if (!eHQ) { this.ended = 'win'; this._emit('end', { type: 'win', mode: this.mode, chapter: this.chapter }); }
-    else if (!pHQ) { this.ended = 'lose'; this._emit('end', { type: 'lose', mode: this.mode, chapter: this.chapter }); }
+    const win = (reason) => {
+      if (this.ended) return;
+      this.ended = 'win';
+      this._log(`作战目标达成：${reason}`, 'key');
+      this._emit('end', { type: 'win', mode: this.mode, chapter: this.chapter, objective: this.objective ? this.objective.type : 'destroy', reason });
+    };
+    // 摧毁敌方蚁后巢永远是最高优先级胜利条件（所有目标共享）
+    if (!eHQ) { win('敌方蚁后巢已被摧毁'); return; }
+    if (!pHQ) { this.ended = 'lose'; this._emit('end', { type: 'lose', mode: this.mode, chapter: this.chapter }); return; }
+    const o = this.objective;
+    if (!o || o.type === 'destroy') return;   // 默认目标：逐字保持原判定
+    if (o.type === 'survive') {
+      // 存活到时限：只需蚁后巢还在（前面已确认 pHQ 存在）
+      if (this.time >= o.surviveT) win(`在敌方攻势下守住 ${o.surviveT} 秒`);
+    } else if (o.type === 'harvest') {
+      const got = this.stats ? this.stats.P.harvested : 0;
+      if (got >= o.harvestGoal) win(`累计采集 ${Math.round(got)} 生物质`);
+    } else if (o.type === 'dominate') {
+      const all = this.wells.length > 0 && this.wells.every(w => w.owner === SIDES.PLAYER);
+      const dt = Math.max(0, this.time - (o._lastCheckT == null ? this.time : o._lastCheckT));
+      o.holdT = all ? o.holdT + dt : 0;
+      if (o.holdT >= o.dominateHold) win(`占领全部信息素井并守住 ${o.dominateHold} 秒`);
+    }
+    if (this.objective) this.objective._lastCheckT = this.time;
   }
+  /** 目标进度（供 B 侧 HUD 只读显示，不新增事件类型） */
+  objectiveProgress() {
+    const o = this.objective;
+    if (!o || o.type === 'destroy') return { type: 'destroy', label: o ? o.label : '', ratio: 0 };
+    let ratio = 0;
+    if (o.type === 'survive') ratio = clamp(this.time / o.surviveT, 0, 1);
+    else if (o.type === 'harvest') ratio = clamp((this.stats ? this.stats.P.harvested : 0) / o.harvestGoal, 0, 1);
+    else if (o.type === 'dominate') ratio = clamp(o.holdT / o.dominateHold, 0, 1);
+    return { type: o.type, label: o.label, ratio };
+  }
+
+  // ------------------------------------------------------------ 经济细化
+  /** 资源贸易：按固定比价把一种资源换成另一种（含 20% 折损）。
+   *  仅在玩家侧可用；用于「生多矿少」时的应急调剂，不改变自动采集与造价。 */
+  commandTrade(from, to, amount = 100) {
+    if (from === to || !RES_ORDER.includes(from) || !RES_ORDER.includes(to)) return 0;
+    const RATE = { bio: 1, min: 2.2, ph: 3.0 };   // 相对价值：矿 / 信息素更贵
+    const n = Math.max(0, Math.floor(amount));
+    if (!n || this.res_(SIDES.PLAYER, from) < n) { this._toast('可用于贸易的资源不足'); return 0; }
+    const out = Math.max(1, Math.floor(n * RATE[from] / RATE[to] * 0.8));
+    this.res.P[from] -= n; this.gainRes(SIDES.PLAYER, to, out);
+    this.tradeDone++;
+    this._log(`贸易：${n} ${RESOURCES[from].short} → ${out} ${RESOURCES[to].short}（含折损）。`, 'info');
+    this._fx('ring', PLAYER_BASE.x, 1, PLAYER_BASE.z, { color: 0xffe27f, r: 8 });
+    return out;
+  }
+  /** 卵孵化加速：消耗信息素，立刻把指定建筑队列首项的剩余时间压缩一半。 */
+  commandBoostHatch(buildingId) {
+    const b = this.getBuilding(buildingId);
+    if (!b || b.side !== SIDES.PLAYER || !b.queue || !b.queue.length) return false;
+    const cost = 12;
+    if (this.res_(SIDES.PLAYER, 'ph') < cost) { this._toast('信息素不足，无法催孵'); return false; }
+    this.res.P.ph -= cost;
+    b.queue[0].t *= 0.5;
+    this._fx('ring', b.x, 0.5, b.z, { color: 0xd98ad0, r: b.size });
+    this._toast(`催孵成功：「${BUILDINGS[b.type].name}」生产提速。`);
+    return true;
+  }
+  /** 精炼状态（供 B 侧只读）：该族群是否已建成精炼巢室。 */
+  isRefined(side = SIDES.PLAYER) { return !!this.refined[side]; }
 
   // -------------------------------------------------------------- 敌方 AI
   _tickAI(dt) {
@@ -1340,7 +1723,7 @@ export class Simulation {
 
     ai.researchTimer -= dt;
     if (ai.researchTimer <= 0) {
-      ai.researchTimer = 28 * diff.thinkMul;
+      ai.researchTimer = 28 * diff.thinkMul * (ai.techDelay || 1);
       const tech = eb.find(b => b.type === 'tech' && b.state === 'idle');
       if (tech && !tech.research && this.era[E] < MAX_ERA && bio > researchCost(this.sp[E], this.era[E]) + 80) {
         this.res.E.bio -= researchCost(this.sp[E], this.era[E]);
@@ -1353,11 +1736,20 @@ export class Simulation {
       ai.abilityTimer = (20 + Math.random() * 8) * diff.thinkMul;
       if (Math.random() < arch.abilityUse) {
         const smart = diff.abilitySmart || 0;
-        // 基础候选：2 增益 + 3 主攻；hard 把「涡卷/俯冲轰炸」插到增益之后、3 主攻之前，
-        // 让这俩作为 hard 的主攻候选（而非冷却兜底）被真正施放。每次 abilityTimer 至多放 1 个
-        // 且 break 即止 → 施放节奏不变，只改变主攻组合。easy/normal 的 aiAbilities 为空数组
-        // → 候选列表逐字不变，默认难度零平衡影响。
-        const cand = ['a_frenzy', 'a_rally', ...(diff.aiAbilities || []), 'a_bomb', 'a_venom', 'a_acidpool'];
+        // 基础候选：2 增益 + 3 主攻（easy/normal 逐字保持旧列表，零平衡影响）。
+        // hard 专属的「涡卷 / 俯冲轰炸」采用隔轮置顶轮换：每轮 abilityTimer 至多放 1 个且 break 即止，
+        // 若把专属能力固定排在增益之后，a_frenzy 几乎总是先成功 → 专属能力永远饿死。
+        // 奇数轮把一枚专属能力提到队首，偶数轮回到常规组合，两个专属能力交替上场；
+        // 相位计数不用 Math.random，保证固定随机流 A/B 不受污染。
+        const extraAbilities = diff.aiAbilities || [];
+        let cand = ['a_frenzy', 'a_rally', 'a_bomb', 'a_venom', 'a_acidpool'];
+        if (extraAbilities.length) {
+          ai.abilityPhase = (ai.abilityPhase || 0) + 1;
+          if (ai.abilityPhase % 2 === 1) {
+            const lead = extraAbilities[Math.floor(ai.abilityPhase / 2) % extraAbilities.length];
+            cand = [lead, ...cand];
+          }
+        }
         for (const k of cand) {
           // 先筛冷却与信息素，避免「选好落点却放不出来」白算一次
           if ((this.cd[E][k] || 0) > 0 || this.res_(E, 'ph') < (ABILITIES[k].cost || 0)) continue;
