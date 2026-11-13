@@ -520,7 +520,7 @@ export class Simulation {
       case 'a_venom': this._addHazard(x, z, 7, 20, side, 'sting', 0, 3.5, 'venom'); this._fx('venom', x, 1, z, { color: 0xb6ff6f }); break;
       case 'a_dive': this._dmgRadius(x, z, 7, 42, side, 'bite'); this._fx('dive', x, 6, z, { color: 0xffd27f }); break;
       case 'a_bomb': this._dmgRadius(x, z, 9, 34, side, 'bomb'); this._fx('bomb', x, 5, z, { color: 0xff9a5a }); break;
-      case 'a_burrow': this._dmgRadius(x, z, 7, 30, side, 'pierce'); this._fx('ambush', x, 0.4, z, { color: 0x8a7f56 }); break;
+      case 'a_burrow': this._delayedAmbush(side, x, z); break;
       default: break;
     }
   }
@@ -535,7 +535,14 @@ export class Simulation {
       if (dmg > 1) this._fx('ring', u.x, 0.5, u.z, { color: 0xffd27f });
     }
   }
-  _addHazard(x, z, r, dps, owner, dtype, slow, t, fx) { this.hazards.push({ x, z, r, dps, owner, dtype, slow, t, fx, accum: 0 }); }
+  _addHazard(x, z, r, dps, owner, dtype, slow, t, fx) { this.hazards.push({ x, z, r, dps, owner, dtype, slow, t, fx, accum: 0, delay: 0 }); }
+  /** 钻地突袭：落点先埋伏 3 秒（无伤、不可被提前触发），破土瞬间对范围内敌人造成一次穿刺突袭伤害。
+   *  兑现 ABILITIES.a_burrow 的 desc 承诺——原实现是立即 AoE，丢掉「3 秒后破土」的延迟手感与战术价值。
+   *  该能力不在 AI 候选池（_tickAI 的 cand 列表），仅玩家手动施放，故改动零 AI 平衡影响。 */
+  _delayedAmbush(side, x, z) {
+    this.hazards.push({ x, z, r: 7, owner: side, dtype: 'pierce', slow: 0, dps: 0, t: 0.5, delay: 3, fx: 'ambush', dmg: 30, accum: 0 });
+    this._fx('ring', x, 0.4, z, { color: 0x8a7f56, r: 7 });   // 落点微标记（埋伏圈）
+  }
   _dmgRadius(x, z, r, dmg, owner, dtype) {
     for (const u of this.units) { if (u.side === owner) continue; if (dist(u.x, u.z, x, z) <= r + (u.size || 0)) this._dealDamage({ side: owner }, u, dmg, x, z, true, dtype); }
     for (const b of this.buildings) { if (b.side === owner || b.state === 'constructing') continue; if (dist(b.x, b.z, x, z) <= r + b.size * 0.5) this._dealDamage({ side: owner }, b, dmg, x, z, true, dtype); }
