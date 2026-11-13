@@ -1239,9 +1239,29 @@ export class UI {
       }
     }
     // 危险区（范围技能残留）
+    // 延时埋伏（钻地突袭）：sim 在 h.delay>0 期间不造成任何持续伤害，破土瞬间才结算一次，
+    // 故不能画成红色掉血区——改用琥珀虚线预警圈 + 中心破土点十字，与 3D _syncHazards 的 ambush 配色一致；
+    // 亮度随剩余时间递减而升高（1/(1+delay)），无需假设总埋伏时长
     for (const h of (s.hazards || [])) {
-      g.fillStyle = 'rgba(255,130,95,0.2)';
-      g.beginPath(); g.arc(toX(h.x), toY(h.z), Math.max(1.5, h.r / (2 * HW) * W), 0, 6.28); g.fill();
+      const cx = toX(h.x), cy = toY(h.z);
+      const R = Math.max(1.5, h.r / (2 * HW) * W);
+      if (h.delay > 0) {
+        const urg = 1 / (1 + h.delay);
+        const a = Math.min(1, 0.45 + 0.5 * urg + 0.08 * Math.sin((s.time || 0) * 8)).toFixed(2);
+        g.setLineDash([2.5, 2.5]);
+        g.strokeStyle = `rgba(214,180,112,${a})`; g.lineWidth = 1.2;
+        g.beginPath(); g.arc(cx, cy, R, 0, 6.28); g.stroke();
+        g.setLineDash([]);   // 复位，避免影响后续图层
+        g.strokeStyle = `rgba(255,215,140,${a})`; g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(cx - 2.5, cy); g.lineTo(cx + 2.5, cy);
+        g.moveTo(cx, cy - 2.5); g.lineTo(cx, cy + 2.5);
+        g.stroke();
+        continue;
+      }
+      // 破土后的 0.5s 残留同样是无持续伤害的一次性突袭（h.dmg 只有该类型有），保持琥珀系
+      g.fillStyle = h.dmg != null ? 'rgba(214,180,112,0.22)' : 'rgba(255,130,95,0.2)';
+      g.beginPath(); g.arc(cx, cy, R, 0, 6.28); g.fill();
     }
     // 信息素井：归属色圈 + 占领进度弧（双方同时在场时加粗表示争夺）
     for (const w of (s.wells || [])) {
