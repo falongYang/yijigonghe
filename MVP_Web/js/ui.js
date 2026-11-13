@@ -32,6 +32,8 @@ export class UI {
     this._grpSig = '';
     this._dmgLayer = document.getElementById('dmg-layer');
     this._dmgWindow = 0; this._dmgInWindow = 0;
+    // 资源净速率：1s 滑动窗口结算 + 指数平滑，开局首窗跳过避免初始资源发放造成尖峰
+    this._rateWin = null; this._rateShown = { bio: 0, min: 0, ph: 0 };
     // 小地图交战图层：dmg / death 事件聚合的短寿热点与消散圈
     this._combatMarks = []; this._deathMarks = [];
     this._suppressCarouselClick = false;
@@ -1018,6 +1020,7 @@ export class UI {
     $('#res-bio').textContent = Math.floor(s.res.P.bio);
     $('#res-min').textContent = Math.floor(s.res.P.min);
     $('#res-ph').textContent = Math.floor(s.res.P.ph);
+    this._updateResRate(s);
     $('#res-pop').textContent = `${s.pop(SIDES.PLAYER)}/110`;
     $('#res-era').textContent = s.era.P + 1;
     $('#res-era-name').textContent = ERAS[s.era.P].name;
@@ -1054,6 +1057,30 @@ export class UI {
     this._refreshSelection();
     this._drawMinimap();
     this._refreshGroups();
+  }
+
+  /** 资源净速率：每 1 秒窗口结算一次，显示每秒入账/支出的实时净值（正绿 / 负橙）。
+   *  用指数平滑抑制单帧抖动；开局首窗仅建立基线、不显示，避免初始资源发放造成速率尖峰。 */
+  _updateResRate(s) {
+    const now = performance.now();
+    const cur = s.res.P;
+    if (!this._rateWin) { this._rateWin = { bio: cur.bio, min: cur.min, ph: cur.ph, t0: now }; return; }
+    const w = this._rateWin;
+    const elapse = (now - w.t0) / 1000;
+    if (elapse < 1) return;                       // 攒够 1 秒窗口再结算
+    for (const r of RES_ORDER) {
+      const inst = (cur[r] - w[r]) / elapse;
+      this._rateShown[r] = this._rateShown[r] * 0.6 + inst * 0.4;
+      const v = this._rateShown[r];
+      const elr = document.getElementById('rate-' + r);
+      if (!elr) continue;
+      if (Math.abs(v) < 0.05) { elr.textContent = '0/s'; elr.className = 'res-rate zero'; }
+      else {
+        elr.textContent = `${v > 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}/s`;
+        elr.className = 'res-rate ' + (v > 0 ? 'pos' : 'neg');
+      }
+    }
+    w.bio = cur.bio; w.min = cur.min; w.ph = cur.ph; w.t0 = now;   // 重置窗口基线
   }
 
   _updateAb(id, key) {

@@ -67,6 +67,12 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .dot.bio { background: #8fd06a; } .dot.min { background: #c9b07a; } .dot.ph { background: #d98ad0; }
 .res-chip b { color: #fff; font-variant-numeric: tabular-nums; min-width: 26px; text-align: right; }
 .res-chip.era b { color: #ffd27f; } .res-chip.era i { color: #9aa489; font-style: normal; font-size: 11px; }
+/* 资源净速率：每秒入账 / 支出的实时净值，正绿负橙，便于一眼判断经济健康度 */
+.res-rate { font-size: 10px; font-variant-numeric: tabular-nums; min-width: 34px; text-align: left; opacity: .9; align-self: center; }
+.res-rate::before { content: ''; }
+.res-rate.pos { color: #7fe06a; }
+.res-rate.neg { color: #ff9d5c; }
+.res-rate.zero { color: #8a9479; }
 
 /* 右上 */
 #topright { position: fixed; top: 12px; right: 12px; display: flex; gap: 8px; align-items: center; }
