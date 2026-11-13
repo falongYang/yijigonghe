@@ -1289,6 +1289,31 @@ export class UI {
     if ((bf.spd || 1) > 1.01) buffTags.push('<b style="color:#7ef0ff">移速 ×' + bf.spd.toFixed(2) + '</b>');
     if ((bf.spd || 1) < 0.99) buffTags.push('<b style="color:#a9c0d8">移速 ×' + bf.spd.toFixed(2) + '</b>');
     const buffHtml = buffTags.length ? `<div class="kv"><span>临时效果</span><b>${buffTags.join(' · ')}</b></div>` : '';
+    // 战斗特性：暴击/暴伤/破甲/侧翼/吸血/淬毒/命中减速。优先读单位当前值（A 侧 _syncTraits 会随
+    // 升级/进化/纪元同步），缺失时回退 effectiveUnit 的理论值；全为加性字段，旧对局自动省略。
+    const tv = (k, dflt) => Number(u[k] != null ? u[k] : (e[k] != null ? e[k] : dflt)) || 0;
+    const cc = tv('critChance', 0), cm = tv('critMul', 0), pc = tv('pierce', 0);
+    const fb = tv('flankBonus', 0), ls = tv('lifesteal', 0);
+    const ps = tv('poisonOnHit', 0), sl = tv('slowOnHit', 0);
+    const traitTags = [];
+    if (cc > 0) traitTags.push(`暴击 <b>${(cc * 100).toFixed(0)}%</b>`);
+    // effectiveUnit 对无暴击单位也会给 critMul 默认 1.5，只有真有暴击概率时暴伤才有意义
+    if (cc > 0 && cm > 1) traitTags.push(`暴伤 <b>×${cm.toFixed(2)}</b>`);
+    if (pc > 0) traitTags.push(`破甲 <b>${(pc * 100).toFixed(0)}%</b>`);
+    if (fb > 0) traitTags.push(`侧翼 <b>+${(fb * 100).toFixed(0)}%</b>`);
+    if (ls > 0) traitTags.push(`吸血 <b>${(ls * 100).toFixed(0)}%</b>`);
+    if (ps > 0) traitTags.push(`淬毒 <b>${ps.toFixed(2)}/s</b>`);
+    if (sl > 0) traitTags.push(`减速 <b>${(sl * 100).toFixed(0)}%</b>`);
+    const traitsHtml = traitTags.length
+      ? `<div class="kv unit-traits"><span>战斗特性</span><b>${traitTags.join(' · ')}</b></div>` : '';
+    // 当前状态效果：与 3D 状态环同口径（中毒叠层/腐蚀/减速/眩晕），选中即可读出剩余秒数。
+    const stTags = [];
+    const poi = u.poison && u.poison.stacks;
+    if (poi) stTags.push(`<b style="color:#9fe06a">中毒 ×${poi}（${(u.poison.t || 0).toFixed(1)}s）</b>`);
+    if ((u.corrodeT || 0) > 0) stTags.push(`<b style="color:#ffb070">腐蚀 ${u.corrodeT.toFixed(1)}s</b>`);
+    if ((u.slowT || 0) > 0) stTags.push(`<b style="color:#8fa8c8">减速 ${u.slowT.toFixed(1)}s</b>`);
+    if ((u.stunT || 0) > 0) stTags.push(`<b style="color:#e8eef6">眩晕 ${u.stunT.toFixed(1)}s</b>`);
+    const statusHtml = stTags.length ? `<div class="kv"><span>状态效果</span><b>${stTags.join(' · ')}</b></div>` : '';
     return `<div class="unit-tag">${u.side === SIDES.PLAYER ? '我方' : '敌方'} · ${dom} · ${def.role === 'econ' ? '采集单位' : '作战单位'}</div>
       <div class="hpbar"><i style="width:${hpPct}%"></i></div>
       <div class="kv"><span>耐久</span><b>${Math.ceil(Math.max(0, u.hp))} / ${u.maxHp}</b></div>
@@ -1302,9 +1327,11 @@ export class UI {
       </div>
       <div class="unit-weapon">${w.name || '—'} · ${dtypeCN[e.dtype] || e.dtype}${e.splash ? ` · 溅射 ${e.splash}` : ''}</div>
       ${counter}
+      ${traitsHtml}
       ${terrainHtml}
       <div class="kv"><span>状态</span><b>${stateCN[u.state] || u.state || '待命'}${u.burrowed ? ' · 潜行' : ''}</b></div>
       ${buffHtml}
+      ${statusHtml}
       <div class="kv"><span>能力</span><b>${def.ability ? ABILITIES[def.ability].name : '—'}</b></div>
       ${u.waypoints && u.waypoints.length ? `<div class="muted sm">已排队 ${u.waypoints.length} 段路径点 · 按 S 清空</div>` : ''}
       <div class="muted sm">右键移动/攻击 · A 攻击移动 · S 停止 · H 驻守 · Q 能力 · T 进化</div>`;

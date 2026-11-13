@@ -427,6 +427,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .unit-weapon { font-size: 11.5px; color: #d8e8b0; margin: 6px 0; }
 .unit-counter { font-size: 11px; color: #9aa489; background: rgba(255,210,127,.09); border-left: 2px solid #ffd27f; padding: 5px 8px; margin: 6px 0; line-height: 1.6; }
 .unit-counter b { color: #ffd27f; }
+/* 战斗特性行：暴击/破甲/侧翼/吸血/淬毒等加性 trait */
+.unit-traits b { color: #cfe6a8; font-weight: 600; }
+.unit-traits span { color: #9fb08c; }
 
 /* ---------------- 战术地形 / 信息素井 / 维修 ---------------- */
 .dot.well { background: #ffd27f; box-shadow: 0 0 6px rgba(255,210,127,.7); }
