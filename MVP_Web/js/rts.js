@@ -386,6 +386,26 @@ export const UNIT_VISUAL = Object.fromEntries(
   Object.values(UNITS).map(u => [u.id, u.visual || { fx: 'hit', color: 0xffffff, size: 1 }])
 );
 
+/* --------------------------------------------------------------------------
+ * 单位动作状态机规格（只读，供 world.js / ants.js 驱动骨骼、步频与粒子）。
+ * sim 只写 u.anim = { state, t, seq, prev }，不消费以下任何数值：
+ *   loop     是否循环播放；dur 单次播放时长（loop 状态忽略）；blend 建议混合时长；
+ *   priority 动作用通道优先级，高者可打断低者。
+ * 与 u.state（AI 状态机）刻意解耦：u.state 决定「做什么」，u.anim 决定「演什么」。
+ * 表现层可选消费；不消费时原有基于 state/moving/flash 的动画完全不受影响。
+ * ------------------------------------------------------------------------ */
+export const UNIT_ANIM = {
+  idle:    { label: '待机', loop: true,  dur: 0,    blend: 0.18, priority: 0 },
+  move:    { label: '行进', loop: true,  dur: 0,    blend: 0.12, priority: 1 },
+  harvest: { label: '采集', loop: true,  dur: 0,    blend: 0.15, priority: 2 },
+  carry:   { label: '搬运', loop: true,  dur: 0,    blend: 0.15, priority: 2 },
+  repair:  { label: '修缮', loop: true,  dur: 0,    blend: 0.15, priority: 2 },
+  attack:  { label: '攻击', loop: false, dur: 0.35, blend: 0.05, priority: 4 },
+  hurt:    { label: '受击', loop: false, dur: 0.22, blend: 0.04, priority: 5 },
+  death:   { label: '阵亡', loop: false, dur: 0.60, blend: 0.00, priority: 9 },
+};
+export const ANIM_STATES = Object.keys(UNIT_ANIM);
+
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };
 // 兵营/各域巢可产兵种（按纪元解锁）

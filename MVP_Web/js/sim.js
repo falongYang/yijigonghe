@@ -11,10 +11,11 @@ import {
   SPECIALTY, specialtyOf, rtsMods, effectiveUnit, effectiveCost,
   effectiveBuilding, effectiveBuildingCost, researchCost, ERA_NAMES, MAX_ERA, canEngage, pickEnemySpecies, dmgMult,
   ENEMY_ARCHETYPES, DIFFICULTY, CAMPAIGN, applyArchetype, applyDifficulty,
-  getMapConfig, SKIRMISH_MAP, ARCHETYPE_UNITS,
+  getMapConfig, SKIRMISH_MAP, ARCHETYPE_UNITS, UNIT_ANIM,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
-import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor } from './maps.js';
+import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor,
+  weatherTimelineFor, mapDynamicsFor } from './maps.js';
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -76,6 +77,13 @@ export class Simulation {
     this.refined = { P: false, E: false };  // 精炼巢室：全军强化标记
     this._fxRng = 1;                  // 战斗细节专用确定性随机流（不占用 AI 的 Math.random 序列）
     this._lastRaidLogAt = -99;        // 掠夺播报节流
+    this.weatherTimeline = [];        // 动态战场：天气阶段（遭遇战恒空）
+    this.weatherIdx = 0;
+    this.dynamics = null;             // 动态战场：地脉共振配置（遭遇战恒 null）
+    this.resonance = null;            // 当前被唤醒的高台 { x,z,r,bonus }
+    this.resonancePhase = -1;
+    this.ridgeZones = [];
+    this.milestones = {};             // 战场里程碑播报去重
   }
 
   on(fn) { this.listeners.push(fn); }
@@ -137,7 +145,9 @@ export class Simulation {
       // 战斗细节统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
       critRolls: 0, pierceHits: 0, flankHits: 0, lifestealHp: 0,
       poisonTicks: 0, corrodeHits: 0, slowHits: 0, stunTicks: 0,
-      terrainTicks: 0, statusKills: 0 });
+      terrainTicks: 0, statusKills: 0,
+      // 动态战场统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
+      resonanceHits: 0, weatherShifts: 0, milestones: 0 });
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
     this._levelFlags = {};   // 等级里程碑播报去重（每局重置）
@@ -147,6 +157,12 @@ export class Simulation {
     this.map = getMapConfig(mode, chapter);
     this.climate = getMapClimate(mode, chapter);
     this.weather = getMapWeather(mode, chapter);
+    this.weatherTimeline = weatherTimelineFor(mode, chapter);
+    this.weatherIdx = 0;
+    this.dynamics = mapDynamicsFor(mode, chapter);
+    this.resonance = null;
+    this.resonancePhase = -1;
+    this.milestones = {};
     this.terrainHazards = staticHazardsFor(mode, chapter).map(h => ({ ...h, accum: 0 }));
     // 场景目标：默认 'destroy'（摧毁敌方蚁后巢）＝既有胜负判定，逐字不变。
     // 可选 'survive'（存活到时限）、'harvest'（累计采集达标）、'dominate'（占领全部信息素井并守住）。
@@ -166,6 +182,8 @@ export class Simulation {
     this.objective.label = OBJ_LABEL[this.objective.type] || OBJ_LABEL.destroy;
     // 战术地形与信息素井用同一套确定性配置生成：模拟、3D 渲染与小地图读取的都是这一份。
     this.zones = mapZones(this.map);
+    this.ridgeZones = this.zones.filter(q => q.type === 'ridge');
+    for (const q of this.zones) q.resonant = false;   // 只读附加标记：地脉共振（B 侧可选渲染）
     this.wells = mapWells(this.map).map(w => ({ ...w, owner: null, progress: 0, contest: false, pulse: 0 }));
     // 战术掩体（中立、可破坏）：与地形/井同属一份确定性配置，模拟与渲染读取同一份。
     this.obstacles = mapObstacles(this.map).map(o => ({ ...o, hp: o.hp, maxHp: o.hp, alive: true, flash: 0, lastAttacker: undefined }));
@@ -180,6 +198,8 @@ export class Simulation {
     this._log(`【战场环境·${this.climate.name}】${this.climate.desc}`, 'info');
     if (this.weather && this.weather.id !== 'clear') this._log(`【天气·${this.weather.name}】${this.weather.desc}`, 'info');
     if (this.terrainHazards.length) this._log(`【地形警示】本图存在 ${this.terrainHazards.length} 处熔岩/酸池，驻留其中会持续受损。`, 'bad');
+    if (this.weatherTimeline.length) this._log(`【气象预报】本图天气将随时间转变 ${this.weatherTimeline.length} 次，视野与远程命中会随之波动。`, 'info');
+    if (this.dynamics && this.dynamics.resonance) this._log('【地脉共振】战场高台会被周期性唤醒，抢占者获得攻击加成。', 'info');
     this._log(`【作战目标】${this.objective.label}。`, 'key');
     this._emit('reset', { mode: this.mode, chapter: this.chapter, archetype: this.archetype.id, difficulty: this.difficulty.id });
     this._updateVision();
@@ -375,6 +395,8 @@ export class Simulation {
       // 行动细节：阵型 / 巡逻路径 / 驻守锚点
       formation: 'auto', patrol: null, patrolIdx: 0, holdX: null, holdZ: null,
       buff: { dmg: 1, tank: 1, spd: 1, t: 0 },
+      // 动作表现状态（只读数据层，不参与任何战斗结算）：state/t/seq/prev + 两次瞬时事件窗口
+      anim: { state: 'idle', t: 0, seq: 0, prev: null }, animStrike: 0, animHurt: 0,
     };
     this.units.push(u);
     if (base.role === 'econ') this._assignHarvest(u);
@@ -943,6 +965,8 @@ export class Simulation {
     this._tickTerrain(dt);
     this._reap();
     this._tickEcho();
+    this._tickWeather(dt);
+    this._tickDynamics(dt);
     this._tickAI(dt);
     this._checkEnd();
     // 能力冷却倒计时递减（此前只设置不递减，会导致技能永久处于冷却）
@@ -977,6 +1001,86 @@ export class Simulation {
       for (const [x, z] of spots) this._addHazard(x, z, 12, 10, 'E', 'acid', 0, 8, 'storm');
       this._log('酸雨降临：注意躲避随机落点！', 'bad');
     }
+  }
+
+  /* ----------------------------- 动态战场 ----------------------------- */
+  /** 天气阶段：战役按时间线切换天气（视野 / 远程命中随之变化），遭遇战时间线为空 → 零影响。
+   *  切换走既有 log 播报 + ring 全图提示圈；不新增事件 / 特效类型，不消费随机数。 */
+  _tickWeather(dt) {
+    const tl = this.weatherTimeline;
+    if (!tl || this.weatherIdx >= tl.length) return;
+    const step = tl[this.weatherIdx];
+    if (this.time < step.at) return;
+    this.weatherIdx++;
+    this.weather = step.next;
+    this._log(`【天气转变·${this.weather.name}】${step.text || this.weather.desc}`, 'key');
+    this._fx('ring', 0, 1, 0, { color: step.color || 0x9fc8e0, r: 120 });
+    if (this.stats) { this.stats.P.weatherShifts++; this.stats.E.weatherShifts++; }
+    this._updateVision();   // 视野半径立即跟随新天气，避免延迟一帧的隔墙透视
+  }
+
+  /** 地脉共振：周期性唤醒一处高台（确定性轮转，不用 RNG），驻留其上的真实单位攻击获小幅加成。
+   *  第一个周期不激活，避免开局即改变采集/交火节奏；仅配置了 dynamics 的战役章节生效。 */
+  _tickDynamics(dt) {
+    const cfg = this.dynamics && this.dynamics.resonance;
+    if (!cfg || !this.ridgeZones.length) return;
+    const phase = Math.floor(this.time / cfg.period);
+    if (phase === this.resonancePhase) return;
+    this.resonancePhase = phase;
+    for (const q of this.ridgeZones) q.resonant = false;
+    if (phase < 1) { this.resonance = null; return; }
+    const q = this.ridgeZones[phase % this.ridgeZones.length];
+    q.resonant = true;
+    this.resonance = { x: q.x, z: q.z, r: Math.max(q.rx, q.rz), bonus: cfg.bonus, zoneId: q.id };
+    this._log(`【地脉共振】${cfg.label}「${q.id}」被唤醒：驻留其上的单位攻击 +${Math.round(cfg.bonus * 100)}%。`, 'key');
+    this._fx('ring', q.x, 1, q.z, { color: cfg.color, r: this.resonance.r });
+    this._fx('resonance', q.x, 4, q.z, { color: cfg.color });
+  }
+
+  /** 当前共振高台（只读快照，供 B 侧渲染光柱 / 小地图脉冲；无共振时返回 null）。 */
+  activeResonance() { return this.resonance ? { ...this.resonance } : null; }
+
+  /** 战场里程碑：首杀 / 10 / 25 / 50 杀播报，只走 log + ring，去重且纯表现、零数值影响。 */
+  _killMilestone(side, kills) {
+    if (![1, 10, 25, 50].includes(kills)) return;
+    const key = `${side}:${kills}`;
+    if (this.milestones[key]) return;
+    this.milestones[key] = true;
+    const mine = side === SIDES.PLAYER;
+    this._log(`【战场里程碑】${mine ? '我方' : '敌方'}累计击杀 ${kills}：${kills >= 25 ? '战线已被彻底改写。' : '交锋进入白热化。'}`, mine ? 'good' : 'info');
+    this._fx('ring', mine ? PLAYER_BASE.x : ENEMY_BASE.x, 1, mine ? PLAYER_BASE.z : ENEMY_BASE.z,
+      { color: mine ? 0x9fe0c8 : 0xff8a6a, r: 26 });
+    if (this.stats) this.stats[side].milestones++;
+  }
+
+  /* ----------------------------- 动作状态机 ----------------------------- */
+  /** 切换动画状态：只在真正变化时递增 seq，B 侧可据此做「一次播放」判定，无需逐帧比对。 */
+  _setAnim(u, state) {
+    const a = u.anim;
+    if (!a || a.state === state || !UNIT_ANIM[state]) return;
+    a.prev = a.state; a.state = state; a.t = 0; a.seq++;
+  }
+  /** 每帧从「逻辑状态 + 瞬时事件窗口」推导表现状态。纯写字段，不改任何战斗数值 / 时机。 */
+  _tickAnim(u, dt) {
+    const a = u.anim; if (!a) return;
+    a.t += dt;
+    if (u.animStrike > 0) u.animStrike = Math.max(0, u.animStrike - dt);
+    if (u.animHurt > 0) u.animHurt = Math.max(0, u.animHurt - dt);
+    let s;
+    if (u.hp <= 0) s = 'death';
+    else if (u.animHurt > 0) s = 'hurt';
+    else if (u.animStrike > 0) s = 'attack';
+    else if (u.state === 'harvest') s = 'harvest';
+    else if (u.state === 'repair') s = 'repair';
+    else if (u.state === 'return' || u.carrying > 0) s = 'carry';
+    else if (u.moving) s = 'move';
+    else s = 'idle';
+    this._setAnim(u, s);
+  }
+  /** 只读查询：单位当前动画状态与规格（B 侧可选消费；无该单位返回 null）。 */
+  animOf(id) {
+    const u = this.getUnit(id);
+    return u && u.anim ? { ...u.anim, spec: UNIT_ANIM[u.anim.state] || null } : null;
   }
 
   _tickAura(dt) {
@@ -1087,6 +1191,9 @@ export class Simulation {
       case 'hold': this._holdUnit(u, dt); break;
       case 'patrol': this._patrolUnit(u, dt); break;
     }
+    // 放在状态机之后：本帧的 state / moving / carrying / 攻击与受击窗口都已确定，
+    // 一次集中推导表现状态，避免把动画写入散落到十几个战斗方法里。
+    this._tickAnim(u, dt);
   }
 
   /** 状态效果结算：中毒叠层 DoT / 腐蚀破甲 / 减速分层 / 眩晕停工。
@@ -1185,6 +1292,7 @@ export class Simulation {
     if (dist(u.x, u.z, tgt.x, tgt.z) > reach) {
       this._moveTo(u, tgt.x, tgt.z, dt);
     } else if (u.atkTimer <= 0) {
+      u.animStrike = 0.35;   // 攻击动作窗口（表现层只读，不影响伤害与冷却）
       this._dealDamage(u, tgt, u.dmg, u.x, u.z, !u.melee, u.dtype);
       if (u.splash > 0) this._applySplash(u, tgt, u.dmg);
       u.atkTimer = u.atkcd;
@@ -1352,6 +1460,12 @@ export class Simulation {
     }
     // 天气：只削弱真实单位的远程普攻命中，能力 / 危害 / 溅射 / 塔不受影响。
     if (unitAtk && ranged) d *= this._wea().hitMul;
+    // 地脉共振：仅战役配置了该机制、且攻击者站在被唤醒的高台上时生效。
+    // 遭遇战 resonance 恒 null → 不进入分支、不额外调用 zoneAt，节奏与基线逐字一致。
+    if (unitAtk && this.resonance) {
+      const q = this.zoneAt(attacker.x, attacker.z);
+      if (q && q.resonant) { d *= 1 + this.resonance.bonus; if (st) st.resonanceHits++; }
+    }
     // 精炼巢室：全军作战单位 +8% 伤害（双方对等，多座不叠加）。
     if (aSide && this.refined[aSide] && attacker && UNITS[attacker.type] && UNITS[attacker.type].role === 'combat') d *= 1.08;
     tgt.hp -= d;
@@ -1377,6 +1491,8 @@ export class Simulation {
     }
     // 酸蚀：任何酸属性命中都给单位挂 3 秒破甲（与武器 / 能力文案呼应）。
     if (dtype === 'acid' && tgt.corrodeT !== undefined && tgt.hp > 0) tgt.corrodeT = 3;
+    // 只有「真实单位的直接命中」才触发受击动作；DoT / 危害 / 溅射的代理攻击不打断动画。
+    if (unitAtk && tgt.animHurt !== undefined && tgt.hp > 0) tgt.animHurt = 0.22;
     if (tgt.flash !== undefined) tgt.flash = 0.16;
     if (tgt.lastAttacker !== undefined) tgt.lastAttacker = aSide;
     // 我方巢室受袭分级告警：跨过 75 / 50 / 25% 各播报一次，混战不刷屏，
@@ -1480,8 +1596,12 @@ export class Simulation {
       if (this.stats) {
         this.stats[u.side].losses++;
         const killer = u.lastAttacker;
-        if (killer && killer !== u.side && this.stats[killer]) this.stats[killer].kills++;
+        if (killer && killer !== u.side && this.stats[killer]) {
+          this.stats[killer].kills++;
+          this._killMilestone(killer, this.stats[killer].kills);
+        }
       }
+      this._setAnim(u, 'death');   // 死亡演出快照拿到终态，B 侧 _dying 可直接读 u.anim
       this._fx('death', u.x, 1.2, u.z, { color: this.sp[u.side].color });
       this._emit('death', { side: u.side, kind: 'unit', x: u.x, z: u.z });
       this.units.splice(i, 1);

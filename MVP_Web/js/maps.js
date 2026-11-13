@@ -166,3 +166,40 @@ export const STATIC_HAZARDS = {
 export function staticHazardsFor(mode, chapter) {
   return (mode === 'campaign' && chapter != null) ? (STATIC_HAZARDS[chapter] || []) : [];
 }
+
+/* --------------------------------------------------------------------------
+ * 动态战场：天气阶段时间线 + 地脉共振高台（战役专属）。
+ * 遭遇战一律返回空时间线 / null，保证默认对局的天气与地形系数恒定、节奏零变化。
+ * 时间线只描述「何时切到哪种天气」，切换本身由 sim._tickWeather 消费，
+ * 播报走既有 log 事件、提示圈走既有 ring 特效，不新增任何事件 / 特效类型。
+ * ------------------------------------------------------------------------ */
+export const WEATHER_TIMELINE = {
+  1: [ { at: 95,  weather: 'wind',      color: 0x9fd8c0, text: '雨收风起，高风扰动远程弹道。' } ],
+  2: [ { at: 110, weather: 'clear',     color: 0xffe2a8, text: '劲风渐止，战场视野恢复开阔。' } ],
+  3: [ { at: 100, weather: 'rain',      color: 0x8fc4d8, text: '雾散成雨，泽国视野略开而远程略失准。' } ],
+  4: [ { at: 85,  weather: 'storm',     color: 0x6f86c8, text: '雷暴压境：视野与远程命中同时下滑。' },
+       { at: 175, weather: 'rain',      color: 0x8fc4d8, text: '风暴过境，余雨未歇。' } ],
+  5: [ { at: 120, weather: 'resonance', color: 0xc7b3ff, text: '地脉回响平息，天气归于基准。' } ],
+};
+// 时间线写的是「天气 id」(storm/rain/clear…)，而 CLIMATE_WEATHER 以「气候 id」(tide/verdant…)
+// 为键，二者不能混用；这里按对象的 .id 建一次反查表，避免所有阶段静默 fallback 成晴空。
+const WEATHER_BY_ID = Object.fromEntries(Object.values(CLIMATE_WEATHER).map(w => [w.id, w]));
+/** 返回已解析的时间线（next 为完整天气对象），遭遇战恒为 []。 */
+export function weatherTimelineFor(mode, chapter) {
+  if (mode !== 'campaign' || chapter == null) return [];
+  return (WEATHER_TIMELINE[chapter] || []).map(s => ({
+    at: s.at, color: s.color, text: s.text,
+    next: WEATHER_BY_ID[s.weather] || CLIMATE_WEATHER.scorch,
+  }));
+}
+
+/** 地脉共振：周期性唤醒一处高台，站在其上的真实单位远程/近战攻击获得小幅加成。
+ *  period 周期秒数、bonus 伤害加成；只在列出的战役章节生效，遭遇战为 null。
+ *  高台由 sim 从既有 zones 中确定性轮转选取，不改变 zoneAt 的判定几何。 */
+export const MAP_DYNAMICS = {
+  2: { resonance: { period: 55, bonus: 0.08, color: 0xc7b3ff, label: '壁垒高台' } },
+  5: { resonance: { period: 48, bonus: 0.12, color: 0xc7b3ff, label: '虚空调律台' } },
+};
+export function mapDynamicsFor(mode, chapter) {
+  return (mode === 'campaign' && chapter != null) ? (MAP_DYNAMICS[chapter] || null) : null;
+}
