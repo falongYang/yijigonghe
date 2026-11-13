@@ -1403,12 +1403,20 @@ export class UI {
       }
       g.setLineDash([]);   // 复位，避免影响后续 ping 与相机视口框
     }
-    // 战术标记 / 敌方能力来袭 ping（按各自 color 着色：玩家金、敌方红）
+    // 战术标记 / 敌方预警 ping（按各自 color 着色：玩家金、敌方红/橙）
+    // priority>=2 的高危 ping 多画一圈外环、更粗且衰减更慢，避免与普通战术标记混在一起看不出威胁
     for (const p of (this.world.pings || [])) {
       const k = Math.min(1, p.t / p.dur);
       const hex = '#' + (p.color || 0xffd27f).toString(16).padStart(6, '0');
-      g.globalAlpha = 1 - k; g.strokeStyle = hex; g.lineWidth = 1.5;
+      const hi = (p.priority || 0) >= 2;
+      g.strokeStyle = hex;
+      g.globalAlpha = hi ? 1 - k * 0.65 : 1 - k;
+      g.lineWidth = hi ? 2 : 1.5;
       g.beginPath(); g.arc(toX(p.x), toY(p.z), 3 + k * 7, 0, 6.28); g.stroke();
+      if (hi) {
+        g.globalAlpha = (1 - k) * 0.5; g.lineWidth = 1;
+        g.beginPath(); g.arc(toX(p.x), toY(p.z), 7 + k * 10, 0, 6.28); g.stroke();
+      }
       g.globalAlpha = 1;
     }
     // 相机视野矩形（比原来的圆更贴近实际可视范围）

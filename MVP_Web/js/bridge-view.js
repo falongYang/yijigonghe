@@ -37,7 +37,7 @@ export function viewListener(ctx) {
         } else if (world && p.x != null) {
           // 敌方能力来袭预警：红色光柱信标（3D + 小地图）+ 脉冲红环 + HUD 高危提示。
           // priority:2 保证它不会被井占领/编队/建造等普通 toast 覆盖掉（ui.toast 优先级规则）。
-          world.addPing(p.x, p.z, 0xff5a5a);
+          world.addPing(p.x, p.z, 0xff5a5a, { priority: 2, dur: 4.2 });
           world.addEffect('enemyWarn', { x: p.x, z: p.z }, { key: p.key });
           ui.toast('⚠ 敌方能力·' + abilityName(p.key), { priority: 2, life: 3000 });
         }
@@ -60,7 +60,7 @@ export function viewListener(ctx) {
           const col = p.side === SIDES.PLAYER ? 0x7ef0c8 : 0xffb070;
           world.addEffect('eraUp', { x: hq.x, z: hq.z }, { color: col, era: p.era });
           // 敌方进阶是威胁信号，额外在小地图给一个橙色 ping（玩家侧不刷小地图）
-          if (p.side === SIDES.ENEMY) world.addPing(hq.x, hq.z, 0xffb070);
+          if (p.side === SIDES.ENEMY) world.addPing(hq.x, hq.z, 0xffb070, { priority: 2, dur: 4.2 });
         }
         break;
       }
@@ -70,7 +70,7 @@ export function viewListener(ctx) {
         const enemyTook = !!p.owner && p.owner !== SIDES.PLAYER;
         // 井事件带 {owner, x, z, name}：敌方占领是战略威胁，在小地图标出具体位置
         // （addPing 的 3D 环/光柱与小地图都按 color 着色），并用 priority:2 防止被普通 toast 吞掉。
-        if (enemyTook && world && p.x != null) world.addPing(p.x, p.z, 0xffb070);
+        if (enemyTook && world && p.x != null) world.addPing(p.x, p.z, 0xffb070, { priority: 2, dur: 4.2 });
         if (enemyTook) ui.toast('⚠ 敌方占领信息素井（小地图已标记）', { priority: 2, life: 3000 });
         else if (p.owner === SIDES.PLAYER) ui.toast('已占领信息素井：持续产出信息素', { priority: 1 });
         else ui.toast('信息素井恢复中立');

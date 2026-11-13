@@ -1205,8 +1205,30 @@ export class World {
     }
   }
 
-  /** 战术标记：在地面放一个 3.2s 的脉冲环与光柱，小地图同步显示。 */
-  addPing(x, z, color = 0xffd27f) {
+  /** 战术标记：在地面放一个脉冲环与光柱，小地图同步显示。
+   *  opts: { priority, dur }；priority 0 普通 / 2 高危（敌方能力、占井、敌方进阶）。
+   *  满 6 个时淘汰「最低优先级里最旧的」，高危预警不会被普通战术标记挤掉；
+   *  同色同址的重复 ping 合并刷新寿命，避免密集事件下叠成一团。
+   *  第 4 个参数可选，原有 3 参数调用行为不变。 */
+  addPing(x, z, color = 0xffd27f, opts = {}) {
+    const prio = opts.priority || 0;
+    const dur = opts.dur || 3.2;
+    for (const p of this.pings) {
+      if (p.color === color && Math.hypot(p.x - x, p.z - z) <= 2.5) {
+        p.t = 0;
+        p.priority = Math.max(p.priority || 0, prio);
+        p.dur = Math.max(p.dur, dur);
+        return p;
+      }
+    }
+    if (this.pings.length >= 6) {
+      let minPrio = Infinity;
+      for (const p of this.pings) minPrio = Math.min(minPrio, p.priority || 0);
+      if (minPrio > prio) return null;   // 全是更重要（更高优先级）的预警，普通 ping 直接不生成
+      const victim = this.pings.findIndex(p => (p.priority || 0) === minPrio);
+      this._disposePing(this.pings[victim]);
+      this.pings.splice(victim, 1);
+    }
     const g = new THREE.Group();
     const ring = new THREE.Mesh(new THREE.RingGeometry(1.6, 2.35, 32),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
@@ -1216,8 +1238,8 @@ export class World {
     beam.position.y = 4.6; beam.renderOrder = 3;
     g.add(ring); g.add(beam); g.position.set(x, 0, z);
     this.scene.add(g);
-    this.pings.push({ g, ring, beam, t: 0, dur: 3.2, x, z, color });
-    if (this.pings.length > 6) { const old = this.pings.shift(); this._disposePing(old); }
+    this.pings.push({ g, ring, beam, t: 0, dur, x, z, color, priority: prio });
+    return this.pings[this.pings.length - 1];
   }
   _disposePing(p) {
     this.scene.remove(p.g);
