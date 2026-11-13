@@ -885,7 +885,12 @@ export class UI {
       <div><span>造成伤害 / 承受伤害</span><b>${Math.round(st0.dmgDealt || 0)} / ${Math.round(st0.dmgTaken || 0)}</b></div>
       <div><span>维修耐久 / 井产信息素</span><b>${Math.round(st0.repaired || 0)} / ${Math.round(st0.wellPh || 0)}</b></div>
       <div><span>克制命中 / 掠夺突袭</span><b>${st0.critHits || 0} / ${st0.raids || 0}</b></div>
-      <div><span>节点调度 / 伤害抑制</span><b>${st0.nodeSwitches || 0} / ${st0.overkillSaved || 0}</b></div>`
+      <div><span>节点调度 / 伤害抑制</span><b>${st0.nodeSwitches || 0} / ${st0.overkillSaved || 0}</b></div>
+      <div class="end-stat-sep">战斗细节 · 状态与地形</div>
+      <div><span>暴击掷骰 / 破甲 / 侧翼</span><b>${st0.critRolls || 0} / ${st0.pierceHits || 0} / ${st0.flankHits || 0}</b></div>
+      <div><span>吸血回复 / 中毒跳伤</span><b>${Math.round(st0.lifestealHp || 0)} / ${st0.poisonTicks || 0}</b></div>
+      <div><span>腐蚀 / 减速 / 眩晕</span><b>${st0.corrodeHits || 0} / ${st0.slowHits || 0} / ${st0.stunTicks || 0}</b></div>
+      <div><span>地形灼烧 / 状态击杀</span><b>${st0.terrainTicks || 0} / ${st0.statusKills || 0}</b></div>`
       + (stE ? `
       <div class="end-stat-sep">敌方动态 · AI 行为</div>
       <div><span>进攻波次 / 智能能力</span><b>${stE.waves || 0} / ${stE.smartCasts || 0}</b></div>

@@ -1897,11 +1897,20 @@ export class World {
       m.eliteRing.material.opacity = p;
       m.eliteRing.scale.setScalar((RING_R[u.caste] || 2.6) / 2.4 * (1 + 0.04 * Math.sin(this.time * 3 + u.id)));
     }
-    // 战术状态环：战斗增益优先，其次减速/减益，再是脚下地貌；潜行时收起
+    // 战术状态环：新增战斗状态效果（眩晕/中毒/腐蚀/减速）优先于增益，
+    // 其次增益/减益，再是脚下地貌；越危急的状态脉冲越快，潜行时收起。
+    // A 侧字段全部容错读取（未声明即 0），旧对局行为完全等价。
     if (m.statusRing) {
       const b = u.buff || {};
-      let sc = 0, op = 0.5;
-      if ((b.tank || 1) < 0.9) { sc = 0xffd166; op = 0.78; }             // 甲壳硬化
+      let sc = 0, op = 0.5, pulseRate = 4;
+      const stun = u.stunT || 0;
+      const poison = (u.poison && u.poison.stacks) || 0;
+      const corrode = u.corrodeT || 0, slow = u.slowT || 0;
+      if (stun > 0) { sc = 0xe8eef6; op = 0.88; pulseRate = 11; }        // 眩晕：灰白高频闪烁
+      else if (poison > 0) { sc = 0x9fe06a; op = 0.58 + 0.16 * poison; pulseRate = 7; } // 中毒：叠层越厚越亮
+      else if (corrode > 0) { sc = 0xffb070; op = 0.8; pulseRate = 6; }   // 腐蚀破甲：琥珀
+      else if (slow > 0) { sc = 0x8fa8c8; op = 0.7; }                    // 减速：冰蓝
+      else if ((b.tank || 1) < 0.9) { sc = 0xffd166; op = 0.78; }         // 甲壳硬化
       else if ((b.dmg || 1) > 1.1) { sc = 0xff8a5a; op = 0.76; }         // 狂暴 / 号令
       else if ((b.spd || 1) > 1.1) { sc = 0x7ef0ff; op = 0.7; }          // 加速
       else if ((b.spd || 1) < 0.9 || u.terrain === 'mire' || u.terrain === 'water') { sc = 0x8fa8c8; op = 0.55; }
@@ -1910,7 +1919,7 @@ export class World {
       m.statusRing.visible = !!sc;
       if (sc) {
         m.statusRing.material.color.setHex(sc);
-        m.statusRing.material.opacity = op * (0.76 + 0.24 * Math.sin(this.time * 4 + u.id));
+        m.statusRing.material.opacity = op * (0.76 + 0.24 * Math.sin(this.time * pulseRate + u.id));
       }
     }
     // 贴地软阴影：飞行蚁随离地高度放大并变淡，地面单位贴地，地下单位潜行时收起
