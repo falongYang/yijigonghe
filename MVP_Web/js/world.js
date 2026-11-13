@@ -2160,6 +2160,11 @@ export class World {
     tg.setAttribute('position', new THREE.BufferAttribute(tp, 3));
     const tl = new THREE.Line(tg, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false }));
     grp.add(tl);
+    // 落点预兆：弹道 / 轰炸的命中位置显示脉冲预警圈，飞行期间持续闪烁，命中时随 grp 一起移除
+    const warn = new THREE.Mesh(new THREE.RingGeometry(2.0, 2.5, 28),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }));
+    warn.rotation.x = -Math.PI / 2; warn.position.set(pos.x, 0.3, pos.z);
+    grp.add(warn);
     this.scene.add(grp);
     this.fx.push({ t0: this.time, obj: grp, update: (t) => {
       const k = clamp(t / 0.18, 0, 1);
@@ -2171,6 +2176,7 @@ export class World {
       tp[3] = m.position.x; tp[4] = m.position.y; tp[5] = m.position.z;
       tg.attributes.position.needsUpdate = true;
       tl.material.opacity = 0.6 * (1 - k * 0.6);
+      warn.material.opacity = 0.3 + 0.4 * Math.abs(Math.sin(this.time * 12));
       if (k >= 1) { this.addEffect('hit', pos, { color }); return false; }
       return true;
     }, dispose: () => { m.geometry.dispose(); m.material.dispose(); tg.dispose(); tl.material.dispose(); } });

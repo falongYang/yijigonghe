@@ -28,6 +28,8 @@ export const FX_BUILDERS = {
       mat.opacity = 1 - t / 0.4; return true;
     }, dispose: () => g.dispose() });
     world.addEffect('impact', pos, { color: opts.color || 0xffd27f });
+    // 命中落地的贴地火花溅射，让近身 / 远程命中都有「打在实体上」的碎屑反馈
+    if (world._spark) world._spark({ x: pos.x, y: 0.3, z: pos.z }, opts.color || 0xffd27f, 5);
   },
 
   impact(world, pos, opts, t0) {
@@ -196,6 +198,7 @@ export const FX_BUILDERS = {
   melee(world, pos, opts = {}, t0) {
     // 撕咬命中：火花 + 一道对准来袭方向的挥击弧，贴身肉搏不再只是一团白点
     world._spark(pos, 0xffe0a0, 6);
+    if (world._spark) world._spark({ x: pos.x, y: 0.3, z: pos.z }, 0xffe0a0, 4);
     const from = opts.from;
     const ang = from ? Math.atan2(pos.z - from.z, pos.x - from.x) : Math.random() * Math.PI * 2;
     const arc = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.16, 6, 14, Math.PI * 0.9),
@@ -532,4 +535,16 @@ FX_BUILDERS.critBurst = (world, pos, opts = {}, t0) => {
     rm.opacity = 0.85 * (1 - t / DUR);
     return true;
   }, dispose: () => { rg.dispose(); rm.dispose(); } });
+  // 纵向金色光柱：克制 / 重创在 3D 里更醒目，混战中也一眼能看出「这下发出了暴击」
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.7, 9, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+  beam.position.set(pos.x, y + 4.5, pos.z);
+  world.scene.add(beam);
+  world.fx.push({ t0, obj: beam, update: (t) => {
+    if (t > DUR) return false;
+    const k = t / DUR;
+    beam.scale.set(1 + k * 1.4, 1, 1 + k * 1.4);
+    beam.material.opacity = 0.8 * (1 - k) * (k < 0.25 ? k / 0.25 : 1);
+    return true;
+  }, dispose: () => { beam.geometry.dispose(); beam.material.dispose(); } });
 };
