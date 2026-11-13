@@ -166,6 +166,15 @@ export class UI {
       clearTimeout(this._raidMmT);
       this._raidMmT = setTimeout(() => mm.classList.remove('raid'), 2600);
     }
+    // 警告条与 #toast 都固定在顶部居中（64px / 56px），且警告条 z-index 116 > toast 60，
+    // 同时出现时会直接盖住「敌方能力 / 巢室告急」等高危 toast。突袭期间把 toast 下移到
+    // 警告条下方，让两条预警各占一层、互不遮挡；与警告条同寿命（3.6s）后自动复位。
+    const toastEl = document.getElementById('toast');
+    if (toastEl) {
+      toastEl.classList.add('under-raid');
+      clearTimeout(this._raidToastT);
+      this._raidToastT = setTimeout(() => toastEl.classList.remove('under-raid'), 3600);
+    }
     this.addLog({ text: '警报：敌方进攻波次逼近己方巢区，准备迎击！', kind: 'bad' });
   }
 

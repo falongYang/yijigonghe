@@ -13,9 +13,23 @@ export function abilityName(k) { return ABILITY_NAMES[k] || k; }
 export function viewListener(ctx) {
   const { ui, world, game, SIDES } = ctx;
   let lastGain = 0;   // 卸货密集时飘字节流，避免刷屏
+  let lastAlarm = -Infinity;  // 巢室告急日志提升为 HUD 高危提示的节流（初值 -Infinity：开局首条告警不被误拦）
   return (t, p) => {
     switch (t) {
-      case 'log': ui.addLog(p); break;
+      case 'log': {
+        ui.addLog(p);
+        // A 侧巢室耐久跌破 75/50/25% 只发 bad 日志（底部信息流容易被忽略），
+        // 同步提升到 HUD 高危 toast（priority:2）；同一波多个建筑告警时 1.5s 内只弹一次。
+        // 只匹配明确的「警报：我方」前缀，其余 bad 日志（酸雨、掠夺损失、损毁）仍只进日志流。
+        if (p.kind === 'bad' && /^警报：我方/.test(p.text || '')) {
+          const now = performance.now();
+          if (now - lastAlarm > 1500) {
+            lastAlarm = now;
+            ui.toast(p.text, { priority: 2, life: 3000 });
+          }
+        }
+        break;
+      }
       case 'toast': ui.toast(p.text); break;
       case 'ability':
         if (p.side === SIDES.PLAYER) {
@@ -52,11 +66,16 @@ export function viewListener(ctx) {
       }
       case 'echo': ui.echoToast(p.text); break;
       case 'aiAttack': ui.alertRaid(); break;
-      case 'well':
-        ui.toast(p.owner
-          ? (p.owner === SIDES.PLAYER ? '已占领信息素井：持续产出信息素' : '敌方占领了信息素井！')
-          : '信息素井恢复中立');
+      case 'well': {
+        const enemyTook = !!p.owner && p.owner !== SIDES.PLAYER;
+        // 井事件带 {owner, x, z, name}：敌方占领是战略威胁，在小地图标出具体位置
+        // （addPing 的 3D 环/光柱与小地图都按 color 着色），并用 priority:2 防止被普通 toast 吞掉。
+        if (enemyTook && world && p.x != null) world.addPing(p.x, p.z, 0xffb070);
+        if (enemyTook) ui.toast('⚠ 敌方占领信息素井（小地图已标记）', { priority: 2, life: 3000 });
+        else if (p.owner === SIDES.PLAYER) ui.toast('已占领信息素井：持续产出信息素', { priority: 1 });
+        else ui.toast('信息素井恢复中立');
         break;
+      }
     }
   };
 }
