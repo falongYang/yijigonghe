@@ -369,3 +369,83 @@ FX_BUILDERS.evolve = (world, pos, opts = {}, t0) => {
     return true;
   }, dispose: () => { pg.dispose(); pm.dispose(); } });
 };
+
+// 破土突袭（a_burrow）：A 侧埋伏 3 秒、破土瞬间才 _fx('ambush', …) 一次性结算，
+// 这是该能力唯一的高光时刻，原先只走 RING_COLORS 的单层琥珀环（与酸池/毒雾同级）。
+// 覆盖为「地下炸开」的形态：三道贴地快环 + 上冲倒锥尘柱 + 抛物线碎屑（带重力落地）+ 地面辉光。
+// 键名 ambush 与 (world, pos, opts, t0) 签名不变，A 侧零改动；opts.color 由 sim 传 0x8a7f56。
+FX_BUILDERS.ambush = (world, pos, opts = {}, t0) => {
+  const col = opts.color || 0x8a7f56;
+  const hot = 0xd6b470;
+
+  // 1) 三道错峰贴地扩张环（比纪元环更快，强调爆发的短促感）
+  [0, 0.1, 0.2].forEach((delay, i) => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.28, 8, 28),
+      new THREE.MeshBasicMaterial({ color: i === 1 ? hot : col, transparent: true, opacity: 0.9, depthWrite: false }));
+    r.rotation.x = -Math.PI / 2;
+    r.position.set(pos.x, 0.35 + i * 0.1, pos.z);
+    world.scene.add(r);
+    world.fx.push({ t0, obj: r, update: (t) => {
+      const tt = t - delay;
+      if (tt < 0) return true;
+      if (tt > 0.7) return false;
+      const k = tt / 0.7;
+      r.scale.setScalar(1 + k * (9 - i * 1.5));
+      r.material.opacity = 0.9 * (1 - k) * (1 - i * 0.16);
+      return true;
+    }, dispose: () => { r.geometry.dispose(); r.material.dispose(); } });
+  });
+
+  // 2) 上冲倒锥尘柱（下窄上宽，从地面窜起后消散）
+  const dust = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 0.7, 9, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
+  dust.position.set(pos.x, 0.5, pos.z);
+  world.scene.add(dust);
+  world.fx.push({ t0, obj: dust, update: (t) => {
+    if (t > 0.65) return false;
+    const k = t / 0.65;
+    dust.position.y = 0.5 + k * 5;
+    dust.material.opacity = 0.5 * (1 - k);
+    dust.scale.set(1 + k * 0.4, 1 - k * 0.35, 1 + k * 0.4);
+    return true;
+  }, dispose: () => { dust.geometry.dispose(); dust.material.dispose(); } });
+
+  // 3) 地面辉光
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(3.0, 20),
+    new THREE.MeshBasicMaterial({ color: hot, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide }));
+  glow.rotation.x = -Math.PI / 2; glow.position.set(pos.x, 0.28, pos.z);
+  world.scene.add(glow);
+  world.fx.push({ t0, obj: glow, update: (t) => {
+    if (t > 0.55) return false;
+    glow.scale.setScalar(1 + t * 1.6);
+    glow.material.opacity = 0.55 * (1 - t / 0.55);
+    return true;
+  }, dispose: () => { glow.geometry.dispose(); glow.material.dispose(); } });
+
+  // 4) 抛物线碎屑（共享几何/材质；与纪元「持续上升光尘」不同，这里带重力并落地停住）
+  const n = 14;
+  const pg = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+  const pm = new THREE.MeshBasicMaterial({ color: hot, transparent: true, opacity: 0.95, depthWrite: false });
+  const grp = new THREE.Group();
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const p = new THREE.Mesh(pg, pm);
+    const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+    const rad = 0.6 + Math.random() * 1.6;
+    p.position.set(pos.x + Math.cos(a) * rad, 0.4, pos.z + Math.sin(a) * rad);
+    grp.add(p);
+    parts.push({ m: p, vx: Math.cos(a) * (2 + Math.random() * 3), vz: Math.sin(a) * (2 + Math.random() * 3), vy: 5 + Math.random() * 4 });
+  }
+  world.scene.add(grp);
+  world.fx.push({ t0, obj: grp, update: (t) => {
+    if (t > 0.95) return false;
+    for (const q of parts) {
+      q.m.position.x += q.vx * 0.016; q.m.position.z += q.vz * 0.016;
+      q.m.position.y = Math.max(0.3, q.m.position.y + q.vy * 0.016);
+      q.vy -= 18 * 0.016;
+      q.m.rotation.y += 0.2; q.m.rotation.x += 0.15;
+    }
+    pm.opacity = 0.95 * (1 - t / 0.95);
+    return true;
+  }, dispose: () => { pg.dispose(); pm.dispose(); } });
+};

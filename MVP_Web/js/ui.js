@@ -664,12 +664,27 @@ export class UI {
   }
 
   // ----------------------------------------------------------- 提示/日志
-  toast(text) {
+  /** 顶部提示。opts.priority：0 普通 / 1 我方重要 / >=2 高危预警；opts.life 自定义停留毫秒。
+   *  规则：同文本在显示有效期内不重复弹（避免连发把提示一直顶在屏幕上）；
+   *  低优先级不覆盖仍在有效期内的高优先级预警；高优先级可立即覆盖并在超时后清除分级。
+   *  不传 opts 时与原行为一致（单次显示 2.6s）。 */
+  toast(text, opts = {}) {
     const t = $('#toast');
+    const now = performance.now();
+    const prio = opts.priority || 0;
+    const active = now < (this._toastUntil || 0);
+    if (active && this._toastText === text && prio <= (this._toastPrio || 0)) return;
+    if (active && prio < (this._toastPrio || 0)) return;
+    const life = opts.life || 2600;
+    this._toastText = text; this._toastUntil = now + life; this._toastPrio = prio;
     t.textContent = text;
+    if (t.classList.toggle) t.classList.toggle('warn', prio >= 2);
     t.classList.add('show');
     clearTimeout(this._tt);
-    this._tt = setTimeout(() => t.classList.remove('show'), 2600);
+    this._tt = setTimeout(() => {
+      t.classList.remove('show');
+      this._toastUntil = 0; this._toastPrio = 0; this._toastText = '';
+    }, life);
   }
   addLog({ text, kind }) {
     const log = $('#log');

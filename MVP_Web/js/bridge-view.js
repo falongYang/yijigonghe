@@ -19,12 +19,13 @@ export function viewListener(ctx) {
       case 'toast': ui.toast(p.text); break;
       case 'ability':
         if (p.side === SIDES.PLAYER) {
-          ui.toast('能力发动：' + abilityName(p.key));
+          ui.toast('能力发动：' + abilityName(p.key), { priority: 1 });
         } else if (world && p.x != null) {
-          // 敌方能力来袭预警：红色光柱信标（3D + 小地图）+ 脉冲红环 + HUD 提示
+          // 敌方能力来袭预警：红色光柱信标（3D + 小地图）+ 脉冲红环 + HUD 高危提示。
+          // priority:2 保证它不会被井占领/编队/建造等普通 toast 覆盖掉（ui.toast 优先级规则）。
           world.addPing(p.x, p.z, 0xff5a5a);
           world.addEffect('enemyWarn', { x: p.x, z: p.z }, { key: p.key });
-          ui.toast('⚠ 敌方能力·' + abilityName(p.key));
+          ui.toast('⚠ 敌方能力·' + abilityName(p.key), { priority: 2, life: 3000 });
         }
         break;
       case 'dmg': ui.damageFloat(p); break;
