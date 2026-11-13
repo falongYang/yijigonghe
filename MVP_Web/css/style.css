@@ -1,6 +1,12 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #eef2e6; user-select: none; }
-#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; }
+#scene.grabbing { cursor: grabbing; }
+/* 首页轮播：拖动时关掉吸附过渡，卡片实时跟手；抓手光标提示可拖 */
+.sp-carousel, .ch-carousel { cursor: grab; }
+.sp-carousel.dragging, .ch-carousel.dragging { cursor: grabbing; }
+.sp-carousel.dragging .sp-track, .ch-carousel.dragging .ch-track { transition: none; }
+.sp-carousel.dragging *, .ch-carousel.dragging * { user-select: none; }
 
 .hidden { display: none !important; }
 .primary { background: linear-gradient(180deg,#7ec86a,#4f9a3e); color: #0c1a08; border: none; padding: 12px 28px; font-size: 16px; font-weight: 700; border-radius: 9px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.4); }

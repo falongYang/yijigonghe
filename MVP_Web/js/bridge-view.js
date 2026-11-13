@@ -14,6 +14,7 @@ export function viewListener(ctx) {
   const { ui, world, game, SIDES } = ctx;
   let lastGain = 0;   // 卸货密集时飘字节流，避免刷屏
   let lastAlarm = -Infinity;  // 巢室告急日志提升为 HUD 高危提示的节流（初值 -Infinity：开局首条告警不被误拦）
+  let lastCrit = -Infinity;   // 克制 / 重创 3D 爆闪节流，避免大规模会战每帧叠特效
   return (t, p) => {
     switch (t) {
       case 'log': {
@@ -42,7 +43,19 @@ export function viewListener(ctx) {
           ui.toast('⚠ 敌方能力·' + abilityName(p.key), { priority: 2, life: 3000 });
         }
         break;
-      case 'dmg': ui.damageFloat(p); break;
+      case 'dmg': {
+        ui.damageFloat(p);
+        ui.markCombat(p);   // 小地图交战热点：让「哪里在打」不必盯着 3D 画面也能看到
+        // 武器克制 / 重创：3D 金色爆闪分层于普通白色冲击；180ms 节流防会战刷屏
+        const now = performance.now();
+        if (world && (p.mult >= 1.15 || p.amount >= 40) && now - lastCrit > 180) {
+          lastCrit = now;
+          world.addEffect('critBurst', { x: p.x, y: p.y || 4, z: p.z },
+            { color: p.victim === SIDES.PLAYER ? 0xff8a7a : 0xffe27f });
+        }
+        break;
+      }
+      case 'death': ui.markDeath(p); break;
       case 'gain': {
         const now = performance.now();
         if (now - lastGain > 260) { lastGain = now; ui.resourceFloat(p); }

@@ -151,21 +151,39 @@ function cancelAbility() {
 /* ---------------------------------------------------------------- 输入 */
 function bindInput() {
   let down = false, downX = 0, downY = 0, button = 0;
+  // 单击延迟到 mouseup 判定：按住拖动即「抓取地图」平移镜头，不再误触发点选 / 指令。
+  // 中键仍保持原有旋转；Alt+左键标记、Shift 框选、建造/能力瞄准等立即分支不受影响。
+  let pendingClick = null, dragging = false, lastX = 0, lastY = 0;
+  const DRAG_THRESHOLD = 5;
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('mousedown', e => {
-    down = true; button = e.button; downX = e.clientX; downY = e.clientY;
+    down = true; button = e.button; downX = lastX = e.clientX; downY = lastY = e.clientY;
+    pendingClick = null; dragging = false;
     if (button === 1) return; // 中键旋转由 move 处理
     if (game.pendingAbility && button === 0) { castAbilityAt(e.clientX, e.clientY); return; }
     if (game.pendingBuild && button === 0) { placeBuild(e.clientX, e.clientY); return; }
+    if (button === 2 && game.pendingAbility) { cancelAbility(); return; }
     // Alt + 左键：在地面放置战术标记（小地图同步显示，3.2s 后消失）
     if (button === 0 && e.altKey) { placePing(e.clientX, e.clientY); return; }
     if (button === 0 && game.shift) { game.box = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY }; return; }
-    if (button === 0) { pickAt(e.clientX, e.clientY); }
-    if (button === 2) { if (game.pendingAbility) { cancelAbility(); return; } commandAt(e.clientX, e.clientY); }
+    if (button === 0 || button === 2) pendingClick = { x: e.clientX, y: e.clientY, button };
+  });
+  // 拖拽监听挂在 window：鼠标滑出画布（滑到 HUD 上）时仍能连续跟手平移。
+  window.addEventListener('mousemove', e => {
+    const dx = e.clientX - lastX, dy = e.clientY - lastY;
+    lastX = e.clientX; lastY = e.clientY;
+    if (!down || game.box || !(pendingClick || dragging)) return;
+    const total = Math.hypot(e.clientX - downX, e.clientY - downY);
+    if (!dragging && total > DRAG_THRESHOLD) {
+      dragging = true; pendingClick = null;
+      world.setDragPan(true);
+      canvas.classList.add('grabbing');
+    }
+    if (dragging) world.panByPixels(dx, dy);
   });
   canvas.addEventListener('mousemove', e => {
-    // 屏幕边缘滚屏：仅在战场进行中生效（暂停/引导/选种页不平移）
-    world.setEdge(e.clientX, e.clientY, game.running && !game.paused && !game.tutOpen);
+    // 屏幕边缘滚屏：仅在战场进行中生效（暂停/引导/选种页不平移，拖拽时也不叠加）
+    world.setEdge(e.clientX, e.clientY, game.running && !game.paused && !game.tutOpen && !dragging);
     if (game.pendingAbility) {
       const g = world.screenToGround(e.clientX, e.clientY);
       if (g) { const key = game.pendingAbility; world.setCursor(g.x, g.z, 0xffb04a, ABILITY_RADIUS[key] || 6); }
@@ -196,6 +214,16 @@ function bindInput() {
   canvas.addEventListener('mouseleave', () => { world.setEdge(0, 0, false); ui.setTerrainHint(''); });
   window.addEventListener('mouseup', e => {
     if (game.box) { finishBox(); game.box = null; clearBox(); }
+    if (dragging) {
+      dragging = false;
+      world.setDragPan(false);
+      canvas.classList.remove('grabbing');
+    } else if (pendingClick && e.target === canvas) {
+      // 未发生拖拽：还原原本的单击语义（左键点选 / 右键指令）
+      if (pendingClick.button === 0) pickAt(pendingClick.x, pendingClick.y);
+      else if (pendingClick.button === 2) commandAt(pendingClick.x, pendingClick.y);
+    }
+    pendingClick = null;
     down = false;
   });
   canvas.addEventListener('wheel', e => { e.preventDefault(); world.zoom(e.deltaY); }, { passive: false });
@@ -405,7 +433,7 @@ function recallGroup(d) {
 
 /* ---------------------------------------------------------------- 首次引导 */
 const TUT_STEPS = [
-  { t: '镜头操作', d: '中键拖动旋转视角，滚轮缩放远近，方向键 / W·D 平移镜头，鼠标贴近屏幕边缘也会自动平移（可在暂停菜单设置中关闭）。点击右下角小地图可快速跳转，空格回到己方巢区，F 跟随选中单位（手动平移即退出）。小地图带地形、水域与白框视野；开局会弹出战场简报（点资源栏地图名可重看），Alt + 左键可在地面放战术标记。地面高台 / 泥沼 / 浅滩有发光描边与标签，鼠标所指地形显示在图例条；金色信息素井可驻兵占领、持续产信息素。A / S 专用于战场指令。' },
+  { t: '镜头操作', d: '按住左键或右键在地图上拖动即可跟手平移视角（单击仍是点选 / 下令，拖动超过 5px 自动切换为平移，不会误发指令）；中键拖动旋转视角，滚轮缩放远近，方向键 / W·D 平移镜头，鼠标贴近屏幕边缘也会自动平移（可在暂停菜单设置中关闭）。点击或拖动右下角小地图可快速跳转，空格回到己方巢区，F 跟随选中单位（手动平移即退出）。地面贴有战术坐标网格、中轴基准线与边缘刻度，拉近镜头更清晰；小地图带主次网格、坐标刻度、地形、水域与白框视野，交战处会亮起短寿红橙热点。开局会弹出战场简报（点资源栏地图名可重看），Alt + 左键可在地面放战术标记。地面高台 / 泥沼 / 浅滩有发光描边与标签，鼠标所指地形显示在图例条；金色信息素井可驻兵占领、持续产信息素。A / S 专用于战场指令。' },
   { t: '选择单位', d: '左键点选单个单位（左侧显示完整属性、经验、武器克制与所处地形，敌方也可查看）；双击己方单位全选同兵种；按住 Shift 拖拽可框选多个。右键命令移动或攻击（多选自动按阵型散开）；Shift + 右键追加路径点。A 攻击移动、S 停止、H 驻守。I 可选中闲置工蚁，C 让选中工蚁就近续采；选中受损巢室点「派工蚁维修」或选中工蚁右键该建筑，工蚁会耗矿修复。' },
   { t: '建造', d: '点击下方「建造」按钮，移动鼠标会实时显示占地预览与可建原因（绿色可建 / 红色不可建；深水与陡坡不可建），在己方巢区附近左键放置（Esc 取消）。蚁后巢会自动缓慢补充工蚁；生产队列可点 × 取消并退还资源。' },
   { t: '出兵与纪元', d: '选中蚁后巢 / 巢室，在右侧点兵种生产。研究史官堂推进纪元，解锁更强兵种并全族群属性成长。选中生产建筑后右键地面可设集结点。' },

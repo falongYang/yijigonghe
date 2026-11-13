@@ -32,6 +32,9 @@ export class UI {
     this._grpSig = '';
     this._dmgLayer = document.getElementById('dmg-layer');
     this._dmgWindow = 0; this._dmgInWindow = 0;
+    // 小地图交战图层：dmg / death 事件聚合的短寿热点与消散圈
+    this._combatMarks = []; this._deathMarks = [];
+    this._suppressCarouselClick = false;
     this._restoreMute();
     this.settings = this._loadSettings();
     this._raidAt = 0;
@@ -230,16 +233,67 @@ export class UI {
     requestAnimationFrame(() => this.centerChapterCarousel());
   }
 
+  /** 轮播「跟手拖动」：pointer 捕获 + 实时 translate，抬手按位移吸附到相邻卡。
+   *  原先只在 pointerup 判断一次位移（卡片全程不动、移出即失效），拖动感很弱；
+   *  这里让卡片实时跟手，并在拖动后抑制那次 click，避免误选章节 / 蚁种。 */
+  _wireDragCarousel(grid, track, stepFn, centerFn) {
+    if (!grid || !track) return;
+    let active = false, sx = 0, base = 0, moved = false, pid = null;
+    const offNow = () => {
+      const m = /translateX\(([-\d.]+)px\)/.exec(track.style.transform || '');
+      return m ? parseFloat(m[1]) : 0;
+    };
+    grid.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      active = true; moved = false; sx = e.clientX; base = offNow(); pid = e.pointerId;
+      try { grid.setPointerCapture(pid); } catch { /* 老浏览器忽略 */ }
+    });
+    grid.addEventListener('pointermove', e => {
+      if (!active) return;
+      const dx = e.clientX - sx;
+      if (!moved && Math.abs(dx) > 5) { moved = true; grid.classList.add('dragging'); }
+      if (moved) {
+        track.style.transform = `translateX(${base + dx}px)`;
+        if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+      }
+    });
+    const end = e => {
+      if (!active) return;
+      active = false;
+      grid.classList.remove('dragging');
+      try { if (pid != null) grid.releasePointerCapture(pid); } catch { /* ignore */ }
+      pid = null;
+      const cancelled = e.type === 'pointercancel';
+      const dx = Number.isFinite(e.clientX) ? e.clientX - sx : 0;
+      const cardW = (track.firstElementChild && track.firstElementChild.offsetWidth) || 240;
+      if (moved && !cancelled && Math.abs(dx) > 18) {
+        const n = Math.max(1, Math.min(3, Math.round(Math.abs(dx) / (cardW * 0.6))));
+        stepFn(dx < 0 ? n : -n);   // centerFn 由 stepFn 内部的 select* 触发
+      } else centerFn();           // 轻拖 / 原地点击：回弹到当前卡
+      if (moved) {
+        this._suppressCarouselClick = true;
+        setTimeout(() => { this._suppressCarouselClick = false; }, 150);
+      }
+      moved = false;
+    };
+    grid.addEventListener('pointerup', end);
+    grid.addEventListener('pointercancel', end);
+    // 拖动后的那次 click 不应选中卡片（capture 阶段拦截，避免 drag 结束时误触）
+    grid.addEventListener('click', e => {
+      if (this._suppressCarouselClick) {
+        this._suppressCarouselClick = false;
+        e.preventDefault(); e.stopPropagation();
+      }
+    }, true);
+  }
+
   _wireChapterCarousel() {
     const grid = $('#ch-carousel');
     $('#ch-prev').onclick = () => this.stepCh(-1);
     $('#ch-next').onclick = () => this.stepCh(1);
     grid.tabIndex = 0;
     grid.onkeydown = e => { if (e.key === 'ArrowUp') this.stepCh(-1); else if (e.key === 'ArrowDown') this.stepCh(1); };
-    let down = false, sx = 0;
-    grid.addEventListener('pointerdown', e => { down = true; sx = e.clientX; });
-    grid.addEventListener('pointerup', e => { if (!down) return; down = false; const dx = e.clientX - sx; if (Math.abs(dx) > 40) this.stepCh(dx < 0 ? 1 : -1); });
-    grid.addEventListener('pointerleave', () => { down = false; });
+    this._wireDragCarousel(grid, $('#ch-track'), d => this.stepCh(d), () => this.centerChapterCarousel());
     window.addEventListener('resize', () => this.centerChapterCarousel());
   }
 
@@ -370,10 +424,7 @@ export class UI {
     $('#sp-next').onclick = () => this.stepSp(1);
     grid.tabIndex = 0;
     grid.onkeydown = e => { if (e.key === 'ArrowLeft') this.stepSp(-1); else if (e.key === 'ArrowRight') this.stepSp(1); };
-    let down = false, sx = 0;
-    grid.addEventListener('pointerdown', e => { down = true; sx = e.clientX; });
-    grid.addEventListener('pointerup', e => { if (!down) return; down = false; const dx = e.clientX - sx; if (Math.abs(dx) > 40) this.stepSp(dx < 0 ? 1 : -1); });
-    grid.addEventListener('pointerleave', () => { down = false; });
+    this._wireDragCarousel(grid, $('#sp-track'), d => this.stepSp(d), () => this.centerCarousel());
     window.addEventListener('resize', () => this.centerCarousel());
   }
 
@@ -608,7 +659,9 @@ export class UI {
     this.mm.addEventListener('mousedown', e => { e.preventDefault(); jump(e); this._mmDrag = true; });
     window.addEventListener('mousemove', e => { if (this._mmDrag) jump(e); });
     window.addEventListener('mouseup', () => { this._mmDrag = false; });
-    this.mm.style.cursor = 'pointer';
+    this.mm.style.cursor = 'crosshair';
+    const tip = $('#mm-tip');
+    if (tip) tip.textContent = '白框 视野 · 红晕 交战 · 黄圈 标记 · 金圈 井';
   }
 
   // ----------------------------------------------------------- 启动页飘浮孢子
@@ -668,7 +721,37 @@ export class UI {
     layer.appendChild(d);
     d.addEventListener('animationend', () => d.remove(), { once: true });
   }
-  clearDamageFloats() { if (this._dmgLayer) this._dmgLayer.innerHTML = ''; }
+  clearDamageFloats() {
+    if (this._dmgLayer) this._dmgLayer.innerHTML = '';
+    this._combatMarks = []; this._deathMarks = [];
+  }
+
+  /** 小地图交战图层：把密集的 dmg 事件按 14 单位网格聚合为短寿热点。
+   *  克制命中 / 重创加权更亮，连续交火叠加增强，1.4s 内自然冷却。 */
+  markCombat(p) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return;
+    const now = performance.now();
+    const crit = (p.mult || 1) >= 1.15 || (p.amount || 0) >= 40;
+    const key = `${Math.round(p.x / 14)}_${Math.round(p.z / 14)}`;
+    let m = this._combatMarks.find(q => q.key === key && now - q.t < 900);
+    if (m) {
+      m.hits++;
+      m.power = Math.min(3.4, m.power + 0.3 + (crit ? 0.35 : 0));
+      m.t = now;
+      if (p.victim === SIDES.PLAYER) m.mine = true;
+    } else {
+      this._combatMarks.push({ key, x: p.x, z: p.z, t: now, hits: 1,
+        power: crit ? 1.4 : 0.8, mine: p.victim === SIDES.PLAYER });
+      if (this._combatMarks.length > 64) this._combatMarks.shift();
+    }
+  }
+
+  /** 阵亡标记：小地图一圈短促扩散，与 3D 残骸 / 消散环同步。 */
+  markDeath(p) {
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return;
+    this._deathMarks.push({ x: p.x, z: p.z, t: performance.now(), building: p.kind === 'building' });
+    if (this._deathMarks.length > 24) this._deathMarks.shift();
+  }
 
   // ----------------------------------------------------------- 暂停菜单
   showPause(on) {
@@ -1213,10 +1296,33 @@ export class UI {
     const vg = g.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, W * 0.72);
     vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.45)');
     g.fillStyle = vg; g.fillRect(0, 0, W, H);
-    // 坐标网格
-    g.strokeStyle = 'rgba(255,255,255,0.07)'; g.lineWidth = 1;
-    for (let i = 1; i < 8; i++) { const x = W * i / 8; g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
-    for (let i = 1; i < 6; i++) { const y = H * i / 6; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+    // 主 / 次坐标网格：每 4 格一条主线，与 3D 地面战术网格的疏密相呼应
+    for (let i = 1; i < 16; i++) {
+      const x = W * i / 16;
+      g.strokeStyle = i % 4 === 0 ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.055)';
+      g.lineWidth = i % 4 === 0 ? 1.1 : 1;
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke();
+    }
+    for (let i = 1; i < 12; i++) {
+      const y = H * i / 12;
+      g.strokeStyle = i % 3 === 0 ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.055)';
+      g.lineWidth = i % 3 === 0 ? 1.1 : 1;
+      g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+    }
+    // 中轴十字 + 边缘坐标刻度 / 列行标号（A–H / 1–6），报点与判距有参照
+    g.strokeStyle = 'rgba(255,255,255,0.1)'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(W / 2, 0); g.lineTo(W / 2, H); g.moveTo(0, H / 2); g.lineTo(W, H / 2); g.stroke();
+    g.fillStyle = 'rgba(235,242,220,0.5)'; g.font = '7px ui-monospace, monospace';
+    for (let i = 0; i < 8; i++) {
+      const x = W * (i + 0.5) / 8;
+      g.fillText(String.fromCharCode(65 + i), x - 2, 8);
+      g.fillRect(x - 0.5, H - 3, 1, 3);
+    }
+    for (let i = 0; i < 6; i++) {
+      const y = H * (i + 0.5) / 6;
+      g.fillText(String(i + 1), 2, y + 2.5);
+      g.fillRect(W - 3, y - 0.5, 3, 1);
+    }
     // 水域与浅滩
     const toX = x => (x + HW) / (2 * HW) * W, toY = z => (z + HH) / (2 * HH) * H;
     for (const w of (cfg.water || [])) {
@@ -1418,6 +1524,36 @@ export class UI {
         g.beginPath(); g.arc(toX(p.x), toY(p.z), 7 + k * 10, 0, 6.28); g.stroke();
       }
       g.globalAlpha = 1;
+    }
+    // 交战热点：按位置聚合的短寿红橙光晕 + 命中十字，让「哪里在打」一眼可见
+    const nowMs = performance.now();
+    this._combatMarks = this._combatMarks.filter(m => nowMs - m.t < 1400);
+    for (const m of this._combatMarks) {
+      const age = (nowMs - m.t) / 1400;
+      const cx = toX(m.x), cy = toY(m.z);
+      const r = 3 + m.power * 2.6 + age * 5;
+      const col = m.mine ? '255,90,80' : '255,170,90';
+      const grad = g.createRadialGradient(cx, cy, 0, cx, cy, r + 3);
+      grad.addColorStop(0, `rgba(${col},${(0.5 * (1 - age) * Math.min(1, m.power / 1.4)).toFixed(2)})`);
+      grad.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = grad;
+      g.beginPath(); g.arc(cx, cy, r + 3, 0, 6.28); g.fill();
+      if (age < 0.4) {
+        g.strokeStyle = `rgba(255,235,190,${(0.8 * (1 - age / 0.4)).toFixed(2)})`;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(cx - 2.4, cy); g.lineTo(cx + 2.4, cy);
+        g.moveTo(cx, cy - 2.4); g.lineTo(cx, cy + 2.4);
+        g.stroke();
+      }
+    }
+    // 阵亡消散圈：建筑损毁圈更大，便于分辨战损量级
+    this._deathMarks = this._deathMarks.filter(m => nowMs - m.t < 900);
+    for (const m of this._deathMarks) {
+      const k = (nowMs - m.t) / 900;
+      g.strokeStyle = `rgba(220,220,200,${(0.65 * (1 - k)).toFixed(2)})`;
+      g.lineWidth = m.building ? 1.6 : 1;
+      g.beginPath(); g.arc(toX(m.x), toY(m.z), 2 + k * (m.building ? 9 : 5), 0, 6.28); g.stroke();
     }
     // 相机视野矩形（比原来的圆更贴近实际可视范围）
     const c = this.world.cam;

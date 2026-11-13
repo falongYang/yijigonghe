@@ -41,6 +41,14 @@ export const FX_BUILDERS = {
     const core = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6),
       new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }));
     g.add(ring, core);
+    // 冲击十字：两道细光条随扩散环一起张开，命中读感更「脆」，也让密集会战中的落点可辨
+    const cross = [];
+    for (const r of [0, Math.PI / 2]) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.06, 0.16),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, depthWrite: false }));
+      bar.rotation.y = r; bar.position.y = 0.04;
+      g.add(bar); cross.push(bar);
+    }
     g.position.set(pos.x, pos.y || 1, pos.z);
     world.scene.add(g);
     world.fx.push({ t0, obj: g, update: (t) => {
@@ -50,6 +58,7 @@ export const FX_BUILDERS = {
       ring.material.opacity = 0.85 * (1 - k);
       core.scale.setScalar(1 - k * 0.8);
       core.material.opacity = 0.9 * (1 - k);
+      for (const bar of cross) { bar.scale.setScalar(0.7 + k * 1.5); bar.material.opacity = 0.75 * (1 - k); }
       return true;
     }, dispose: () => g.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); }) });
   },
@@ -82,6 +91,22 @@ export const FX_BUILDERS = {
       for (const p of parts) { p.mesh.position.addScaledVector(p.v, 0.04); p.v.y -= 0.4; p.mesh.material.opacity = 1 - t / 0.7; p.mesh.rotation.x += 0.2; p.mesh.rotation.y += 0.15; }
       return true;
     }, dispose: () => grp.children.forEach(c => c.geometry.dispose()) });
+    // 阵亡消散：阵营色薄环 + 一缕上升烟，混战中「这里刚倒下一只」也能被看见
+    if (world.fx.length < 140) {
+      const halo = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.35, 20),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6,
+          side: THREE.DoubleSide, depthWrite: false }));
+      halo.rotation.x = -Math.PI / 2; halo.position.set(pos.x, 0.32, pos.z);
+      world.scene.add(halo);
+      world.fx.push({ t0, obj: halo, update: (t) => {
+        if (t > 0.7) return false;
+        const k = t / 0.7;
+        halo.scale.setScalar(1 + k * 2.6);
+        halo.material.opacity = 0.6 * (1 - k);
+        return true;
+      }, dispose: () => { halo.geometry.dispose(); halo.material.dispose(); } });
+      world.addEffect('smoke', { x: pos.x, y: (pos.y || 1) + 0.6, z: pos.z });
+    }
   },
 
   smoke(world, pos, opts, t0) {
@@ -168,7 +193,26 @@ export const FX_BUILDERS = {
     }, dispose: () => { r.geometry.dispose(); r.material.dispose(); } });
   },
 
-  melee(world, pos) { world._spark(pos, 0xffe0a0, 6); },
+  melee(world, pos, opts = {}, t0) {
+    // 撕咬命中：火花 + 一道对准来袭方向的挥击弧，贴身肉搏不再只是一团白点
+    world._spark(pos, 0xffe0a0, 6);
+    const from = opts.from;
+    const ang = from ? Math.atan2(pos.z - from.z, pos.x - from.x) : Math.random() * Math.PI * 2;
+    const arc = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.16, 6, 14, Math.PI * 0.9),
+      new THREE.MeshBasicMaterial({ color: 0xffd27f, transparent: true, opacity: 0.9,
+        side: THREE.DoubleSide, depthWrite: false }));
+    arc.rotation.x = -Math.PI / 2;
+    arc.rotation.z = -ang + Math.PI * 0.45;   // 弧口朝向攻击者
+    arc.position.set(pos.x, (pos.y || 1) * 0.6 + 0.35, pos.z);
+    world.scene.add(arc);
+    world.fx.push({ t0, obj: arc, update: (t) => {
+      if (t > 0.24) return false;
+      const k = t / 0.24;
+      arc.scale.setScalar(0.6 + k * 0.9);
+      arc.material.opacity = 0.9 * (1 - k);
+      return true;
+    }, dispose: () => { arc.geometry.dispose(); arc.material.dispose(); } });
+  },
   sting(world, pos, opts) { world._projectile(pos, opts, 0x9bff5a); },
   bolt(world, pos, opts) { world._projectile(pos, opts, 0xbfe8ff, 0.4); },
 
@@ -448,4 +492,44 @@ FX_BUILDERS.ambush = (world, pos, opts = {}, t0) => {
     pm.opacity = 0.95 * (1 - t / 0.95);
     return true;
   }, dispose: () => { pg.dispose(); pm.dispose(); } });
+};
+
+// 克制 / 重创命中：金色双环 + 四道径向射线，与普通白色冲击明确分层。
+// 由 bridge-view 在 dmg 事件判定 mult>=1.15 或 amount>=40 时派生（180ms 节流），
+// 不新增 A 侧事件字段、不改任何已有 fx 键的签名。
+FX_BUILDERS.critBurst = (world, pos, opts = {}, t0) => {
+  const col = opts.color || 0xffe27f;
+  const DUR = 0.5;
+  const y = (pos.y || 1) * 0.5 + 0.35;
+  [0, 0.09].forEach((delay, i) => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.2, 8, 24),
+      new THREE.MeshBasicMaterial({ color: i ? 0xffffff : col, transparent: true, opacity: 0.9, depthWrite: false }));
+    r.rotation.x = -Math.PI / 2; r.position.set(pos.x, y + i * 0.08, pos.z);
+    world.scene.add(r);
+    world.fx.push({ t0, obj: r, update: (t) => {
+      const tt = t - delay;
+      if (tt < 0) return true;
+      if (tt > DUR) return false;
+      const k = tt / DUR;
+      r.scale.setScalar(1 + k * (5 - i));
+      r.material.opacity = 0.9 * (1 - k);
+      return true;
+    }, dispose: () => { r.geometry.dispose(); r.material.dispose(); } });
+  });
+  const rg = new THREE.BoxGeometry(2.4, 0.08, 0.14);
+  const rm = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85, depthWrite: false });
+  const grp = new THREE.Group();
+  for (let i = 0; i < 4; i++) {
+    const m = new THREE.Mesh(rg, rm);
+    m.rotation.y = i * Math.PI / 4;
+    grp.add(m);
+  }
+  grp.position.set(pos.x, y, pos.z);
+  world.scene.add(grp);
+  world.fx.push({ t0, obj: grp, update: (t) => {
+    if (t > DUR) return false;
+    grp.scale.setScalar(1 + t / DUR * 1.6);
+    rm.opacity = 0.85 * (1 - t / DUR);
+    return true;
+  }, dispose: () => { rg.dispose(); rm.dispose(); } });
 };

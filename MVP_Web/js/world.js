@@ -304,6 +304,11 @@ export class World {
     // 地面斑块（按地图配色软化大面积地面的生物群系感）与每章大型地标
     this.decalGroup = new THREE.Group();
     this.landmarkGroup = new THREE.Group();
+    // 战术坐标网格：贴地细线 / 主线 / 中轴基准线，随镜头拉近渐清晰
+    this.gridGroup = new THREE.Group();
+    this._gridLayers = null;
+    // 鼠标拖拽平移中：暂停屏幕边缘滚屏，避免两种平移叠加导致镜头漂移
+    this.dragPan = false;
     this.weatherPts = null; this._weatherVel = []; this._weatherCfg = null;
 
     this._buildLights();
@@ -318,6 +323,7 @@ export class World {
     this.scene.add(this.weatherGroup);
     this.scene.add(this.decalGroup);
     this.scene.add(this.landmarkGroup);
+    this.scene.add(this.gridGroup);
     this._buildScatter();
     this._buildCursor();
     this._initBar();
@@ -630,6 +636,71 @@ export class World {
     this.landmarkGroup.add(g);
   }
 
+  /** 战术坐标网格：贴地细线（每 20 单位）+ 每 5 格主线 + 中轴 / 巢区基准线 + 边缘刻度。
+   *  分段采样地面高度函数，避免直线穿进起伏坡面；三层各用一个 LineSegments，开销极低。
+   *  拉近镜头时更清晰、拉远自动淡出，不干扰远观的整体画面。 */
+  _rebuildGrid(cfg) {
+    for (const c of [...this.gridGroup.children]) {
+      this.gridGroup.remove(c);
+      if (c.geometry) c.geometry.dispose();
+      if (c.material) c.material.dispose();
+    }
+    this._gridLayers = null;
+    const step = 20, LIFT = 0.24;
+    const minor = [], major = [], axis = [];
+    const put = (arr, x1, z1, x2, z2) => {
+      const seg = 6;
+      for (let i = 0; i < seg; i++) {
+        const a0 = i / seg, a1 = (i + 1) / seg;
+        const ax = x1 + (x2 - x1) * a0, az = z1 + (z2 - z1) * a0;
+        const bx = x1 + (x2 - x1) * a1, bz = z1 + (z2 - z1) * a1;
+        arr.push(ax, this._groundY(ax, az) + LIFT, az, bx, this._groundY(bx, bz) + LIFT, bz);
+      }
+    };
+    const x0 = -HALF_W, x1 = HALF_W, z0 = -HALF_H, z1 = HALF_H;
+    const xs = Math.floor(HALF_W / step) * step, zs = Math.floor(HALF_H / step) * step;
+    for (let x = -xs; x <= xs; x += step) {
+      const target = (x % (step * 5) === 0) ? major : minor;
+      put(target, x, z0, x, z1);
+    }
+    for (let z = -zs; z <= zs; z += step) {
+      const target = (z % (step * 5) === 0) ? major : minor;
+      put(target, x0, z, x1, z);
+    }
+    // 中轴十字：双方巢区连线与左右分界，作为行军 / 报点的战术参照
+    put(axis, 0, z0, 0, z1);
+    put(axis, x0, 0, x1, 0);
+    // 四边短刻度，形成「地图坐标尺」的观感
+    for (let x = -xs; x <= xs; x += step) {
+      put(major, x, z0, x, z0 + 2.8); put(major, x, z1, x, z1 - 2.8);
+    }
+    for (let z = -zs; z <= zs; z += step) {
+      put(major, x0, z, x0 + 2.8, z); put(major, x1, z, x1 - 2.8, z);
+    }
+    const base = new THREE.Color(cfg.pal.high).lerp(new THREE.Color(0xffffff), 0.55);
+    const mk = (arr, color, opacity) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+      const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+      const line = new THREE.LineSegments(geo, mat);
+      line.frustumCulled = false;
+      this.gridGroup.add(line);
+      return { line, opacity };
+    };
+    this._gridLayers = [
+      mk(minor, base, 0.13),
+      mk(major, base, 0.30),
+      mk(axis, new THREE.Color(cfg.pal.moss).lerp(new THREE.Color(0xffffff), 0.4), 0.26),
+    ];
+  }
+
+  _updateGridFade() {
+    if (!this._gridLayers) return;
+    const k = clamp((215 - this.cam.dist) / 115, 0.22, 1);
+    for (const l of this._gridLayers) l.line.material.opacity = l.opacity * k;
+    this.gridGroup.visible = this.cam.dist < 238;
+  }
+
 
   _buildCursor() {
     this.cursor = new THREE.Mesh(
@@ -754,6 +825,7 @@ export class World {
     this._rebuildProps(cfg);
     this._rebuildDecals(cfg);
     this._rebuildLandmark(cfg);
+    this._rebuildGrid(cfg);
     this._rebuildPaths(cfg);
     this._rebuildWater(cfg);
     this._zones = mapZones(cfg); this._rebuildZones(this._zones);
@@ -2203,7 +2275,7 @@ export class World {
       if (k.d || k.arrowright) mv.add(right);
       if (k.arrowleft) mv.sub(right);
       // 屏幕边缘滚屏：鼠标贴近视口边缘时按距离线性增速
-      if (this.edgePan && this.edge.active && !this.intro) {
+      if (this.edgePan && this.edge.active && !this.intro && !this.dragPan) {
         const W = window.innerWidth, H = window.innerHeight, band = 28;
         const ex = this.edge.x <= band ? -(1 - this.edge.x / band)
           : (this.edge.x >= W - band ? 1 - (W - this.edge.x) / band : 0);
@@ -2217,6 +2289,34 @@ export class World {
         c.tz = clamp(c.tz + mv.z * speed, -HALF_H - 20, HALF_H + 20);
       }
     }
+  }
+
+  /** 鼠标拖拽平移：把屏幕像素位移换算为地面上的相机目标位移。
+   *  水平右向量 / 前向向量按透视焦距与俯角补偿，拖动时地面点基本跟着鼠标走。
+   *  顺带退出镜头跟随、打断入场运镜；钳制范围与键盘平移一致。 */
+  panByPixels(dx, dy) {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    const c = this.cam;
+    const h = this.canvas.clientHeight || window.innerHeight || 1;
+    const fov = this.camera.fov * Math.PI / 180;
+    const wpp = 2 * c.dist * Math.tan(fov / 2) / h;
+    const fwd = new THREE.Vector3();
+    this.camera.getWorldDirection(fwd); fwd.y = 0;
+    if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1);
+    fwd.normalize();
+    const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+    const sp = Math.max(0.28, Math.sin(c.pitch));
+    const mx = -dx * wpp * right.x + (dy * wpp / sp) * fwd.x;
+    const mz = -dx * wpp * right.z + (dy * wpp / sp) * fwd.z;
+    this.follow = false; this._followX = null; this._followZ = null;
+    if (this.intro) this.intro = null;
+    c.tx = clamp(c.tx + mx, -HALF_W - 20, HALF_W + 20);
+    c.tz = clamp(c.tz + mz, -HALF_H - 20, HALF_H + 20);
+  }
+  /** 拖拽平移期间关闭边缘滚屏，避免镜头被两股位移同时推动。 */
+  setDragPan(on) {
+    this.dragPan = !!on;
+    if (on) { this.edge.active = false; this.follow = false; }
   }
 
   zoom(delta) { this.cam.dist = clamp(this.cam.dist * (1 + delta * 0.0012), 42, 250); }
@@ -2302,6 +2402,7 @@ export class World {
     this.time += dt;
     this._frameDt = dt;
     this.updateCamera(dt);
+    this._updateGridFade();         // 战术网格随镜头距离渐显 / 淡出
     this._tickEraFade(dt);          // 纪元主题色平滑过渡
     this._tickDayNight(dt);         // 昼夜循环（叠加在纪元色之上）
     this._updateAmbient(dt);
