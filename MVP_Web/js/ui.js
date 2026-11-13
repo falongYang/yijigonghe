@@ -1217,6 +1217,27 @@ export class UI {
     if (this._mmBase) g.drawImage(this._mmBase, 0, 0);
     else { g.fillStyle = '#22241c'; g.fillRect(0, 0, W, H); }
 
+    // 战术掩体：岩石/断木按 kind 区分，受损按 hp/maxHp 变暗，受击 flash 加白边；
+    // 被摧毁后 sim 从 obstacles 移除，小地图同步消失（动态层而非静态底图）
+    for (const ob of (s.obstacles || [])) {
+      if (ob.alive === false || (ob.maxHp && ob.hp <= 0)) continue;
+      const cx = toX(ob.x), cy = toY(ob.z);
+      const rr = Math.max(2.2, ob.r / (2 * HW) * W);
+      const hpK = ob.maxHp ? Math.max(0.25, Math.min(1, ob.hp / ob.maxHp)) : 1;
+      if (ob.kind === 'log') {
+        const dx = Math.cos(ob.rot || 0) * rr * 1.5, dy = Math.sin(ob.rot || 0) * rr * 1.5;
+        g.strokeStyle = `rgba(184,132,76,${(0.35 + 0.5 * hpK).toFixed(2)})`; g.lineWidth = 2.2;
+        g.beginPath(); g.moveTo(cx - dx, cy - dy); g.lineTo(cx + dx, cy + dy); g.stroke();
+      } else {
+        g.beginPath(); g.arc(cx, cy, rr, 0, 6.28);
+        g.fillStyle = `rgba(150,152,142,${(0.3 + 0.5 * hpK).toFixed(2)})`; g.fill();
+        g.strokeStyle = 'rgba(210,214,200,0.5)'; g.lineWidth = 1; g.stroke();
+      }
+      if (ob.flash > 0) {
+        g.strokeStyle = `rgba(255,255,255,${Math.min(0.9, 0.4 + ob.flash * 2).toFixed(2)})`; g.lineWidth = 1.4;
+        g.beginPath(); g.arc(cx, cy, rr + 2.2, 0, 6.28); g.stroke();
+      }
+    }
     // 危险区（范围技能残留）
     for (const h of (s.hazards || [])) {
       g.fillStyle = 'rgba(255,130,95,0.2)';
@@ -1272,6 +1293,38 @@ export class UI {
         ? (s.selected.has(u.id) ? '#ffffff' : '#9fe8ff')
         : '#ff5a3a';
       g.fillRect(toX(u.x) - 1, toY(u.z) - 1, 2, 2);
+    }
+    // 选中部队行军路线：当前位置 → target → Shift+右键排队的 waypoints
+    // 只画手动指令（自动索敌不画，避免刷屏），攻击类用橙色、其余用青色，最多 24 条
+    let drawnPaths = 0;
+    if (s.selected && s.selected.size) {
+      g.setLineDash([2.5, 2.5]);
+      for (const u of s.units) {
+        if (u.side !== SIDES.PLAYER || !s.selected.has(u.id) || u.order !== 'manual' || drawnPaths >= 24) continue;
+        const t = u.target, wps = u.waypoints || [];
+        const hasT = t && Number.isFinite(t.x) && Number.isFinite(t.z);
+        if (!hasT && !wps.length) continue;
+        const pts = [];
+        if (hasT) pts.push([toX(t.x), toY(t.z)]);
+        for (const w of wps) if (w && Number.isFinite(w.x) && Number.isFinite(w.z)) pts.push([toX(w.x), toY(w.z)]);
+        if (!pts.length) continue;
+        const hostile = u.state === 'attack' || u.state === 'attackmove';
+        const col = hostile ? '255,154,90' : '126,240,255';
+        g.strokeStyle = `rgba(${col},0.55)`; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(toX(u.x), toY(u.z));
+        for (const [px, py] of pts) g.lineTo(px, py);
+        g.stroke();
+        // 标记用 fill（不受虚线影响）：当前目标菱形，后续路径点小方块
+        pts.forEach(([px, py], i) => {
+          g.fillStyle = `rgba(${col},${i === 0 ? 0.9 : 0.75})`;
+          if (i === 0) {
+            g.beginPath(); g.moveTo(px, py - 2.6); g.lineTo(px + 2.6, py);
+            g.lineTo(px, py + 2.6); g.lineTo(px - 2.6, py); g.closePath(); g.fill();
+          } else g.fillRect(px - 1.5, py - 1.5, 3, 3);
+        });
+        drawnPaths++;
+      }
+      g.setLineDash([]);   // 复位，避免影响后续 ping 与相机视口框
     }
     // 战术标记 / 敌方能力来袭 ping（按各自 color 着色：玩家金、敌方红）
     for (const p of (this.world.pings || [])) {
