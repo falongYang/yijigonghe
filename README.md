@@ -53,9 +53,11 @@ SSHPW='<服务器密码>' bash deploy_mvp.sh
 bash MVP_Web_部署/push_github.sh "本轮改动说明"
 ```
 
-不带参数时自动生成带时间戳的提交信息。凭据已配置在 `/Users/loganyang/.git-credentials`（权限 600，由仓库本地 `credential.helper=store` 读取，`origin` 保持干净 URL 不含 token）。
+不带参数时自动生成带时间戳的提交信息。凭据已配置在 `/Users/loganyang/.git-credentials`（权限 600，由仓库本地 `credential.helper=store` 读取，`origin` 保持干净 URL 不含 token）。仓库级 helper 链以空值开头，屏蔽系统级 `osxkeychain` 在沙箱内的 `-60006` 写入告警。
 
-> **PAT 权限要求**：必须是可写 token —— classic PAT 勾 `repo` scope，或 fine-grained PAT 设置 `Contents: Read and write` 并在 Repository access 中勾选本仓库。只读 token 会通过 API 鉴权，但 `git push` 会返回 `403 Permission ... denied`。
+**状态**：2026-11-13 首次推送成功，远端 `main` 与本地一致（含 5 个基线 / 解耦 / 改名提交）。
+
+> **PAT 权限要求**：必须是可写 token —— classic PAT 勾 `repo` scope，或 fine-grained PAT 设置 `Contents: Read and write` 并在 Repository access 中勾选本仓库。只读 token 会通过 API 鉴权，但 `git push` 会返回 `403 Permission ... denied`（`/repos` 里的 `permissions.push=true` 只反映账户权限，不能用来判断 token scope）。
 
 ## 并行开发边界
 
