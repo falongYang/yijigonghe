@@ -35,12 +35,14 @@ export function viewListener(ctx) {
       case 'ability':
         if (p.side === SIDES.PLAYER) {
           ui.toast('能力发动：' + abilityName(p.key), { priority: 1 });
+          if (world && p.x != null) world.shake(2.5);   // 我方能力施放轻微震屏
         } else if (world && p.x != null) {
           // 敌方能力来袭预警：红色光柱信标（3D + 小地图）+ 脉冲红环 + HUD 高危提示。
           // priority:2 保证它不会被井占领/编队/建造等普通 toast 覆盖掉（ui.toast 优先级规则）。
           world.addPing(p.x, p.z, 0xff5a5a, { priority: 2, dur: 4.2 });
           world.addEffect('enemyWarn', { x: p.x, z: p.z }, { key: p.key });
           ui.toast('⚠ 敌方能力·' + abilityName(p.key), { priority: 2, life: 3000 });
+          world.shake(2);   // 敌方能力来袭同样给一点冲击反馈
         }
         break;
       case 'dmg': {
@@ -52,10 +54,15 @@ export function viewListener(ctx) {
           lastCrit = now;
           world.addEffect('critBurst', { x: p.x, y: p.y || 4, z: p.z },
             { color: p.victim === SIDES.PLAYER ? 0xff8a7a : 0xffe27f });
+          world.shake(1.4);   // 克制/重创同步轻微震屏，强化打击感
         }
         break;
       }
-      case 'death': ui.markDeath(p); break;
+      case 'death':
+        ui.markDeath(p);
+        // 建筑损毁是战略级事件，给一次明显震屏；单位阵亡过于频繁，不触发以免抖动疲劳。
+        if (world && p.kind === 'building') world.shake(4);
+        break;
       case 'gain': {
         const now = performance.now();
         if (now - lastGain > 260) { lastGain = now; ui.resourceFloat(p); }
@@ -72,6 +79,7 @@ export function viewListener(ctx) {
         if (world && hq) {
           const col = p.side === SIDES.PLAYER ? 0x7ef0c8 : 0xffb070;
           world.addEffect('eraUp', { x: hq.x, z: hq.z }, { color: col, era: p.era });
+          world.shake(5);   // 纪元跃迁是全局质变事件，给一次强烈震屏
           // 敌方进阶是威胁信号，额外在小地图给一个橙色 ping（玩家侧不刷小地图）
           if (p.side === SIDES.ENEMY) world.addPing(hq.x, hq.z, 0xffb070, { priority: 2, dur: 4.2 });
         }

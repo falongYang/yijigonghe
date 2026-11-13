@@ -242,6 +242,7 @@ export class World {
     this.raycaster = new THREE.Raycaster();
     this.ndc = new THREE.Vector2();
     this.time = 0;
+    this._shake = 0;            // 摄像机冲击震屏当前幅度（世界单位），随时间指数衰减
     this.playerSp = null; this.enemySp = null;
     this.era = 0;
     this._dayT = 30;            // 开局从清晨开始，避免直接深夜
@@ -2382,6 +2383,19 @@ export class World {
       c.tz + c.dist * cp * Math.cos(c.yaw),
     );
     this.camera.lookAt(c.tx, 0, c.tz);
+    // 冲击震屏：在相机本地右/上轴施加随时间的相干抖动，幅度随 _shake 指数衰减。
+    // 仅在 _shake 显著时计算，避免每帧无谓运算；衰减到阈值以下即归零。
+    if (this._shake > 0.05) {
+      const a = this._shake;
+      const f = this.time * 62;
+      const ox = Math.sin(f * 1.3) * a + Math.sin(f * 2.7) * a * 0.4;
+      const oy = Math.cos(f * 1.7) * a + Math.cos(f * 3.1) * a * 0.4;
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
+      this.camera.position.addScaledVector(right, ox).addScaledVector(up, oy);
+      this._shake *= Math.pow(0.012, dt);   // ≈0.4s 内衰减到 ~16%，≈0.7s 归零
+      if (this._shake < 0.05) this._shake = 0;
+    }
     // 键盘平移：A / S 已让给战场指令（攻击移动 / 停止），仅方向键与 W / D 平移
     if (dt > 0) {
       const k = this.keys;
@@ -2443,6 +2457,9 @@ export class World {
     this.cam.yaw -= dyaw * 0.005;
     this.cam.pitch = clamp(this.cam.pitch - dpitch * 0.004, 0.28, 1.32);
   }
+  /** 触发摄像机冲击震屏：取较大者，避免连续小冲击被大冲击覆盖时反而变小。
+   *  幅度单位为世界单位，约 0.4s 内可见衰减；典型值：克制/重创 1.4、能力 2.5、建筑损毁 4、纪元跃迁 5。 */
+  shake(mag) { if (Number.isFinite(mag) && mag > this._shake) this._shake = mag; }
   focus(x, z) { this.setFollow(false); this.cam.tx = x; this.cam.tz = z; }
   /** 镜头跟随：跟随点由 main.js 每帧按选中单位质心写入。 */
   setFollow(on) {
