@@ -232,3 +232,122 @@ for (const [type, col] of Object.entries(RING_COLORS)) {
 for (const type of ['orderMove', 'orderAttack', 'orderRepair', 'orderRally']) {
   FX_BUILDERS[type] = (world, pos, opts) => world._orderMarker(type, pos, opts);
 }
+
+// ---------------------------------------------------------------- 质变时刻
+// 纪元跃迁：主巢处的三道错峰扩张环 + 上升光柱 + 地面辉光 + 上升粒子。
+// A 侧 era 事件只带 {side, era}，坐标由 bridge-view 只读 sim.buildings 取得后传入；
+// 颜色按阵营区分（玩家青绿 / 敌方橙），与已有的音效、HUD 卡片、环境色平滑过渡叠加。
+FX_BUILDERS.eraUp = (world, pos, opts = {}, t0) => {
+  const col = opts.color || 0x7ef0c8;
+  const DUR = 1.5;
+
+  // 1) 三道错峰扩张环
+  [0, 0.18, 0.36].forEach((delay, i) => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.34, 8, 32),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false }));
+    r.rotation.x = -Math.PI / 2;
+    r.position.set(pos.x, 0.5 + i * 0.12, pos.z);
+    world.scene.add(r);
+    world.fx.push({ t0, obj: r, update: (t) => {
+      const tt = t - delay;
+      if (tt < 0) return true;
+      if (tt > DUR) return false;
+      const k = tt / DUR;
+      r.scale.setScalar(1 + k * (14 - i * 2));
+      r.material.opacity = 0.9 * (1 - k) * (1 - i * 0.18);
+      return true;
+    }, dispose: () => { r.geometry.dispose(); r.material.dispose(); } });
+  });
+
+  // 2) 中心上升光柱
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 2.4, 16, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide }));
+  beam.position.set(pos.x, 8, pos.z);
+  world.scene.add(beam);
+  world.fx.push({ t0, obj: beam, update: (t) => {
+    if (t > 1.2) return false;
+    const k = t / 1.2;
+    beam.material.opacity = 0.38 * (1 - k);
+    beam.scale.set(1 - k * 0.6, 1 + k * 0.5, 1 - k * 0.6);
+    return true;
+  }, dispose: () => { beam.geometry.dispose(); beam.material.dispose(); } });
+
+  // 3) 地面辉光
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(4.2, 24),
+    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }));
+  glow.rotation.x = -Math.PI / 2; glow.position.set(pos.x, 0.25, pos.z);
+  world.scene.add(glow);
+  world.fx.push({ t0, obj: glow, update: (t) => {
+    if (t > 0.9) return false;
+    glow.scale.setScalar(1 + t * 0.8);
+    glow.material.opacity = 0.5 * (1 - t / 0.9);
+    return true;
+  }, dispose: () => { glow.geometry.dispose(); glow.material.dispose(); } });
+
+  // 4) 上升光尘（共享几何/材质，避免逐粒子创建开销）
+  const n = 18;
+  const pg = new THREE.BoxGeometry(0.35, 0.35, 0.35);
+  const pm = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.95, depthWrite: false });
+  const grp = new THREE.Group();
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const p = new THREE.Mesh(pg, pm);
+    const a = (i / n) * Math.PI * 2;
+    p.position.set(pos.x + Math.cos(a) * 2.2, 0.5, pos.z + Math.sin(a) * 2.2);
+    grp.add(p);
+    parts.push({ m: p, vy: 3 + Math.random() * 4, vx: Math.cos(a) * 1.6, vz: Math.sin(a) * 1.6 });
+  }
+  world.scene.add(grp);
+  world.fx.push({ t0, obj: grp, update: (t) => {
+    if (t > 1.4) return false;
+    for (const q of parts) {
+      q.m.position.x += q.vx * 0.016; q.m.position.z += q.vz * 0.016;
+      q.m.position.y += q.vy * 0.016; q.m.rotation.y += 0.12;
+    }
+    pm.opacity = 0.95 * (1 - t / 1.4);
+    return true;
+  }, dispose: () => { pg.dispose(); pm.dispose(); } });
+};
+
+// 进化：把原先 RING_COLORS 注册的单层白环升级为「双环错峰 + 上升光尘」的质变表现。
+// 键名 evolve 与 (world, pos, opts, t0) 签名保持不变，A 侧 _fx('evolve', …) 无需改动；
+// opts.color 用阵营色（sim 传入 sp.P.color），外层再叠一道白环提亮。
+FX_BUILDERS.evolve = (world, pos, opts = {}, t0) => {
+  const col = opts.color || 0xffffff;
+  const DUR = 0.85;
+  [0, 0.16].forEach((delay, i) => {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.24, 8, 28),
+      new THREE.MeshBasicMaterial({ color: i ? 0xffffff : col, transparent: true, opacity: 0.9, depthWrite: false }));
+    r.rotation.x = -Math.PI / 2;
+    r.position.set(pos.x, 0.6 + i * 0.25, pos.z);
+    world.scene.add(r);
+    world.fx.push({ t0, obj: r, update: (t) => {
+      const tt = t - delay;
+      if (tt < 0) return true;
+      if (tt > DUR) return false;
+      const k = tt / DUR;
+      r.scale.setScalar(1 + k * (7 - i * 2));
+      r.material.opacity = 0.9 * (1 - k);
+      return true;
+    }, dispose: () => { r.geometry.dispose(); r.material.dispose(); } });
+  });
+  const n = 10;
+  const pg = new THREE.BoxGeometry(0.28, 0.28, 0.28);
+  const pm = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false });
+  const grp = new THREE.Group();
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const p = new THREE.Mesh(pg, pm);
+    const a = (i / n) * Math.PI * 2;
+    p.position.set(pos.x + Math.cos(a) * 1.3, (pos.y || 1) * 0.4, pos.z + Math.sin(a) * 1.3);
+    grp.add(p);
+    parts.push({ m: p, vy: 2.6 + Math.random() * 2.6 });
+  }
+  world.scene.add(grp);
+  world.fx.push({ t0, obj: grp, update: (t) => {
+    if (t > 0.9) return false;
+    for (const q of parts) q.m.position.y += q.vy * 0.016;
+    pm.opacity = 0.9 * (1 - t / 0.9);
+    return true;
+  }, dispose: () => { pg.dispose(); pm.dispose(); } });
+};

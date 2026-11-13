@@ -11,7 +11,7 @@ const ABILITY_NAMES = {
 export function abilityName(k) { return ABILITY_NAMES[k] || k; }
 
 export function viewListener(ctx) {
-  const { ui, world, SIDES } = ctx;
+  const { ui, world, game, SIDES } = ctx;
   let lastGain = 0;   // 卸货密集时飘字节流，避免刷屏
   return (t, p) => {
     switch (t) {
@@ -34,7 +34,21 @@ export function viewListener(ctx) {
         break;
       }
       case 'end': ui.showPause(false); ui.showEnd(p); break;
-      case 'era': ui.showEraCard(p.side, p.era); break;
+      case 'era': {
+        ui.showEraCard(p.side, p.era);
+        // 纪元跃迁此前只有音效 / HUD 卡片 / 环境色过渡，3D 场景缺一个「质变」爆点。
+        // A 侧 era 事件只带 {side, era}，坐标由 B 侧只读 game.sim.buildings 取该方主巢，
+        // 不修改事件结构（契约只增不删不改）。
+        const sim = game && game.sim;
+        const hq = sim && sim.buildings && sim.buildings.find(b => b.side === p.side && b.type === 'hq');
+        if (world && hq) {
+          const col = p.side === SIDES.PLAYER ? 0x7ef0c8 : 0xffb070;
+          world.addEffect('eraUp', { x: hq.x, z: hq.z }, { color: col, era: p.era });
+          // 敌方进阶是威胁信号，额外在小地图给一个橙色 ping（玩家侧不刷小地图）
+          if (p.side === SIDES.ENEMY) world.addPing(hq.x, hq.z, 0xffb070);
+        }
+        break;
+      }
       case 'echo': ui.echoToast(p.text); break;
       case 'aiAttack': ui.alertRaid(); break;
       case 'well':
