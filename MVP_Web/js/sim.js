@@ -13,10 +13,13 @@ import {
   ENEMY_ARCHETYPES, DIFFICULTY, CAMPAIGN, applyArchetype, applyDifficulty,
   getMapConfig, SKIRMISH_MAP, ARCHETYPE_UNITS, UNIT_ANIM,
   UNIT_FEEL, PROJECTILE_SPEC, projectileFor, TARGET_POLICIES,
+  IMPACT_SPEC, impactFor, CORPSE_SPEC, corpseFor,
+  BUILDING_STAGES, buildingStageOf, NODE_PHASES, nodePhaseOf,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
 import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor,
-  weatherTimelineFor, mapDynamicsFor, dayPhaseAt, decorFor, ambienceFor } from './maps.js';
+  weatherTimelineFor, mapDynamicsFor, dayPhaseAt, decorFor, ambienceFor,
+  sceneEventsFor } from './maps.js';
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -88,6 +91,10 @@ export class Simulation {
     this.tracers = [];                // 弹道只读记录（渲染层可轮询，不参与结算）
     this.decor = [];                  // 地图装饰点位（确定性，纯视觉）
     this.ambience = null;             // 场景氛围基准（粒子 / 风向 / 辉光）
+    this.corpses = [];                // 死亡演出只读快照队列（按寿命回收，上限 80）
+    this.sceneEvents = [];            // 战役周期氛围事件调度（遭遇战恒空）
+    this.sceneState = null;           // 当前活跃场景事件快照
+    this._visualAcc = 0;              // 建筑 / 资源点表现状态刷新累加器
   }
 
   on(fn) { this.listeners.push(fn); }
@@ -137,6 +144,9 @@ export class Simulation {
     this.effects.length = 0;
     this.hazards.length = 0;
     this.tracers.length = 0;
+    this.corpses.length = 0;
+    this.sceneState = null;
+    this._visualAcc = 0;
     this.cd = { P: {}, E: {} };
     this.aura = { P: { dmg: 1, t: 0 }, E: { dmg: 1, t: 0 } };
     this.nextId = 1;
@@ -154,7 +164,9 @@ export class Simulation {
       // 动态战场统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
       resonanceHits: 0, weatherShifts: 0, milestones: 0,
       // 手感 / 弹道统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
-      shots: 0 });
+      shots: 0,
+      // 物理反馈 / 场景事件统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
+      impacts: 0, sceneEvents: 0 });
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
     this._levelFlags = {};   // 等级里程碑播报去重（每局重置）
@@ -172,6 +184,7 @@ export class Simulation {
     this.milestones = {};
     this.decor = decorFor(mode, chapter);
     this.ambience = ambienceFor(mode, chapter);
+    this.sceneEvents = sceneEventsFor(mode, chapter);
     this.terrainHazards = staticHazardsFor(mode, chapter).map(h => ({ ...h, accum: 0 }));
     // 场景目标：默认 'destroy'（摧毁敌方蚁后巢）＝既有胜负判定，逐字不变。
     // 可选 'survive'（存活到时限）、'harvest'（累计采集达标）、'dominate'（占领全部信息素井并守住）。
@@ -209,6 +222,7 @@ export class Simulation {
     if (this.terrainHazards.length) this._log(`【地形警示】本图存在 ${this.terrainHazards.length} 处熔岩/酸池，驻留其中会持续受损。`, 'bad');
     if (this.weatherTimeline.length) this._log(`【气象预报】本图天气将随时间转变 ${this.weatherTimeline.length} 次，视野与远程命中会随之波动。`, 'info');
     if (this.dynamics && this.dynamics.resonance) this._log('【地脉共振】战场高台会被周期性唤醒，抢占者获得攻击加成。', 'info');
+    if (this.sceneEvents.length) this._log(`【场景节拍】本图将随时间出现 ${this.sceneEvents.length} 类周期性环境演出。`, 'info');
     this._log(`【作战目标】${this.objective.label}。`, 'key');
     this._emit('reset', { mode: this.mode, chapter: this.chapter, archetype: this.archetype.id, difficulty: this.difficulty.id });
     this._updateVision();
@@ -221,7 +235,8 @@ export class Simulation {
       // 资源点为可再生场：regen 使被采空的点在约 16s 内回满，避免双方经济在开局一分钟内枯竭。
       this.nodes.push({ id: this.nextId++, x: n.x, z: n.z, amount: n.amt, max: n.amt, domain: n.domain, res: n.res,
         regen: n.amt * 0.06 * this._clim().regenMul,
-        owner: null, glow: 0 });   // owner/glow：最近采集方与采集热度（供地图/小地图呈现）
+        owner: null, glow: 0,      // owner/glow：最近采集方与采集热度（供地图/小地图呈现）
+        phase: 'abundant', phaseGlow: 1, phasePulse: 1.2 });  // 储量外观阶段（纯表现）
     }
   }
 
@@ -413,6 +428,10 @@ export class Simulation {
       feel: { facing: h0, gait: 0, step: 0, reload: 0, windup: 0, recoil: 0, shotAt: -1 },
       // 最近一次直接命中的反馈（飘字 / 受击方向 / 暴击描边；DoT 与溅射不写）
       lastHit: null,
+      // 受击物理只读包络：方向单位向量 / 击退强度 / 顿帧 / 镜头震动 / 衰减。
+      // 只由真实单位的直接命中写入，不改动坐标、速度、攻击计时器等任何结算字段。
+      phys: { dx: 0, dz: 0, mag: 0, hitstop: 0, shake: 0, env: 0, t: 99,
+        hitstopT: 0, shakeT: 0, seq: 0, color: 0xffffff, dtype: null },
     };
     this.units.push(u);
     if (base.role === 'econ') this._assignHarvest(u);
@@ -438,6 +457,9 @@ export class Simulation {
       cooldown: 0, attack: e.attack || null, lastAttacker: null, phGen: e.phGen || 0,
       rally: null,   // 集结点（仅玩家侧生产建筑可设置，作战单位生产后前往）
       alarmStep: 0,  // 受袭分级告警已播报的最高档（0/1/2/3 → 75/50/25%）
+      // 外观只读分级（烟尘 / 余烬 / 裂痕 / 施工脉冲），不参与耐久与生产结算
+      visual: { stage: done ? 'intact' : 'building', label: done ? '完好' : '施工中',
+        scar: 0, smoke: done ? 0 : 0.15, ember: 0, crack: 0, buildPulse: done ? 1 : 0 },
     };
     this.buildings.push(b);
     if (!done && this.stats) this.stats[side].built++;   // 初始巢不计入建造数
@@ -985,6 +1007,9 @@ export class Simulation {
     this._tickWeather(dt);
     this._tickDynamics(dt);
     this._tickTracers(dt);
+    this._tickPhysics(dt);
+    this._tickSceneEvents(dt);
+    this._tickVisuals(dt);
     this._tickAI(dt);
     this._checkEnd();
     // 能力冷却倒计时递减（此前只设置不递减，会导致技能永久处于冷却）
@@ -1154,6 +1179,78 @@ export class Simulation {
     }
   }
 
+  /* --------------------------- 细节四·只读表现状态 --------------------------- */
+  /** 受击包络衰减 + 死亡演出队列寿命。纯数据：不改坐标、速度、攻击计时器。 */
+  _tickPhysics(dt) {
+    for (const u of this.units) {
+      const p = u.phys;
+      if (!p) continue;
+      p.t += dt;
+      p.env = +clamp(1 - p.t / 0.32, 0, 1).toFixed(3);
+      p.hitstopT = +Math.max(0, p.hitstop - p.t).toFixed(3);
+      p.shakeT = +Math.max(0, p.hitstop * 2 - p.t).toFixed(3);
+    }
+    for (let i = this.corpses.length - 1; i >= 0; i--) {
+      this.corpses[i].t += dt;
+      if (this.corpses[i].t >= this.corpses[i].life) this.corpses.splice(i, 1);
+    }
+  }
+
+  /** 战役周期场景事件：只播报 + 既有特效 + 只读快照，不动任何结算系数。
+   *  遭遇战 sceneEvents 恒空 → 整段不执行。不消费随机数，调度完全确定。 */
+  _tickSceneEvents(dt) {
+    if (!this.sceneEvents || !this.sceneEvents.length) return;
+    for (const e of this.sceneEvents) {
+      if (e.fired >= e.times || this.time < e.nextAt) continue;
+      e.fired++;
+      e.nextAt += e.period;
+      this.sceneState = { id: e.id, key: e.key, label: e.label, color: e.color,
+        fx: e.fx, at: +this.time.toFixed(2), dur: e.dur, cycle: e.fired, times: e.times };
+      this._log(`【场景·${e.label}】${e.text}`, 'info');
+      this._fx(e.fx === 'resonance' ? 'resonance' : 'ring', 0, 1, 0, { color: e.color, r: 120 });
+      if (this.stats) { this.stats.P.sceneEvents++; this.stats.E.sceneEvents++; }
+    }
+  }
+
+  /** 建筑外观分级与资源点储量阶段：0.2s 批量刷新，避免每帧遍历。 */
+  _tickVisuals(dt) {
+    this._visualAcc += dt;
+    if (this._visualAcc < 0.2) return;
+    this._visualAcc = 0;
+    for (const b of this.buildings) {
+      if (!b.visual) continue;
+      const ratio = b.maxHp ? clamp(b.hp / b.maxHp, 0, 1) : 1;
+      const stg = buildingStageOf(ratio, b.state === 'constructing');
+      b.visual.stage = stg.id; b.visual.label = stg.label;
+      b.visual.scar = +(1 - ratio).toFixed(3);
+      b.visual.smoke = stg.smoke; b.visual.ember = stg.ember; b.visual.crack = stg.crack;
+      b.visual.buildPulse = b.state === 'constructing' ? +clamp(b.buildProg, 0, 1).toFixed(3) : 1;
+    }
+    for (const n of this.nodes) {
+      const ph = nodePhaseOf(n.max ? n.amount / n.max : 1);
+      n.phase = ph.id; n.phaseGlow = ph.glow; n.phasePulse = ph.pulse;
+    }
+  }
+
+  /** 单位阵亡时留一份只读演出快照（倒地方向取自最后一次直接命中）。 */
+  _addCorpse(u) {
+    if (!this.corpses) return;                  // 裸实例容错
+    const p = u.phys;
+    const dir = p && p.mag > 0 ? { x: p.dx, z: p.dz } : { x: 0, z: 0 };
+    const spec = corpseFor(u.domain);
+    // SPECIES.color 是 '#RRGGBB' 字符串；统一解析为 0xRRGGBB 数值，
+    // 与 UNIT_VISUAL / PROJECTILE_SPEC 等只读视觉规格的口径一致（B 侧可直喂 THREE.Color）。
+    const raw = this.sp && this.sp[u.side] ? this.sp[u.side].color : null;
+    const color = (typeof raw === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw))
+      ? parseInt(raw.slice(1), 16) : (Number.isFinite(raw) ? raw : 0xffffff);
+    this.corpses.push({
+      id: u.id, side: u.side, type: u.type, domain: u.domain,
+      x: u.x, z: u.z, heading: u.heading, facing: u.feel ? u.feel.facing : u.heading,
+      dir, color, spec, t: 0, life: +(spec.fade + 0.4).toFixed(2), at: +this.time.toFixed(2),
+    });
+    if (this.corpses.length > 80) this.corpses.splice(0, this.corpses.length - 80);
+  }
+
   /** 只读查询：单位手感快照（含规格 / 动画 / 最近命中反馈）；无该单位返回 null。 */
   feelOf(id) {
     const u = this.getUnit(id);
@@ -1172,7 +1269,38 @@ export class Simulation {
   /** 只读查询：场景汇总（B 侧单帧拉一次即可）。 */
   sceneInfo() {
     return { day: this.dayPhase(), ambience: this.ambience ? { ...this.ambience } : null,
-      decorCount: this.decor.length, weather: this._wea(), climate: this._clim() };
+      decorCount: this.decor.length, weather: this._wea(), climate: this._clim(),
+      event: this.sceneEvent() };
+  }
+  /** 只读查询：单位受击物理包络（含解析后的冲击规格）；无该单位返回 null。 */
+  physOf(id) {
+    const u = this.getUnit(id);
+    return u && u.phys ? { ...u.phys, spec: impactFor(u.phys.dtype || 'bite', u.domain) } : null;
+  }
+  /** 只读查询：仍在演出期内的阵亡快照数组。调用方不得修改；按 life 自动回收。 */
+  activeCorpses() { return this.corpses; }
+  /** 只读查询：全部受击 / 尸体 / 建筑 / 资源阶段规格表（逐项深拷贝，调用方可安全改写）。 */
+  impactSpec() { return Object.fromEntries(Object.entries(IMPACT_SPEC).map(([k, v]) => [k, { ...v }])); }
+  corpseSpec() { return Object.fromEntries(Object.entries(CORPSE_SPEC).map(([k, v]) => [k, { ...v }])); }
+  buildingStages() { return BUILDING_STAGES.map(s => ({ ...s })); }
+  nodePhaseSpec() { return NODE_PHASES.map(p => ({ ...p })); }
+  /** 只读查询：建筑外观快照；无该建筑返回 null。 */
+  buildingVisualOf(id) {
+    const b = this.getBuilding(id);
+    return b && b.visual ? { ...b.visual, hpRatio: b.maxHp ? +(b.hp / b.maxHp).toFixed(3) : 1 } : null;
+  }
+  /** 只读查询：资源点储量阶段快照；无该节点返回 null。 */
+  nodeVisualOf(id) {
+    const n = this.nodes.find(x => x.id === id);
+    return n ? { id: n.id, phase: n.phase, glow: n.phaseGlow, pulse: n.phasePulse,
+      ratio: n.max ? +(n.amount / n.max).toFixed(3) : 1,
+      spec: { ...(NODE_PHASES.find(p => p.id === n.phase) || NODE_PHASES[0]) } } : null;
+  }
+  /** 只读查询：当前活跃的场景事件（超出 dur 返回 null）。 */
+  sceneEvent() {
+    const e = this.sceneState;
+    if (!e || this.time - e.at > e.dur) return null;
+    return { ...e, remaining: +Math.max(0, e.dur - (this.time - e.at)).toFixed(2) };
   }
 
   _tickAura(dt) {
@@ -1607,6 +1735,22 @@ export class Simulation {
     if (dtype === 'acid' && tgt.corrodeT !== undefined && tgt.hp > 0) tgt.corrodeT = 3;
     // 只有「真实单位的直接命中」才触发受击动作；DoT / 危害 / 溅射的代理攻击不打断动画。
     if (unitAtk && tgt.animHurt !== undefined && tgt.hp > 0) tgt.animHurt = 0.22;
+    // 受击物理只读包络：方向由攻击点指向目标，强度按「本次伤害 / 目标最大耐久」缩放。
+    // 只写数据，不改坐标 / 速度 / 攻击计时器，故对固定随机流与战斗节奏零影响。
+    if (unitAtk && tgt.phys && tgt.hp > 0) {
+      const imp = impactFor(dtype, tgt.domain);
+      const dx = tgt.x - fromX, dz = tgt.z - fromZ;
+      const len = Math.hypot(dx, dz) || 1;
+      const scale = clamp(d / Math.max(1, tgt.maxHp || 1), 0.12, 1);
+      const p = tgt.phys;
+      p.dx = +(dx / len).toFixed(4); p.dz = +(dz / len).toFixed(4);
+      p.mag = +(imp.knock * (0.4 + scale)).toFixed(3);
+      p.hitstop = imp.hitstop;
+      p.shake = +(imp.shake * (0.5 + scale)).toFixed(3);
+      p.t = 0; p.env = 1; p.hitstopT = imp.hitstop; p.shakeT = +(imp.hitstop * 2).toFixed(3);
+      p.seq++; p.color = imp.color; p.dtype = dtype;
+      if (st) st.impacts++;
+    }
     if (tgt.flash !== undefined) tgt.flash = 0.16;
     if (tgt.lastAttacker !== undefined) tgt.lastAttacker = aSide;
     // 命中反馈：只有「真实单位的直接命中」写最近一次受击信息（飘字 / 受击方向 / 暴击描边）；
@@ -1726,6 +1870,7 @@ export class Simulation {
         }
       }
       this._setAnim(u, 'death');   // 死亡演出快照拿到终态，B 侧 _dying 可直接读 u.anim
+      this._addCorpse(u);          // 额外的倒地方向 / 沉降 / 淡出规格（纯表现）
       this._fx('death', u.x, 1.2, u.z, { color: this.sp[u.side].color });
       this._emit('death', { side: u.side, kind: 'unit', x: u.x, z: u.z });
       this.units.splice(i, 1);

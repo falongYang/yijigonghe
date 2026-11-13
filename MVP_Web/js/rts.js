@@ -460,6 +460,64 @@ export const TARGET_POLICIES = {
   balanced: { id: 'balanced', label: '均衡绞杀', worker: 0.5, building: 0.2, hq: 0.6, ranged: 0.6, lowHp: 1.0 },
 };
 
+/* --------------------------------------------------------------------------
+ * 细节四·只读表现规格：受击物理 / 死亡演出 / 建筑外观 / 资源阶段。
+ * sim 只把这些数值写进 u.phys / b.visual / n.phase 等字段，供 B 侧可选消费；
+ * **绝不参与**伤害、冷却、索敌、移动、采集速率与胜负结算。B 侧不消费时，
+ * 原有基于 flash / anim / glow 的表现路径完全不受影响。
+ * ------------------------------------------------------------------------ */
+export const IMPACT_SPEC = {
+  bite:   { knock: 0.95, hitstop: 0.045, shake: 0.10, color: 0xffd27f },
+  acid:   { knock: 0.55, hitstop: 0.030, shake: 0.06, color: 0x9be05a },
+  sting:  { knock: 0.75, hitstop: 0.040, shake: 0.08, color: 0xffe27f },
+  pierce: { knock: 1.20, hitstop: 0.060, shake: 0.14, color: 0xaef06a },
+  bomb:   { knock: 1.60, hitstop: 0.090, shake: 0.24, color: 0xff8a5a },
+  psi:    { knock: 0.35, hitstop: 0.025, shake: 0.05, color: 0xc7b3ff },
+};
+const IMPACT_BY_DOMAIN = { land: 1.00, sea: 1.15, air: 1.35, underground: 0.75 };
+/** 解析后的受击规格：击退基线按目标所处域微调（空域更飘、地下更沉）。 */
+export function impactFor(dtype, domain = 'land') {
+  const base = IMPACT_SPEC[dtype] || IMPACT_SPEC.bite;
+  const mul = IMPACT_BY_DOMAIN[domain] || 1;
+  return { ...base, knock: +(base.knock * mul).toFixed(3), dtype, domain };
+}
+
+/** 死亡演出：fall 倒地时长、sink 沉降、fade 淡出、spin 旋转、scatter 碎片。 */
+export const CORPSE_SPEC = {
+  land:        { fall: 0.42, sink: 1.10, fade: 1.60, spin: 1.0, scatter: 3 },
+  sea:         { fall: 0.30, sink: 1.60, fade: 2.00, spin: 0.6, scatter: 2 },
+  air:         { fall: 0.85, sink: 0.55, fade: 1.20, spin: 2.2, scatter: 4 },
+  underground: { fall: 0.20, sink: 0.70, fade: 1.00, spin: 0.4, scatter: 2 },
+};
+export function corpseFor(domain = 'land') {
+  const known = !!CORPSE_SPEC[domain];
+  return { ...(CORPSE_SPEC[domain] || CORPSE_SPEC.land), domain: known ? domain : 'land' };
+}
+
+/** 建筑外观分级：按耐久比取档，施工中单独一档（与 state 字段无关，纯表现）。 */
+export const BUILDING_STAGES = [
+  { id: 'intact',   label: '完好', min: 0.75, smoke: 0.00, ember: 0.00, crack: 0.0 },
+  { id: 'scarred',  label: '受损', min: 0.45, smoke: 0.35, ember: 0.12, crack: 0.4 },
+  { id: 'critical', label: '危急', min: 0.00, smoke: 0.85, ember: 0.55, crack: 0.9 },
+];
+export function buildingStageOf(ratio, constructing = false) {
+  if (constructing) return { id: 'building', label: '施工中', min: -1, smoke: 0.15, ember: 0, crack: 0 };
+  const r = Math.max(0, Math.min(1, ratio));
+  return BUILDING_STAGES.find(s => r >= s.min) || BUILDING_STAGES[BUILDING_STAGES.length - 1];
+}
+
+/** 资源点生命周期阶段：只描述「看起来多不多」，不改变 regen / gather / amount。 */
+export const NODE_PHASES = [
+  { id: 'abundant', label: '丰饶', min: 0.70, glow: 1.00, pulse: 1.20 },
+  { id: 'steady',   label: '稳定', min: 0.35, glow: 0.65, pulse: 0.80 },
+  { id: 'scarce',   label: '稀疏', min: 0.05, glow: 0.30, pulse: 0.45 },
+  { id: 'depleted', label: '枯竭', min: 0.00, glow: 0.10, pulse: 0.15 },
+];
+export function nodePhaseOf(ratio) {
+  const r = Math.max(0, Math.min(1, ratio));
+  return NODE_PHASES.find(p => r >= p.min) || NODE_PHASES[NODE_PHASES.length - 1];
+}
+
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };
 // 兵营/各域巢可产兵种（按纪元解锁）

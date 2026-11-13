@@ -324,3 +324,45 @@ export function decorFor(mode, chapter) {
   }
   return out;
 }
+
+/* --------------------------------------------------------------------------
+ * 战役场景周期事件：纯氛围。触发时只做既有 log 播报 + 既有 ring/resonance
+ * 全图提示圈 + 写入只读状态快照（B 侧可用它切粒子/音效/色调）。
+ * **不改天气、资源、单位属性或任何结算系数**；遭遇战恒返回空数组。
+ *   at     首次触发秒；period 循环周期；times 最多触发次数；dur 状态持续秒。
+ * 与 WEATHER_TIMELINE 的分工：天气阶段改变视野/命中（有数值语义），
+ * 场景事件只提供画面与叙事节拍，二者互不引用、互不覆盖。
+ * ------------------------------------------------------------------------ */
+export const SCENE_EVENTS = {
+  0: [
+    { id: 'ashfall',  label: '灰烬回潮', at: 48,  period: 88, times: 3, dur: 9,  color: 0xff9a5a, fx: 'ring',      text: '焦土扬起陈年灰烬，余烬在风里缓缓飘落。' },
+    { id: 'warhorn',  label: '远岗虫鸣', at: 104, period: 96, times: 2, dur: 7,  color: 0xffd27f, fx: 'resonance', text: '远岗传来低沉虫鸣，巢群短暂躁动。' },
+  ],
+  1: [
+    { id: 'bloom',    label: '花粉潮',   at: 42,  period: 78, times: 3, dur: 10, color: 0xffe6a0, fx: 'ring',      text: '沃野花粉随风成潮，采集道上金雾弥漫。' },
+    { id: 'harvest',  label: '丰饶脉动', at: 96,  period: 92, times: 2, dur: 8,  color: 0x9fe0c8, fx: 'resonance', text: '地脉轻颤，菌圃的气息漫过整片田野。' },
+  ],
+  2: [
+    { id: 'sandveil', label: '沙幕',     at: 55,  period: 84, times: 3, dur: 9,  color: 0xd8c39a, fx: 'ring',      text: '荒原卷起沙幕，远处的轮廓变得模糊。' },
+    { id: 'bonedrum', label: '骸鼓',     at: 112, period: 98, times: 2, dur: 7,  color: 0xb5a182, fx: 'resonance', text: '风穿过巨型骸骨，敲出沉闷的节拍。' },
+  ],
+  3: [
+    { id: 'misttide', label: '雾潮',     at: 46,  period: 80, times: 3, dur: 11, color: 0x9fd0dc, fx: 'ring',      text: '泽国雾潮漫过浅滩，水光与雾气融成一片。' },
+    { id: 'spore',    label: '孢雨',     at: 100, period: 94, times: 2, dur: 8,  color: 0x9be05a, fx: 'resonance', text: '夜生孢群短暂爆发，空气里浮起细密绿点。' },
+  ],
+  4: [
+    { id: 'hightide', label: '大潮',     at: 50,  period: 76, times: 3, dur: 10, color: 0x9fc8ff, fx: 'ring',      text: '海岸大潮推高水位，浪线一直漫到巢区外缘。' },
+    { id: 'saltwind', label: '盐风',     at: 108, period: 90, times: 2, dur: 7,  color: 0xc9e6ff, fx: 'resonance', text: '咸涩海风掠过礁群，飞沫在光里拉出细线。' },
+  ],
+  5: [
+    { id: 'voidpulse', label: '虚空搏动', at: 44, period: 82, times: 3, dur: 11, color: 0xc7b3ff, fx: 'resonance', text: '虚空传来一次缓慢搏动，晶簇同时亮起又熄灭。' },
+    { id: 'echowave',  label: '回声浪',   at: 102, period: 96, times: 2, dur: 8, color: 0xa48fd0, fx: 'ring',      text: '旧纪元的回声掠过战场，声音先于形体抵达。' },
+  ],
+};
+/** 返回该章节可变的事件调度对象（每次调用都是新数组，sim 独占，不共享状态）。 */
+export function sceneEventsFor(mode, chapter) {
+  if (mode !== 'campaign' || chapter == null) return [];
+  return (SCENE_EVENTS[chapter] || []).map((e, i) => ({
+    ...e, key: `se${chapter}_${i}`, nextAt: e.at, fired: 0,
+  }));
+}
