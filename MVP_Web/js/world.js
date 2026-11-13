@@ -316,6 +316,11 @@ export class World {
     // 地图装饰（生物群系专属道具）与天气粒子层
     this.propGroup = new THREE.Group();
     this.weatherGroup = new THREE.Group();
+    // 远程弹道渲染池：读 A 侧 sim.activeTracers()（只读，A 侧按 life 自动回收），不新增事件/特效类型
+    this.tracerGroup = new THREE.Group();
+    this.tracerGroup.frustumCulled = false;
+    this.scene.add(this.tracerGroup);
+    this._tracerMeshes = new Map();      // tracer 记录对象 -> 渲染网格（按引用回收）
     // 地面斑块（按地图配色软化大面积地面的生物群系感）与每章大型地标
     this.decalGroup = new THREE.Group();
     this.landmarkGroup = new THREE.Group();
@@ -659,6 +664,57 @@ export class World {
       this.weatherDyn.geometry.attributes.position.needsUpdate = true;
       this.weatherDyn.rotation.y = t * 0.02;
     }
+  }
+
+  /** 渲染 A 侧在飞弹道（只读 sim.activeTracers()，A 侧按 life 自动回收；不新增事件/特效类型）。
+   *  每个弹道记录为飞行物 + 沿飞行方向拉伸的拖尾，按记录对象引用回收网格，杜绝泄漏。 */
+  _syncTracers(sim) {
+    if (!this._tracerMeshes) this._tracerMeshes = new Map();
+    const tr = (sim && typeof sim.activeTracers === 'function') ? sim.activeTracers() : null;
+    if (!tr) { if (this._tracerMeshes.size) this._clearTracers(); return; }
+    const seen = new Set();
+    for (const r of tr) {
+      if (!r || !r.from || !r.to) continue;
+      let m = this._tracerMeshes.get(r);
+      if (!m) { m = this._makeTracer(r); this._tracerMeshes.set(r, m); }
+      const k = Math.max(0, Math.min(1, r.t / r.life));
+      const x = r.from.x + (r.to.x - r.from.x) * k;
+      const z = r.from.z + (r.to.z - r.from.z) * k;
+      const y = 1 + Math.sin(k * Math.PI) * (4 + 18 * (r.arc || 0));   // 抛物弧（arc 越大越拱）
+      m.position.set(x, y, z);
+      m.rotation.y = Math.atan2(r.to.x - r.from.x, r.to.z - r.from.z);  // +Z 指向飞行方向，拖尾朝后
+      const fade = k > 0.85 ? 1 - (k - 0.85) / 0.15 : 1;               // 命中末段渐隐
+      m.visible = true;
+      if (m._head && m._head.material) m._head.material.opacity = 0.95 * fade;
+      if (m._trail && m._trail.material) m._trail.material.opacity = 0.42 * fade;
+      seen.add(r);
+    }
+    for (const [r, m] of this._tracerMeshes) {
+      if (!seen.has(r)) { this.tracerGroup.remove(m); this._disposeTracer(m); this._tracerMeshes.delete(r); }
+    }
+  }
+  _makeTracer(r) {
+    const col = (r.color != null) ? r.color : 0xaef06a;
+    const g = new THREE.Group();
+    const mk = (rad, op) => new THREE.Mesh(
+      new THREE.SphereGeometry(rad, 6, 6),
+      new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, blending: THREE.AdditiveBlending, fog: false }));
+    const head = mk(0.55, 0.95);
+    const trail = mk(0.55, 0.42);
+    trail.scale.set(0.7, 0.7, 3.4);     // 沿局部 +Z 拉伸成拖尾
+    trail.position.z = -1.7;
+    g.add(head); g.add(trail);
+    g.frustumCulled = false;
+    g._head = head; g._trail = trail;
+    this.tracerGroup.add(g);
+    return g;
+  }
+  _disposeTracer(g) {
+    for (const c of [g._head, g._trail]) { if (c) { c.geometry.dispose(); c.material.dispose(); } }
+  }
+  _clearTracers() {
+    for (const [, m] of this._tracerMeshes) { this.tracerGroup.remove(m); this._disposeTracer(m); }
+    this._tracerMeshes.clear();
   }
 
   /** 地面斑块：按地图配色在地面散布若干柔性圆盘，软化大面积纯色地面、强化生物群系辨识。
@@ -2148,6 +2204,7 @@ export class World {
    *  frozen=true 时（暂停）不生成新的扬尘，避免特效因时间冻结而无法回收。 */
   syncFrame(sim, frozen = false) {
     this._syncWeather(sim);          // 只读读取 A 侧当前天气（含动态时间线切换），不新增事件
+    this._syncTracers(sim);          // 只读渲染 A 侧在飞弹道（复合/近战命中当帧结算，此处仅画飞行物与拖尾）
     const uids = new Set(sim.units.map(u => u.id));
     for (const id of [...this.unitMeshes.keys()]) if (!uids.has(id)) this.removeUnit(id);
     const bids = new Set(sim.buildings.map(b => b.id));
