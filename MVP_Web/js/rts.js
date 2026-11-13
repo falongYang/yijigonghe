@@ -518,6 +518,55 @@ export function nodePhaseOf(ratio) {
   return NODE_PHASES.find(p => r >= p.min) || NODE_PHASES[NODE_PHASES.length - 1];
 }
 
+/* --------------------------------------------------------------------------
+ * 细节五·只读表现规格：单位表现成长 / 镜头音效提示 / 小地图情报。
+ * 全部供 B 侧可选消费；**绝不参与**伤害、冷却、索敌、移动、采集速率与胜负结算。
+ * 老兵成长纯外观（不改任何属性），提示与情报只记录事件、不回写任何模拟字段。
+ * ------------------------------------------------------------------------ */
+
+/** 老兵阶梯：按累计击杀数分级，纯外观（光晕 / 微缩放），不影响血量、伤害或速度。 */
+export const VETERAN_TIERS = [
+  { min: 0,  tier: 0, name: '新兵', glow: 0x000000, scale: 1.00 },
+  { min: 3,  tier: 1, name: '老兵', glow: 0x6cf0ff, scale: 1.04 },
+  { min: 8,  tier: 2, name: '精锐', glow: 0xffd24a, scale: 1.08 },
+  { min: 16, tier: 3, name: '王牌', glow: 0xff5a3a, scale: 1.12 },
+];
+/** 由击杀数解析当前老兵档（含归一化进度），未知 / 负数回落新兵。 */
+export function veteranOf(kills = 0) {
+  let t = VETERAN_TIERS[0];
+  for (const v of VETERAN_TIERS) if (kills >= v.min) t = v;
+  const next = VETERAN_TIERS.find(v => v.tier === t.tier + 1);
+  const prog = next ? Math.max(0, Math.min(1, (kills - t.min) / Math.max(1, next.min - t.min))) : 1;
+  return { ...t, prog: +prog.toFixed(3) };
+}
+
+/** 镜头 / 音效提示：A 侧在关键战斗时刻写入 cue，B 侧每帧 drainCues() 取走并映射。
+ *  shake=镜头震动强度, zoom=镜头推拉（负=拉远）, vol=音量, cat=音色类别。 */
+export const CUE_TYPES = {
+  kill:        { shake: 0.14, zoom: 0.00,  vol: 0.45, cat: 'hit' },
+  death:       { shake: 0.22, zoom: -0.02, vol: 0.55, cat: 'death' },
+  ability:     { shake: 0.32, zoom: 0.00,  vol: 0.65, cat: 'ability' },
+  ambush:      { shake: 0.55, zoom: 0.03,  vol: 0.85, cat: 'ambush' },
+  buildingDown:{ shake: 0.78, zoom: -0.05, vol: 1.00, cat: 'boom' },
+  milestone:   { shake: 0.10, zoom: 0.00,  vol: 0.40, cat: 'chime' },
+  scene:       { shake: 0.20, zoom: 0.00,  vol: 0.50, cat: 'ambient' },
+  resonance:   { shake: 0.30, zoom: 0.00,  vol: 0.60, cat: 'power' },
+};
+const CUE_DEFAULT = { shake: 0.15, zoom: 0, vol: 0.5, cat: 'hit' };
+/** 取某类提示的规格（含兜底）。 */
+export function cueSpec(key) { return { ...(CUE_TYPES[key] || CUE_DEFAULT), key }; }
+
+/** 小地图情报点规格：不同类别的半径与配色（bySide 时按阵营着色）。 */
+export const MINIMAP_BLIPS = {
+  unit:      { r: 2.0, bySide: true },
+  building:  { r: 3.2, bySide: true },
+  node:      { r: 2.6, color: 0x8fe06a },
+  hazard:    { r: 3.0, color: 0xff5a3a },
+  resonance: { r: 4.0, color: 0x9a6cff },
+  event:     { r: 5.0, color: 0xffe14a },
+};
+export function minimapSpec() { return Object.fromEntries(Object.entries(MINIMAP_BLIPS).map(([k, v]) => [k, { ...v }])); }
+
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };
 // 兵营/各域巢可产兵种（按纪元解锁）

@@ -15,6 +15,7 @@ import {
   UNIT_FEEL, PROJECTILE_SPEC, projectileFor, TARGET_POLICIES,
   IMPACT_SPEC, impactFor, CORPSE_SPEC, corpseFor,
   BUILDING_STAGES, buildingStageOf, NODE_PHASES, nodePhaseOf,
+  VETERAN_TIERS, veteranOf, CUE_TYPES, cueSpec, MINIMAP_BLIPS, minimapSpec,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
 import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor,
@@ -92,6 +93,7 @@ export class Simulation {
     this.decor = [];                  // 地图装饰点位（确定性，纯视觉）
     this.ambience = null;             // 场景氛围基准（粒子 / 风向 / 辉光）
     this.corpses = [];                // 死亡演出只读快照队列（按寿命回收，上限 80）
+    this.cues = [];                   // 镜头 / 音效提示队列（B 侧每帧 drainCues() 取走，不参与结算）
     this.sceneEvents = [];            // 战役周期氛围事件调度（遭遇战恒空）
     this.sceneState = null;           // 当前活跃场景事件快照
     this._visualAcc = 0;              // 建筑 / 资源点表现状态刷新累加器
@@ -102,6 +104,17 @@ export class Simulation {
   _log(text, kind = 'info') { this._emit('log', { text, kind }); }
   _toast(text) { this._emit('toast', { text }); }
   _fx(type, x, y, z, opts = {}) { this.effects.push({ type, pos: { x, y, z }, opts }); }
+  /** 镜头 / 音效提示：只入队、不回写任何模拟字段；B 侧每帧 drainCues() 取走。
+   *  intensity 允许调用方按情形缩放（如大招更重），上限保护防止数值爆炸。 */
+  _cue(key, x, z, intensity = 1, side = null) {
+    if (!this.cues) this.cues = [];
+    const spec = CUE_TYPES[key] || CUE_DEFAULT;
+    this.cues.push({ key, x, z, side,
+      intensity: +clamp(intensity, 0, 3).toFixed(3),
+      shake: +(spec.shake * clamp(intensity, 0, 3)).toFixed(3),
+      zoom: spec.zoom, vol: spec.vol, cat: spec.cat, at: +this.time.toFixed(2) });
+    if (this.cues.length > 200) this.cues.splice(0, this.cues.length - 200);
+  }
   /** 当前环境规则；未 reset 的裸实例退化为基准环境，保证所有系数始终是有限数。 */
   _clim() { return this.climate || MAP_CLIMATES[0]; }
   /** 当前天气；裸实例退化为全 1.0 的晴空。 */
@@ -166,7 +179,7 @@ export class Simulation {
       // 手感 / 弹道统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
       shots: 0,
       // 物理反馈 / 场景事件统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
-      impacts: 0, sceneEvents: 0 });
+      impacts: 0, sceneEvents: 0, veterans: 0 });
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
     this._levelFlags = {};   // 等级里程碑播报去重（每局重置）
@@ -428,6 +441,8 @@ export class Simulation {
       feel: { facing: h0, gait: 0, step: 0, reload: 0, windup: 0, recoil: 0, shotAt: -1 },
       // 最近一次直接命中的反馈（飘字 / 受击方向 / 暴击描边；DoT 与溅射不写）
       lastHit: null,
+      // 表现成长 / 聚集 / 指令反馈（全部只读数据层，不参与任何结算）
+      kills: 0, vetTier: veteranOf(0), density: 0, cmdFlash: 0,
       // 受击物理只读包络：方向单位向量 / 击退强度 / 顿帧 / 镜头震动 / 衰减。
       // 只由真实单位的直接命中写入，不改动坐标、速度、攻击计时器等任何结算字段。
       phys: { dx: 0, dz: 0, mag: 0, hitstop: 0, shake: 0, env: 0, t: 99,
@@ -650,6 +665,7 @@ export class Simulation {
     if (this.stats) this.stats[side].abilities++;
     this._dispatchAbility(side, key, x, z);
     this._emit('ability', { side, key, x, z });
+    this._cue(key === 'a_burrow' ? 'ambush' : 'ability', x, z, key === 'a_bomb' || key === 'a_dive' ? 1.4 : 1, side);
     return true;
   }
   _dispatchAbility(side, key, x, z) {
@@ -740,7 +756,7 @@ export class Simulation {
   commandMove(ids, x, z, opts = {}) {
     const n = ids.length;
     ids.forEach((id, i) => {
-      const u = this.getUnit(id); if (!u) return; u.repairId = null;
+      const u = this.getUnit(id); if (!u) return; u.repairId = null; u.cmdFlash = 1;
       const p = opts.formation === false ? { x, z }
         : this._formationPoint(i, n, x, z, opts.formation || u.formation || 'auto');
       if (opts.append) {
@@ -761,12 +777,12 @@ export class Simulation {
   commandAttack(ids, targetId) {
     const tgt = this.getUnit(targetId) || this.getBuilding(targetId) || this.getObstacle(targetId);
     if (!tgt) return;
-    for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.waypoints = []; u.state = 'attack'; u.order = 'manual'; u.target = { id: targetId, x: tgt.x, z: tgt.z }; if (u.domain === 'underground') u.burrowed = false; }
+    for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.cmdFlash = 1; u.waypoints = []; u.state = 'attack'; u.order = 'manual'; u.target = { id: targetId, x: tgt.x, z: tgt.z }; if (u.domain === 'underground') u.burrowed = false; }
   }
   commandAttackMove(ids, x, z, opts = {}) {
     const n = ids.length;
     ids.forEach((id, i) => {
-      const u = this.getUnit(id); if (!u) return; u.repairId = null;
+      const u = this.getUnit(id); if (!u) return; u.repairId = null; u.cmdFlash = 1;
       const p = opts.formation === false ? { x, z }
         : this._formationPoint(i, n, x, z, opts.formation || u.formation || 'auto');
       u.waypoints = []; u.state = 'attackmove'; u.order = 'manual'; u.target = p;
@@ -777,14 +793,14 @@ export class Simulation {
     const n = this.nodes.find(x => x.id === nodeId);
     for (const id of ids) { const u = this.getUnit(id); if (!u || UNITS[u.type].role !== 'econ') continue; if (n) { u.repairId = null; u.nodeId = n.id; u.state = 'harvest'; u.order = 'manual'; u.target = { x: n.x, z: n.z }; } }
   }
-  commandStop(ids) { for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.state = 'idle'; u.order = 'auto'; u.target = null; u.waypoints = []; u.patrol = null; } }
+  commandStop(ids) { for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.cmdFlash = 1; u.state = 'idle'; u.order = 'auto'; u.target = null; u.waypoints = []; u.patrol = null; } }
 
   /** 驻守：原地守住当前位置，只攻击 HOLD_LEASH 内的目标，绝不追击出圈（守住隘口/巢口）。 */
   commandHold(ids) {
     let n = 0;
     for (const id of ids) {
       const u = this.getUnit(id); if (!u || UNITS[u.type].role === 'econ') continue;
-      u.repairId = null; u.waypoints = []; u.patrol = null; u.target = null;
+      u.repairId = null; u.cmdFlash = 1; u.waypoints = []; u.patrol = null; u.target = null;
       u.holdX = u.x; u.holdZ = u.z; u.state = 'hold'; u.order = 'manual'; n++;
       this._fx('ring', u.x, 0.3, u.z, { color: 0x7ef0c8, r: 3 });
     }
@@ -799,7 +815,7 @@ export class Simulation {
     let n = 0;
     for (const id of ids) {
       const u = this.getUnit(id); if (!u || UNITS[u.type].role === 'econ') continue;
-      u.repairId = null; u.waypoints = []; u.target = null;
+      u.repairId = null; u.cmdFlash = 1; u.waypoints = []; u.target = null;
       u.patrol = pts.map(p => ({ ...p })); u.patrolIdx = 0; u.state = 'patrol'; u.order = 'manual'; n++;
       this._fx('ring', pts[0].x, 0.3, pts[0].z, { color: 0x7ec8f0, r: 3 });
     }
@@ -814,7 +830,7 @@ export class Simulation {
     let applied = 0;
     ids.forEach((id, i) => {
       const u = this.getUnit(id); if (!u) return;
-      u.formation = f; applied++;
+      u.formation = f; u.cmdFlash = 1; applied++;
       if (Number.isFinite(x) && Number.isFinite(z)) {
         const p = this._formationPoint(i, n, x, z, f);
         u.repairId = null; u.waypoints = []; u.state = 'move'; u.order = 'manual'; u.target = p;
@@ -882,7 +898,7 @@ export class Simulation {
       const u = this.getUnit(id);
       if (!u || u.side !== SIDES.PLAYER || UNITS[u.type].role !== 'econ') continue;
       u.waypoints = []; u.repairId = b.id; u.state = 'repair'; u.order = 'manual';
-      u.target = { x: b.x, z: b.z }; u.burrowed = false;
+      u.target = { x: b.x, z: b.z }; u.burrowed = false; u.cmdFlash = 1;
       n++;
     }
     if (n) {
@@ -952,6 +968,7 @@ export class Simulation {
     if (!BUILDINGS[b.type].produces) { this._toast('该建筑无法设置集结点'); return false; }
     if (dist(x, z, b.x, b.z) > b.size + 60) { this._toast('集结点离建筑过远'); return false; }
     b.rally = { x, z };
+    b.cmdFlash = 1;
     this._emit('rally', { id: b.id, x, z });
     this._toast('已设置集结点（新作战单位将前往）');
     return true;
@@ -1078,6 +1095,7 @@ export class Simulation {
     this._log(`【地脉共振】${cfg.label}「${q.id}」被唤醒：驻留其上的单位攻击 +${Math.round(cfg.bonus * 100)}%。`, 'key');
     this._fx('ring', q.x, 1, q.z, { color: cfg.color, r: this.resonance.r });
     this._fx('resonance', q.x, 4, q.z, { color: cfg.color });
+    this._cue('resonance', q.x, q.z, 1.2);
   }
 
   /** 当前共振高台（只读快照，供 B 侧渲染光柱 / 小地图脉冲；无共振时返回 null）。 */
@@ -1093,6 +1111,7 @@ export class Simulation {
     this._log(`【战场里程碑】${mine ? '我方' : '敌方'}累计击杀 ${kills}：${kills >= 25 ? '战线已被彻底改写。' : '交锋进入白热化。'}`, mine ? 'good' : 'info');
     this._fx('ring', mine ? PLAYER_BASE.x : ENEMY_BASE.x, 1, mine ? PLAYER_BASE.z : ENEMY_BASE.z,
       { color: mine ? 0x9fe0c8 : 0xff8a6a, r: 26 });
+    this._cue('milestone', mine ? PLAYER_BASE.x : ENEMY_BASE.x, mine ? PLAYER_BASE.z : ENEMY_BASE.z, 1, side);
     if (this.stats) this.stats[side].milestones++;
   }
 
@@ -1208,6 +1227,7 @@ export class Simulation {
         fx: e.fx, at: +this.time.toFixed(2), dur: e.dur, cycle: e.fired, times: e.times };
       this._log(`【场景·${e.label}】${e.text}`, 'info');
       this._fx(e.fx === 'resonance' ? 'resonance' : 'ring', 0, 1, 0, { color: e.color, r: 120 });
+      this._cue('scene', 0, 0, 1);
       if (this.stats) { this.stats.P.sceneEvents++; this.stats.E.sceneEvents++; }
     }
   }
@@ -1219,6 +1239,7 @@ export class Simulation {
     this._visualAcc = 0;
     for (const b of this.buildings) {
       if (!b.visual) continue;
+      if (b.cmdFlash > 0) b.cmdFlash = Math.max(0, b.cmdFlash - 0.8);
       const ratio = b.maxHp ? clamp(b.hp / b.maxHp, 0, 1) : 1;
       const stg = buildingStageOf(ratio, b.state === 'constructing');
       b.visual.stage = stg.id; b.visual.label = stg.label;
@@ -1229,6 +1250,19 @@ export class Simulation {
     for (const n of this.nodes) {
       const ph = nodePhaseOf(n.max ? n.amount / n.max : 1);
       n.phase = ph.id; n.phaseGlow = ph.glow; n.phasePulse = ph.pulse;
+    }
+    // 单位聚簇密度（只读，供 B 侧做挤压 / 堆叠表现）+ 指令反馈衰减。
+    const us = this.units, R2 = 3.5 * 3.5;
+    for (let i = 0; i < us.length; i++) {
+      const u = us[i];
+      let d = 0;
+      for (let j = 0; j < us.length; j++) {
+        if (j === i) continue;
+        const dx = us[j].x - u.x, dz = us[j].z - u.z;
+        if (dx * dx + dz * dz <= R2) d++;
+      }
+      u.density = d;
+      if (u.cmdFlash > 0) u.cmdFlash = Math.max(0, u.cmdFlash - 0.8);
     }
   }
 
@@ -1301,6 +1335,38 @@ export class Simulation {
     const e = this.sceneState;
     if (!e || this.time - e.at > e.dur) return null;
     return { ...e, remaining: +Math.max(0, e.dur - (this.time - e.at)).toFixed(2) };
+  }
+
+  /* ---------------- 细节五·只读查询接口 ---------------- */
+  /** 只读查询：单位老兵阶梯（含进度与光晕 / 缩放，纯外观数据）。无该单位返回 null。 */
+  vetOf(id) {
+    const u = this.getUnit(id);
+    return u && u.vetTier ? { ...u.vetTier } : null;
+  }
+  /** 只读查询：单位聚簇密度（周围 3.5 内友敌单位数）。无该单位返回 null。 */
+  densityOf(id) {
+    const u = this.getUnit(id);
+    return u ? u.density : null;
+  }
+  /** 只读查询：全部老兵阶梯规格（逐项深拷贝）。 */
+  veteranSpec() { return VETERAN_TIERS.map(v => ({ ...v })); }
+  /** 只读查询：镜头 / 音效提示规格表（逐项深拷贝）。 */
+  cueSpec(key) { return cueSpec(key); }
+  /** 只读查询：小地图情报点规格（逐项深拷贝）。 */
+  minimapSpec() { return minimapSpec(); }
+  /** 只读查询：取走并清空当前累积的镜头 / 音效提示（B 侧每帧调用一次）。 */
+  drainCues() { const c = this.cues || []; this.cues = []; return c; }
+  /** 只读查询：小地图情报点汇总（单位 / 建筑 / 资源 / 危害 / 共振 / 场景事件）。 */
+  intelBlips() {
+    const out = [];
+    const B = MINIMAP_BLIPS;
+    for (const u of this.units) if (u.hp > 0) out.push({ kind: 'unit', id: u.id, side: u.side, type: u.type, x: u.x, z: u.z, r: B.unit.r });
+    for (const b of this.buildings) if (b.hp > 0) out.push({ kind: 'building', id: b.id, side: b.side, type: b.type, x: b.x, z: b.z, r: B.building.r });
+    for (const n of this.nodes) out.push({ kind: 'node', id: n.id, x: n.x, z: n.z, domain: n.domain, r: B.node.r });
+    for (const h of this.terrainHazards) out.push({ kind: 'hazard', x: h.x, z: h.z, r: B.hazard.r });
+    if (this.resonance) out.push({ kind: 'resonance', x: this.resonance.x, z: this.resonance.z, r: B.resonance.r });
+    const e = this.sceneEvent(); if (e && e.x !== undefined) out.push({ kind: 'event', x: e.x, z: e.z, r: B.event.r });
+    return out;
   }
 
   _tickAura(dt) {
@@ -1710,7 +1776,17 @@ export class Simulation {
     }
     // 精炼巢室：全军作战单位 +8% 伤害（双方对等，多座不叠加）。
     if (aSide && this.refined[aSide] && attacker && UNITS[attacker.type] && UNITS[attacker.type].role === 'combat') d *= 1.08;
+    const _wasAlive = tgt.hp > 0;
     tgt.hp -= d;
+    // 击杀计功（仅真实单位击杀真实单位，且只在该次伤害造成致死时记一次）：
+    // 纯表现成长数据，不改任何属性 / 不消耗随机流 / 不影响节奏；同时写入 kill 提示。
+    if (_wasAlive && tgt.hp <= 0 && unitAtk && attacker && attacker.kills !== undefined) {
+      const ot = attacker.vetTier ? attacker.vetTier.tier : 0;
+      attacker.kills++;
+      attacker.vetTier = veteranOf(attacker.kills);
+      if (attacker.vetTier.tier >= 2 && ot < 2 && this.stats) this.stats[attacker.side].veterans++;
+      this._cue('kill', tgt.x, tgt.z, 1, attacker.side);
+    }
     // 吸血：按实际结算伤害回复攻击者（不超上限、尸体不回血）。
     if (unitAtk && attacker.lifesteal > 0 && attacker.hp > 0 && attacker.maxHp) {
       const heal = Math.min(d * attacker.lifesteal, attacker.maxHp - attacker.hp);
@@ -1872,6 +1948,7 @@ export class Simulation {
       this._setAnim(u, 'death');   // 死亡演出快照拿到终态，B 侧 _dying 可直接读 u.anim
       this._addCorpse(u);          // 额外的倒地方向 / 沉降 / 淡出规格（纯表现）
       this._fx('death', u.x, 1.2, u.z, { color: this.sp[u.side].color });
+      this._cue('death', u.x, u.z, 1, u.side);
       this._emit('death', { side: u.side, kind: 'unit', x: u.x, z: u.z });
       this.units.splice(i, 1);
       this.selected.delete(u.id);
@@ -1885,6 +1962,7 @@ export class Simulation {
         if (killer && killer !== b.side && this.stats[killer]) this.stats[killer].kills++;
       }
       this._fx('death', b.x, b.size, b.z, { color: 0x8a7f56 });
+      this._cue('buildingDown', b.x, b.z, 1, b.side);
       this._emit('death', { side: b.side, kind: 'building', x: b.x, z: b.z });
       const cost = BUILDINGS[b.type].cost || {};
       const total = (cost.bio || 0) + (cost.min || 0);
