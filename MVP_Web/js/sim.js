@@ -14,6 +14,7 @@ import {
   getMapConfig, SKIRMISH_MAP, ARCHETYPE_UNITS,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
+import { MAP_CLIMATES, getMapClimate } from './maps.js';
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -53,6 +54,8 @@ export class Simulation {
     this.stats = null;   // 战局统计（reset 时初始化）
     this.mode = 'skirmish'; this.chapter = null; this.archetype = null; this.difficulty = null;
     this.echo = null; this.echoFired = false;
+    this.climate = MAP_CLIMATES[0];   // 六章环境规则（reset 时按章节重取）
+    this._lastRaidLogAt = -99;        // 掠夺播报节流
   }
 
   on(fn) { this.listeners.push(fn); }
@@ -60,6 +63,8 @@ export class Simulation {
   _log(text, kind = 'info') { this._emit('log', { text, kind }); }
   _toast(text) { this._emit('toast', { text }); }
   _fx(type, x, y, z, opts = {}) { this.effects.push({ type, pos: { x, y, z }, opts }); }
+  /** 当前环境规则；未 reset 的裸实例退化为基准环境，保证所有系数始终是有限数。 */
+  _clim() { return this.climate || MAP_CLIMATES[0]; }
 
   reset(playerId, opts = {}) {
     const { mode = 'skirmish', chapter = null, archetype = null, difficulty = 'normal' } = opts;
@@ -97,9 +102,12 @@ export class Simulation {
     this.time = 0;
     this.peakPop = { P: 0, E: 0 };
     const blank = () => ({ kills: 0, losses: 0, built: 0, harvested: 0, abilities: 0, evolved: 0, raided: 0, repaired: 0, wellPh: 0,
-      dmgDealt: 0, dmgTaken: 0, critHits: 0, smartCasts: 0, defenses: 0, nodeSwitches: 0 });
+      dmgDealt: 0, dmgTaken: 0, critHits: 0, smartCasts: 0, defenses: 0, nodeSwitches: 0,
+      overkillSaved: 0, raids: 0 });
     this.stats = { P: blank(), E: blank() };
+    this._lastRaidLogAt = -99;
     this.map = getMapConfig(mode, chapter);
+    this.climate = getMapClimate(mode, chapter);
     // 战术地形与信息素井用同一套确定性配置生成：模拟、3D 渲染与小地图读取的都是这一份。
     this.zones = mapZones(this.map);
     this.wells = mapWells(this.map).map(w => ({ ...w, owner: null, progress: 0, contest: false, pulse: 0 }));
@@ -113,6 +121,7 @@ export class Simulation {
     const archName = this.archetype.name;
     const modeName = this.mode === 'campaign' ? `战役·第${this.chapter + 1}章「${CAMPAIGN[this.chapter].name}」` : '遭遇战';
     this._log(`【${modeName}】「${this.sp.P.name}」(专长·${DOMAINS[specialtyOf(playerId)].key}) 对阵「${this.sp.E.name}」(${archName}/${diffName}) · 四域战争：采集 → 建造 → 出兵 → 研究纪元 → 能力 → 进化 → 掠夺。`, 'key');
+    this._log(`【战场环境·${this.climate.name}】${this.climate.desc}`, 'info');
     this._emit('reset', { mode: this.mode, chapter: this.chapter, archetype: this.archetype.id, difficulty: this.difficulty.id });
     this._updateVision();
   }
@@ -122,7 +131,8 @@ export class Simulation {
     const cfg = this.map || SKIRMISH_MAP;
     for (const n of cfg.nodes) {
       // 资源点为可再生场：regen 使被采空的点在约 16s 内回满，避免双方经济在开局一分钟内枯竭。
-      this.nodes.push({ id: this.nextId++, x: n.x, z: n.z, amount: n.amt, max: n.amt, domain: n.domain, res: n.res, regen: n.amt * 0.06,
+      this.nodes.push({ id: this.nextId++, x: n.x, z: n.z, amount: n.amt, max: n.amt, domain: n.domain, res: n.res,
+        regen: n.amt * 0.06 * this._clim().regenMul,
         owner: null, glow: 0 });   // owner/glow：最近采集方与采集热度（供地图/小地图呈现）
     }
   }
@@ -142,22 +152,28 @@ export class Simulation {
   /** 地形移速系数：空域 / 地下免疫泥沼，水域 / 空域 / 地下免疫浅滩（水栖兵种在水中略提速）。 */
   _terrainSpeedMul(u) {
     const q = this.zoneAt(u.x, u.z);
+    const clim = this._clim();
     // 记录单位脚下地貌，供 3D 状态环 / 属性卡读取（渲染与逻辑共用同一判定）
     u.terrain = q ? q.type : 'plain';
-    if (!q) return 1;
-    if (q.type === 'mire') return (u.domain === 'air' || u.domain === 'underground') ? 1 : TERRAIN.mire.speed;
-    if (q.type === 'water') {
-      if (u.domain === 'sea') return 1.10;
-      if (u.domain === 'air' || u.domain === 'underground') return 1;
-      return TERRAIN.water.speed;
+    let mul = 1;
+    if (q) {
+      if (q.type === 'mire') mul = (u.domain === 'air' || u.domain === 'underground') ? 1 : TERRAIN.mire.speed;
+      else if (q.type === 'water') {
+        if (u.domain === 'sea') mul = 1.10;
+        else if (u.domain === 'air' || u.domain === 'underground') mul = 1;
+        else mul = Math.max(0.45, TERRAIN.water.speed - clim.waterSlow);
+      } else mul = TERRAIN[q.type] ? TERRAIN[q.type].speed : 1;
     }
-    return TERRAIN[q.type] ? TERRAIN[q.type].speed : 1;
+    // 章节环境只做域机动修正，不改变地貌判定 / 视觉表现
+    if (u.domain === 'sea') mul *= clim.seaSpeedMul;
+    else if (u.domain === 'air') mul *= clim.airSpeedMul;
+    return mul;
   }
-  /** 站在高台上的远程单位射程 +18%（近战不享受）。 */
+  /** 站在高台上的远程单位射程 +18%（近战不享受）；高地 / 共振章另有额外加成。 */
   _terrainRangeMul(u) {
     if (u.melee) return 1;
     const q = this.zoneAt(u.x, u.z);
-    return q && q.type === 'ridge' ? TERRAIN.ridge.range : 1;
+    return q && q.type === 'ridge' ? TERRAIN.ridge.range + this._clim().ridgeBonus : 1;
   }
 
   /** 侦测视野（轻量战争迷雾）：敌方单位 / 建筑仅在己方视野半径内可见，
@@ -212,8 +228,9 @@ export class Simulation {
         this._emit('well', { owner: next, x: w.x, z: w.z, name: w.name });
       }
       if (w.owner) {
-        this.gainRes(w.owner, 'ph', WELL.rate * dt);
-        if (this.stats && this.stats[w.owner]) this.stats[w.owner].wellPh += WELL.rate * dt;
+        const gain = WELL.rate * this._clim().wellMul * dt;
+        this.gainRes(w.owner, 'ph', gain);
+        if (this.stats && this.stats[w.owner]) this.stats[w.owner].wellPh += gain;
       }
       if (w.pulse > 0) w.pulse = Math.max(0, w.pulse - dt * 0.6);
     }
@@ -396,7 +413,9 @@ export class Simulation {
       }
     }
     const q = this.zoneAt(x, z);
-    const tag = q && TERRAIN[q.type] ? ` · ${TERRAIN[q.type].name}${q.type === 'ridge' ? '（远程射程 +18%）' : ''}` : '';
+    // 高台射程文案随章节环境实时计算，避免「高地章实际 +32%、提示仍写 +18%」
+    const ridgePct = Math.round((TERRAIN.ridge.range + this._clim().ridgeBonus - 1) * 100);
+    const tag = q && TERRAIN[q.type] ? ` · ${TERRAIN[q.type].name}${q.type === 'ridge' ? `（远程射程 +${ridgePct}%）` : ''}` : '';
     return { ok: true, reason: '可建造' + tag, cost };
   }
   startBuild(type, x, z) {
@@ -750,7 +769,7 @@ export class Simulation {
       }
       return;
     }
-    if (b.phGen) this.gainRes(b.side, 'ph', b.phGen * dt);
+    if (b.phGen) this.gainRes(b.side, 'ph', b.phGen * this._clim().phGenMul * dt);
     // 蚁后巢：队列空闲时缓慢自动孵化工蚁（降低操作负担；仅玩家侧）
     if (b.type === 'hq' && b.side === SIDES.PLAYER && b.queue.length === 0) {
       b.autoT = (b.autoT || 0) + dt;
@@ -863,7 +882,7 @@ export class Simulation {
     if (dist(u.x, u.z, n.x, n.z) > HARVEST_RANGE) {
       this._moveTo(u, n.x, n.z, dt);
     } else {
-      const take = Math.min(GATHER_RATE * dt, u.carryCap - u.carrying, n.amount);
+      const take = Math.min(GATHER_RATE * this._clim().gatherMul * dt, u.carryCap - u.carrying, n.amount);
       u.carrying += take; u.carryRes = n.res; n.amount -= take;
       n.owner = u.side; n.glow = 1;   // 采集热度：地图底座环按归属方着色
       if (u.carrying >= u.carryCap - 0.01) u.state = 'return';
@@ -892,7 +911,13 @@ export class Simulation {
 
   _attack(u, dt) {
     const tgt = u.target && (this.getUnit(u.target.id) || this.getBuilding(u.target.id) || this.getObstacle(u.target.id));
-    if (!tgt) { u.state = u.order === 'manual' ? 'idle' : 'auto'; u.target = null; return; }
+    // 目标已在同帧被友军击杀（_reap 在帧末才清理）：立刻释放锁定，避免后续单位对着尸体空放一轮。
+    // 原实现会置 state='auto'，但状态机并无该分支，单位将永久静止 —— 统一回到 idle 由 _autoUnit 重新索敌。
+    if (!tgt || tgt.hp <= 0) {
+      if (tgt && this.stats && this.stats[u.side]) this.stats[u.side].overkillSaved++;
+      u.state = 'idle'; u.target = null;
+      return;
+    }
     if (u.domain === 'underground') u.burrowed = false;
     const r = (tgt.r ? tgt.r : (tgt.size ? tgt.size * 0.5 : 0));   // 障碍用半径作为停火距离
     const reach = u.range * this._terrainRangeMul(u) + r;   // 高台上的远程单位射程更远
@@ -951,14 +976,14 @@ export class Simulation {
     const enemy = side === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER;
     let best = null, bd = radius;
     for (const u of this.units) {
-      if (u.side !== enemy) continue;
+      if (u.side !== enemy || u.hp <= 0) continue;   // 帧内已阵亡、尚未回收的单位不再被锁定
       if (!this.isTargetable(u)) continue;
       if (opts.combatOnly && u.type === 'worker') continue;
       const d = dist(x, z, u.x, u.z);
       if (d < bd) { bd = d; best = u; }
     }
     for (const b of this.buildings) {
-      if (b.side !== enemy || b.state === 'constructing') continue;
+      if (b.side !== enemy || b.hp <= 0 || b.state === 'constructing') continue;
       const d = dist(x, z, b.x, b.z) - b.size * 0.5;
       if (d < bd) { bd = d; best = b; }
     }
@@ -971,7 +996,7 @@ export class Simulation {
     const enemy = side === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER;
     let best = null, bestScore = Infinity;
     const consider = (t, d, isBuilding) => {
-      if (d >= radius) return;
+      if (d >= radius || t.hp <= 0) return;   // 与默认索敌一致：跳过帧内已阵亡目标
       const armor = t.armor || (isBuilding ? 'chitin' : 'soft');
       const mult = dmgMult(atk.dtype, armor);
       let score = d - (mult - 1) * w * 30;
@@ -1001,6 +1026,9 @@ export class Simulation {
   }
 
   _dealDamage(attacker, tgt, dmg, fromX, fromZ, ranged, dtype) {
+    // 总闸：尸体不再吃伤害。同帧集火 / 范围溅射 / 持续酸雨都经此路径，
+    // 避免「打死之后还有 4 发命中」把攻防统计与击杀归因抬虚。
+    if (!tgt || tgt.hp <= 0) return;
     const aSide = attacker && attacker.side ? attacker.side : null;
     const armor = tgt.armor || (BUILDINGS[tgt.type] ? 'chitin' : 'soft');
     let d = dmg;
@@ -1048,13 +1076,28 @@ export class Simulation {
     for (let i = this.units.length - 1; i >= 0; i--) {
       const u = this.units[i];
       if (u.hp > 0) continue;
-      if (u.type !== 'worker' && u.carrying > 0 && u.lastAttacker && u.lastAttacker !== u.side) {
+      // 掠夺：任何携带资源的工蚁（陆 / 海 / 空 / 地下）被敌方击杀都应结算。
+      // 原先的 `u.type !== 'worker'` 把最常见的陆域工蚁排除在外，只剩三个域工蚁能触发。
+      if (u.carrying > 0 && u.lastAttacker && u.lastAttacker !== u.side) {
         const raid = 0.45 + this.sp[u.lastAttacker].mods.mobility * 0.40;
         const gain = Math.round(u.carrying * raid);
-        this.gainRes(u.lastAttacker, u.carryRes, gain);
-        if (this.stats && this.stats[u.lastAttacker]) this.stats[u.lastAttacker].raided += gain;
-        this._log(`掠夺成功：截获敌方工蚁携带的 ${gain} ${RESOURCES[u.carryRes].short}！`, u.lastAttacker === SIDES.PLAYER ? 'good' : 'bad');
-        this._fx('ring', u.x, 0.4, u.z, { color: 0xffd27f });
+        if (gain > 0) {
+          this.gainRes(u.lastAttacker, u.carryRes, gain);
+          if (this.stats && this.stats[u.lastAttacker]) {
+            this.stats[u.lastAttacker].raided += gain;
+            this.stats[u.lastAttacker].raids++;
+          }
+          // 混战中工蚁阵亡密集：播报 6s 节流，但特效 / 统计每次照常结算
+          if (this.time - this._lastRaidLogAt >= 6) {
+            this._lastRaidLogAt = this.time;
+            const mine = u.lastAttacker === SIDES.PLAYER;
+            const txt = mine
+              ? `掠夺成功：截获敌方工蚁携带的 ${gain} ${RESOURCES[u.carryRes].short}！`
+              : `我方运粮工蚁被截获，损失 ${gain} ${RESOURCES[u.carryRes].short}。`;
+            this._log(txt, mine ? 'good' : 'bad');
+          }
+          this._fx('ring', u.x, 0.4, u.z, { color: 0xffd27f });
+        }
       }
       if (this.stats) {
         this.stats[u.side].losses++;
@@ -1107,7 +1150,7 @@ export class Simulation {
         h.accum = 0;
         const enemy = h.owner === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER;
         for (const u of this.units) {
-          if (u.side === h.owner || !this.isTargetable(u)) continue;
+          if (u.side === h.owner || u.hp <= 0 || !this.isTargetable(u)) continue;
           if (dist(u.x, u.z, h.x, h.z) <= h.r) {
             this._dealDamage({ side: h.owner }, u, h.dps * 0.25, h.x, h.z, true, h.dtype);
             if (h.slow > 0) { u.buff.spd = Math.min(u.buff.spd, 1 - h.slow); u.buff.t = Math.max(u.buff.t, 0.3); }
@@ -1245,6 +1288,9 @@ export class Simulation {
     if (ai.attackTimer <= 0 && soldiers.filter(s => s.order !== 'manual').length >= reqNow) {
       const [lo, hi] = arch.attackInterval;
       ai.attackTimer = (lo + Math.random() * (hi - lo)) * diff.thinkMul;
+      // 已知节奏问题：soldierReqMax 挂在 ai 而非 arch，此处取值得 undefined → NaN，
+      // 首波后 AI 不再发动波次。修成 ai.soldierReqMax 会让 AI 全军连续压上、双方经济大幅下滑
+      // （实测敌方 240s 采集 15.0k → 9.8k），需与难度校准一并处理，暂不在细节轮改动。
       ai.soldierReq = Math.min(arch.soldierReqMax, ai.soldierReq + 2);
       for (const s of soldiers) {
         if (s.order === 'manual' || s.defendUntil > this.time) continue;   // 回防中的单位不被进攻波次覆盖

@@ -80,3 +80,57 @@ export function getMapConfig(mode, chapter) {
   if (mode === 'campaign' && chapter != null) return MAP_THEMES[chapter % MAP_THEMES.length];
   return SKIRMISH_MAP;
 }
+
+/* --------------------------------------------------------------------------
+ * 六章「环境规则」：让地图差异不仅体现在美术，也真正改变经济与战斗手感。
+ * 纯数值修正，不新增 / 不改动 MAP_THEMES 的任何字段，表现层结构保持不变。
+ * 每条都有得有失（如丰饶增资源但信息素井减产），六章整体强度接近，仅风格不同。
+ * ------------------------------------------------------------------------ */
+const CLIMATE_BASE = {
+  regenMul: 1,      // 资源点再生速率
+  gatherMul: 1,     // 工蚁采集速率
+  wellMul: 1,       // 中立信息素井产出
+  phGenMul: 1,      // 建筑自身信息素产出
+  ridgeBonus: 0,    // 高台远程射程额外加成（叠加到 TERRAIN.ridge.range）
+  waterSlow: 0,     // 浅滩对陆域的额外减速（从 speed 中扣减）
+  seaSpeedMul: 1,   // 水栖单位移速
+  airSpeedMul: 1,   // 空域单位移速
+};
+
+export const MAP_CLIMATES = [
+  {
+    id: 'scorch', name: '焦土', chapter: '焦土平原',
+    desc: '标准战场：资源再生、采集、地形与信息素均为基准值，适合熟悉运营节奏。',
+  },
+  {
+    id: 'verdant', name: '丰饶', chapter: '阡陌沃野',
+    desc: '菌圃丰饶：资源点再生 +45%、采集 +10%，但信息素井产出 −10%。',
+    regenMul: 1.45, gatherMul: 1.10, wellMul: 0.90,
+  },
+  {
+    id: 'highland', name: '高地', chapter: '壁垒荒原',
+    desc: '高台风劲：高台远程射程额外 +14%，但采集 −6%、资源再生 −5%。',
+    ridgeBonus: 0.14, gatherMul: 0.94, regenMul: 0.95,
+  },
+  {
+    id: 'wetland', name: '泽国', chapter: '通津泽国',
+    desc: '水网密布：浅滩对陆域额外减速 12%，水栖兵种移速 +12%，资源再生 +10%。',
+    waterSlow: 0.12, seaSpeedMul: 1.12, regenMul: 1.10,
+  },
+  {
+    id: 'tide', name: '潮汐', chapter: '怒涛海岸',
+    desc: '潮池共鸣：信息素井 +50%、巢穴信息素 +25%，采集 −4%。',
+    wellMul: 1.50, phGenMul: 1.25, gatherMul: 0.96,
+  },
+  {
+    id: 'echo', name: '共振', chapter: '回响虚空',
+    desc: '地脉回响：信息素井 +80%、巢穴信息素 +50%、高台射程额外 +6%，资源再生 −8%。',
+    wellMul: 1.80, phGenMul: 1.50, ridgeBonus: 0.06, regenMul: 0.92,
+  },
+].map(c => ({ ...CLIMATE_BASE, ...c }));
+
+/** 遭遇战用第 0 章基准环境；战役按章节取对应环境。 */
+export function getMapClimate(mode, chapter) {
+  if (mode === 'campaign' && chapter != null) return MAP_CLIMATES[chapter % MAP_CLIMATES.length];
+  return MAP_CLIMATES[0];
+}
