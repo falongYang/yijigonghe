@@ -236,8 +236,12 @@ export class World {
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 1, 1400);
 
-    // RTS 相机状态
+    // RTS 相机状态。zoom / rotate 只写 _camT 目标，updateCamera 每帧阻尼逼近，
+    // 消除滚轮与中键旋转的机械跳变；_camLast 用于识别外部直接赋值 cam.*（开局运镜初始态）。
     this.cam = { dist: 150, yaw: Math.PI, pitch: 0.92, tx: 0, tz: 0 };
+    this._camT = { dist: 150, yaw: Math.PI, pitch: 0.92 };
+    this._camLast = { ...this._camT };
+    this._camFocusT = null;     // 聚焦缓动目标（空格回巢 / 小地图跳转，手动平移即取消）
     this.keys = Object.create(null);
     this.raycaster = new THREE.Raycaster();
     this.ndc = new THREE.Vector2();
@@ -2406,16 +2410,23 @@ export class World {
     this._clearGroup(this.zoneGroup); this.zoneVisuals = [];
     this._clearGroup(this.wellGroup); this.wellVisuals = [];
     this.intro = null;
+    this._camFocusT = null;     // 换局清掉上一局未走完的聚焦缓动
     this.hideCursor();
     this.setEdge(0, 0, false);
     this._eraFade = null;   // 换局时取消未完成的纪元渐变
   }
 
   // ---------------------------------------------------------------- 相机
-  updateCamera(dt) {
+  /** @param dt 真实帧时间（暂停时仍推进，保证相机交互不僵住）
+   *  @param simDt 模拟时间（暂停时为 0，冻结运镜 / 键盘平移 / 震屏衰减） */
+  updateCamera(dt, simDt = dt) {
     const c = this.cam;
+    // 惰性初始化：允许测试桩件 / 外部借用原型方法时安全调用
+    if (!this._camT) this._camT = { dist: c.dist, yaw: c.yaw, pitch: c.pitch };
+    if (!this._camLast) this._camLast = { ...this._camT };
+    const T = this._camT, L = this._camLast;
     if (this.intro) {
-      this.intro.t += dt;
+      this.intro.t += simDt;
       const k = Math.min(1, this.intro.t / this.intro.dur);
       const e = 1 - Math.pow(1 - k, 3);   // ease-out
       const f = this.intro.from, t = this.intro.to;
@@ -2424,11 +2435,39 @@ export class World {
       c.dist = f.dist + (t.dist - f.dist) * e;
       c.pitch = f.pitch + (t.pitch - f.pitch) * e;
       c.yaw = f.yaw + (t.yaw - f.yaw) * e;
-      if (k >= 1) this.intro = null;
+      // 运镜期间目标与快照跟随当前值，出场后不会被引擎「拉回」旧目标
+      T.dist = c.dist; T.yaw = c.yaw; T.pitch = c.pitch;
+      if (k >= 1) { this.intro = null; this._camFocusT = null; }
+    } else {
+      // 外部直接赋值 cam.*（开局/重开）→ 视为即时设定，同步目标避免被阻尼拉回
+      if (c.dist !== L.dist || c.yaw !== L.yaw || c.pitch !== L.pitch) {
+        T.dist = c.dist; T.yaw = c.yaw; T.pitch = c.pitch;
+      }
+      // 指数阻尼：约 0.3s 收敛，滚轮连续输入时叠加成顺滑推拉而非逐格跳变
+      const kk = dt > 0 ? 1 - Math.pow(0.0015, dt) : 0;
+      if (kk > 0) {
+        c.dist += (T.dist - c.dist) * kk;
+        c.yaw += (T.yaw - c.yaw) * kk;
+        c.pitch += (T.pitch - c.pitch) * kk;
+        if (Math.abs(T.dist - c.dist) < 0.008) c.dist = T.dist;
+        if (Math.abs(T.yaw - c.yaw) < 0.0002) c.yaw = T.yaw;
+        if (Math.abs(T.pitch - c.pitch) < 0.0002) c.pitch = T.pitch;
+      }
+    }
+    L.dist = c.dist; L.yaw = c.yaw; L.pitch = c.pitch;
+    // 聚焦缓动：空格回巢 / 小地图跳转由瞬移改为平滑滑行；任何手动平移都会取消它
+    if (!this.intro && this._camFocusT && dt > 0) {
+      const kf = Math.min(1, dt * 6.5);
+      c.tx += (this._camFocusT.x - c.tx) * kf;
+      c.tz += (this._camFocusT.z - c.tz) * kf;
+      if (Math.abs(this._camFocusT.x - c.tx) + Math.abs(this._camFocusT.z - c.tz) < 0.06) {
+        c.tx = this._camFocusT.x; c.tz = this._camFocusT.z;
+        this._camFocusT = null;
+      }
     }
     // 跟随选中单位（入场运镜期间不干扰揭示动画）
     if (this.follow && !this.intro && this._followX != null && Number.isFinite(this._followX)) {
-      const k = Math.min(1, dt * 3.0);
+      const k = Math.min(1, simDt * 3.0);
       c.tx += (this._followX - c.tx) * k;
       c.tz += (this._followZ - c.tz) * k;
     }
@@ -2449,13 +2488,13 @@ export class World {
       const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
       const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
       this.camera.position.addScaledVector(right, ox).addScaledVector(up, oy);
-      this._shake *= Math.pow(0.012, dt);   // ≈0.4s 内衰减到 ~16%，≈0.7s 归零
+      this._shake *= Math.pow(0.012, simDt);   // ≈0.4s 内衰减到 ~16%，≈0.7s 归零（暂停时冻结）
       if (this._shake < 0.05) this._shake = 0;
     }
     // 键盘平移：A / S 已让给战场指令（攻击移动 / 停止），仅方向键与 W / D 平移
-    if (dt > 0) {
+    if (simDt > 0) {
       const k = this.keys;
-      const speed = (k.shift ? 90 : 46) * dt * (c.dist / 150);
+      const speed = (k.shift ? 90 : 46) * simDt * (c.dist / 150);
       const fwd = new THREE.Vector3(); this.camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
       const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
       const mv = new THREE.Vector3();
@@ -2474,8 +2513,9 @@ export class World {
       }
       if (mv.lengthSq() > 0) {
         this.follow = false;   // 手动平移镜头即退出跟随
-        c.tx = clamp(c.tx + mv.x * speed, -HALF_W - 20, HALF_W + 20);
-        c.tz = clamp(c.tz + mv.z * speed, -HALF_H - 20, HALF_H + 20);
+        this._camFocusT = null;
+        const p = this._clampTarget(c.tx + mv.x * speed, c.tz + mv.z * speed);
+        c.tx = p.x; c.tz = p.z;
       }
     }
   }
@@ -2498,28 +2538,71 @@ export class World {
     const mx = -dx * wpp * right.x + (dy * wpp / sp) * fwd.x;
     const mz = -dx * wpp * right.z + (dy * wpp / sp) * fwd.z;
     this.follow = false; this._followX = null; this._followZ = null;
+    this._camFocusT = null;   // 手动拖拽优先于聚焦缓动
     if (this.intro) this.intro = null;
-    c.tx = clamp(c.tx + mx, -HALF_W - 20, HALF_W + 20);
-    c.tz = clamp(c.tz + mz, -HALF_H - 20, HALF_H + 20);
+    const p = this._clampTarget(c.tx + mx, c.tz + mz);
+    c.tx = p.x; c.tz = p.z;
   }
   /** 拖拽平移期间关闭边缘滚屏，避免镜头被两股位移同时推动。 */
   setDragPan(on) {
     this.dragPan = !!on;
-    if (on) { this.edge.active = false; this.follow = false; }
+    if (on) { this.edge.active = false; this.follow = false; this._camFocusT = null; }
   }
 
-  zoom(delta) { this.cam.dist = clamp(this.cam.dist * (1 + delta * 0.0012), 42, 250); }
+  /** 相机目标统一边界：所有平移/聚焦入口共用，避免不同入口钳制范围漂移。 */
+  _clampTarget(x, z) {
+    return { x: clamp(x, -HALF_W - 20, HALF_W + 20), z: clamp(z, -HALF_H - 20, HALF_H + 20) };
+  }
+  _camEnsure() {
+    if (!this._camT) this._camT = { dist: this.cam.dist, yaw: this.cam.yaw, pitch: this.cam.pitch };
+    return this._camT;
+  }
+  /** 滚轮缩放：只推进目标距离，由 updateCamera 阻尼逼近。
+   *  传入光标屏幕坐标时启用「锚定缩放」——鼠标所指地面点在缩放前后大致停在原处，
+   *  这是 RTS 里放大到某支部队 / 缩回全局时最关键的跟手感细节。 */
+  zoom(delta, px, py) {
+    const T = this._camEnsure();
+    const before = T.dist;
+    const next = clamp(before * (1 + delta * 0.0012), 42, 250);
+    if (Math.abs(next - before) < 1e-6) return;
+    T.dist = next;
+    if (Number.isFinite(px) && Number.isFinite(py) && typeof this.screenToGround === 'function') {
+      let g = null;
+      try { g = this.screenToGround(px, py); } catch { g = null; }
+      if (g) {
+        const ratio = 1 - next / before;   // 中心沿「指向地面点」方向补偿：newC = C + (g-C)*(1-D'/D)
+        const p = this._clampTarget(
+          this.cam.tx + (g.x - this.cam.tx) * ratio,
+          this.cam.tz + (g.z - this.cam.tz) * ratio,
+        );
+        this.cam.tx = p.x; this.cam.tz = p.z;
+        if (this._camFocusT) this._camFocusT = { x: p.x, z: p.z };
+        this.follow = false; this._followX = null; this._followZ = null;
+      }
+    }
+  }
+  /** 中键旋转：目标角度 + 阻尼，消除逐帧硬跳。 */
   rotate(dyaw, dpitch) {
-    this.cam.yaw -= dyaw * 0.005;
-    this.cam.pitch = clamp(this.cam.pitch - dpitch * 0.004, 0.28, 1.32);
+    const T = this._camEnsure();
+    T.yaw -= dyaw * 0.005;
+    T.pitch = clamp(T.pitch - dpitch * 0.004, 0.28, 1.32);
   }
   /** 触发摄像机冲击震屏：取较大者，避免连续小冲击被大冲击覆盖时反而变小。
    *  幅度单位为世界单位，约 0.4s 内可见衰减；典型值：克制/重创 1.4、能力 2.5、建筑损毁 4、纪元跃迁 5。 */
   shake(mag) { if (Number.isFinite(mag) && mag > this._shake) this._shake = mag; }
-  focus(x, z) { this.setFollow(false); this.cam.tx = x; this.cam.tz = z; }
+  /** 聚焦：默认平滑滑行到目标；instant=true 用于小地图拖动（需要严格跟手）。 */
+  focus(x, z, instant = false) {
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+    this.setFollow(false);
+    const p = this._clampTarget(x, z);
+    if (instant || this._frameDt === 0) {
+      this.cam.tx = p.x; this.cam.tz = p.z; this._camFocusT = null;
+    } else this._camFocusT = { x: p.x, z: p.z };
+  }
   /** 镜头跟随：跟随点由 main.js 每帧按选中单位质心写入。 */
   setFollow(on) {
     this.follow = !!on;
+    if (on) this._camFocusT = null;
     if (!on) { this._followX = null; this._followZ = null; }
   }
   setFollowPoint(x, z) { this._followX = x; this._followZ = z; }
@@ -2590,10 +2673,11 @@ export class World {
   }
 
   // ---------------------------------------------------------------- 主循环钩子
-  update(dt) {
+  /** @param dt 模拟时间（暂停为 0，冻结场景）@param camDt 真实帧时间（相机阻尼始终推进） */
+  update(dt, camDt = dt) {
     this.time += dt;
     this._frameDt = dt;
-    this.updateCamera(dt);
+    this.updateCamera(camDt, dt);
     this._updateGridFade();         // 战术网格随镜头距离渐显 / 淡出
     this._updateZonePulses();       // 战术地形描边呼吸 / 高台更亮
     this._tickEraFade(dt);          // 纪元主题色平滑过渡

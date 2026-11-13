@@ -35,7 +35,7 @@ function boot() {
       onResearch: bid => sim.research(bid),
       onAbility: key => beginAbility(key),
       onEvolve: uid => sim.evolve(uid),
-      onMinimap: (x, z) => world.focus(x, z),
+      onMinimap: (x, z) => world.focus(x, z, true),   // 小地图拖动需严格跟手，不做缓动
       onRestart: () => location.reload(),
       onSpeed: n => { if (game.paused) togglePause(); game.speed = n; },
       onPause: () => togglePause(),
@@ -226,7 +226,7 @@ function bindInput() {
     pendingClick = null;
     down = false;
   });
-  canvas.addEventListener('wheel', e => { e.preventDefault(); world.zoom(e.deltaY); }, { passive: false });
+  canvas.addEventListener('wheel', e => { e.preventDefault(); world.zoom(e.deltaY, e.clientX, e.clientY); }, { passive: false });
   window.addEventListener('keydown', onKey);
   window.addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
@@ -555,7 +555,7 @@ function loop(now) {
   }
   world.syncFrame(sim, game.paused);
   ui.refresh();
-  world.update(game.paused ? 0 : dt);   // 暂停时冻结场景时间与特效，画面仍保持渲染
+  world.update(game.paused ? 0 : dt, dt);   // 暂停冻结场景时间，但相机阻尼仍用真实帧时间推进
   Sound.setAmbient(world.dayFactor);    // 昼夜明暗驱动蚁巢环境音起伏（audio.js 内部含启动保护与节流）
   requestAnimationFrame(loop);
 }
