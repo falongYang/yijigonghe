@@ -3292,6 +3292,22 @@ export class World {
     this._battleHeat = Number.isFinite(h) ? clamp(h, 0, 1) : 0;
   }
 
+  /** A 侧细节十只读态势：局部威胁压强 threatAt() + 全局战斗能量脉冲 battlePulse()。
+   *  只记录并以「上升沿 + 1.2s 节流」触发极轻微震屏，绝不写相机目标 / 滚轮距离，
+   *  也避免战斗持续期间每帧抖动。危险晕影与音频压低由 UI / Sound 各自消费同一份值。 */
+  setThreat(value, pulse = 0) {
+    const t = Number(value), p = Number(pulse);
+    this._threat = Number.isFinite(t) ? clamp(t, 0, 1) : 0;
+    const pv = Number.isFinite(p) ? clamp(p, 0, 1) : 0;
+    const now = Number.isFinite(this.time) ? this.time : 0;
+    const prev = Number(this._lastPulse) || 0;
+    if (pv > 0.55 && pv - prev > 0.12 && now - (Number(this._pulseShakeAt) || -99) > 1.2) {
+      this._pulseShakeAt = now;
+      this.shake(0.22 + 0.3 * this._threat);
+    }
+    this._lastPulse = pv;
+  }
+
   /** A 侧 cue.zoom 触发的一次性镜头呼吸（正值推近、负值拉远），限幅并自动回弹。 */
   pushZoom(v) {
     const z = Number(v);

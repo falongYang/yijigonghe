@@ -780,6 +780,23 @@ function loop(now) {
   } else if (world.setBattleHeat) {
     game.heat = 0; world.setBattleHeat(0);
   }
+  // A 侧细节十只读态势（6 帧采样，与热度同拍）：以镜头中心取样敌方威胁压强，
+  // 再取全局战斗能量脉冲；单点分发给 3D 镜头、HUD 晕影 / 态势条与程序化音频，
+  // 任一接口缺失或抛错都按 0 回落，绝不打断主循环。
+  if (frameNo % 6 === 0) {
+    let threat = 0, pulse = 0;
+    if (game.running && !game.glLost && typeof sim.threatAt === 'function') {
+      try {
+        threat = sim.threatAt(world.cam.tx, world.cam.tz, SIDES.PLAYER, 18);
+        pulse = typeof sim.battlePulse === 'function' ? sim.battlePulse() : 0;
+      } catch (_) { threat = 0; pulse = 0; }
+    }
+    const cl = v => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0; };
+    game.threat = cl(threat); game.pulse = cl(pulse);
+    if (world.setThreat) world.setThreat(game.threat, game.pulse);
+    if (ui.setThreat) ui.setThreat(game.threat, game.pulse);
+    if (Sound.setThreat) Sound.setThreat(game.threat, game.pulse);
+  }
   frameNo++;
   world.syncFrame(sim, game.paused);
   ui.refresh();

@@ -1460,6 +1460,19 @@ export class UI {
       `<div class="se-bar"><i style="width:${pct.toFixed(1)}%"></i></div>`);
   }
 
+  /** A 侧细节十只读态势（主循环 6 帧一次调用）：危险晕影 + 态势条取样。
+   *  晕影透明度只在数值变化时写入，避免每帧触发布局；缺 DOM 节点时静默跳过。 */
+  setThreat(value, pulse = 0) {
+    const t = Number(value), p = Number(pulse);
+    this._threat = Number.isFinite(t) ? Math.max(0, Math.min(1, t)) : 0;
+    this._pulse = Number.isFinite(p) ? Math.max(0, Math.min(1, p)) : 0;
+    const veil = document.getElementById('threat-veil');
+    if (veil && veil.style) {
+      const op = (this._threat * 0.42 + this._pulse * 0.10).toFixed(2);
+      if (this._threatOp !== op) { this._threatOp = op; veil.style.opacity = op; }
+    }
+  }
+
   /** 阵营态势条：读 A 侧 factionDensity()（只读存活数 / 平均聚簇密度），
    *  500ms 降频采样 + 去重写入，窄屏由 CSS 隐藏。 */
   _updateFrontStatus(s) {
@@ -1475,10 +1488,14 @@ export class UI {
     const pc = Math.max(0, Number(P.count) || 0), ec = Math.max(0, Number(E.count) || 0);
     const tot = pc + ec, pp = tot > 0 ? Math.round(pc / tot * 100) : 50;
     const pd = Number(P.avgDensity) || 0, ed = Number(E.avgDensity) || 0;
+    // 细节十：同一份只读态势（threatAt / battlePulse）追加威胁压强条与脉冲读数
+    const tp = Math.round((Number(this._threat) || 0) * 100);
+    const bp = Math.round((Number(this._pulse) || 0) * 100);
     this._setHTML(el,
       `<div class="fs-row"><span class="fs-p">我方 <b>${pc}</b></span><span class="fs-e"><b>${ec}</b> 敌方</span></div>` +
       `<div class="fs-bar"><i style="width:${pp}%"></i></div>` +
-      `<div class="fs-sub">聚簇均密度 ${pd.toFixed(2)} / ${ed.toFixed(2)}</div>`);
+      `<div class="fs-sub">聚簇均密度 ${pd.toFixed(2)} / ${ed.toFixed(2)} · 威胁 ${tp}%${bp > 5 ? ` · 脉冲 ${bp}%` : ''}</div>` +
+      `<div class="fs-threat"><i style="width:${tp}%"></i></div>`);
     el.classList.remove('hidden');
   }
 
@@ -1944,13 +1961,29 @@ export class UI {
     }
     const dens = Number(u.density) || 0;
     const densityHtml = dens >= 4 ? `<div class="muted sm">周围单位 ${dens} · 密集队形</div>` : '';
+    // 细节十 densityBreakdown()：按阵营 / 状态细分周边聚簇；全表扫描按 350ms + 单位 id 缓存
+    let crowdHtml = '';
+    if (this.sim && typeof this.sim.densityBreakdown === 'function') {
+      const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      if (!this._crowd || this._crowd.id !== u.id || now - this._crowd.t > 350) {
+        let c = null;
+        try { c = this.sim.densityBreakdown(u.id); } catch (_) { c = null; }
+        this._crowd = { id: u.id, t: now, c };
+      }
+      const c = this._crowd && this._crowd.c;
+      if (c && Number(c.total) > 0) {
+        const states = Object.entries(c.byState || {}).sort((a, b) => b[1] - a[1]).slice(0, 2)
+          .map(([k, v]) => `${stateCN[k] || String(k).replace(/[<>&"']/g, '')} ${Math.max(0, Number(v) || 0)}`).join(' · ');
+        crowdHtml = `<div class="kv unit-crowd"><span>周边聚簇</span><b>我方 ${Math.max(0, Number(c.allies) || 0)} · 敌方 ${Math.max(0, Number(c.enemies) || 0)}${states ? ' · ' + states : ''}</b></div>`;
+      }
+    }
     return `<div class="unit-tag">${u.side === SIDES.PLAYER ? '我方' : '敌方'} · ${dom} · ${def.role === 'econ' ? '采集单位' : '作战单位'}</div>
       <div class="hpbar"><i style="width:${hpPct}%"></i></div>
       <div class="kv"><span>耐久</span><b>${Math.ceil(Math.max(0, u.hp))} / ${u.maxHp}</b></div>
       <div class="kv"><span>等级</span><b>Lv${lv}${u.elite ? ' · 精英' : ''}</b></div>
       <div class="xpbar"><i style="width:${xpPct}%"></i></div>
       <div class="kv"><span>经验</span><b>${need ? `${Math.floor(u.xp || 0)} / ${need}` : '已满级'}</b></div>
-      ${vetHtml}${densityHtml}
+      ${vetHtml}${densityHtml}${crowdHtml}
       <div class="unit-grid">
         <div><span>攻击</span><b>${e.dmg}</b></div><div><span>射程</span><b>${e.range}</b></div>
         <div><span>攻速</span><b>${(1 / (e.atkcd || 1)).toFixed(1)}/s</b></div><div><span>移速</span><b>${e.speed}</b></div>

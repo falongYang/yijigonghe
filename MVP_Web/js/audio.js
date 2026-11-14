@@ -4,6 +4,9 @@ export const Sound = (() => {
   let ctx = null, master = null, muted = false, ready = false, volume = 0.5;
   // A 侧 cue 的 vol / mag 驱动的临时增益（仅在播放该条提示期间生效，播完立即复位）
   let cueGain = 1, lastCueAt = -Infinity;
+  // A 侧细节十只读态势（threatAt / battlePulse）：威胁越高越压低蚁巢底噪，
+  // 战斗脉冲则轻微抬升提示音，让会战中的关键反馈更清楚；不改动任何音色定义。
+  let threatLevel = 0, pulseLevel = 0;
 
   function ensure() {
     if (ctx) return;
@@ -126,7 +129,7 @@ export const Sound = (() => {
     const lv = Math.max(0, Math.min(1, Number(level) || 0));
     if (now - ambient.lastSet < 0.5 || Math.abs(lv - ambient.lastLevel) < 0.02) return;
     ambient.lastLevel = lv; ambient.lastSet = now;
-    ambient.g.gain.setTargetAtTime(0.02 + lv * 0.05, now, 0.8);
+    ambient.g.gain.setTargetAtTime((0.02 + lv * 0.05) * (1 - 0.38 * threatLevel), now, 0.8);
   }
 
   return {
@@ -141,6 +144,14 @@ export const Sound = (() => {
     get volume() { return volume; },
     get muted() { return muted; },
     get ready() { return ready; },
+    get threat() { return threatLevel; },
+    get pulse() { return pulseLevel; },
+    /** A 侧细节十只读态势：主循环 6 帧采样，非法入参按 0 处理。 */
+    setThreat(t, p) {
+      const a = Number(t), b = Number(p);
+      threatLevel = Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : 0;
+      pulseLevel = Number.isFinite(b) ? Math.max(0, Math.min(1, b)) : 0;
+    },
     startAmbient, stopAmbient, setAmbient,
     /** 消费 A 侧 cue（只读）：把音色类别映射到既有程序化音色，按 vol/mag 调整响度。
      *  同帧只播最重要的一条、180ms 节流，避免大规模会战形成音墙。 */
@@ -160,7 +171,8 @@ export const Sound = (() => {
       const MAP = { hit: 'hit', death: 'death', ability: 'ability', ambush: 'crash', boom: 'crash',
         chime: 'era', ambient: 'echo', power: 'ability' };
       const name = MAP[best.c.cat] || 'hit';
-      cueGain = Math.max(0.55, Math.min(1.6, (Number(best.c.vol) || 0.5) * (0.8 + 0.8 * best.mag)));
+      cueGain = Math.max(0.55, Math.min(1.6,
+        (Number(best.c.vol) || 0.5) * (0.8 + 0.8 * best.mag) * (1 + 0.12 * pulseLevel)));
       try { (defs[name] || defs.hit)(); } finally { cueGain = 1; }
     },
   };
