@@ -1,0 +1,960 @@
+{
+  "method": {
+    "baseline": "52c7562; current working-tree costs when --budget",
+    "geometry": "attacker x20/21 z -2/0/2/4; defender x0/1 z-2/0/2; tower0,0",
+    "species": "reset SP01 defaults; no artificial burrow movement",
+    "timeout": "90 seconds; unfinished battle fails combat completion; no inferred campaign result",
+    "cost": "base bio+min; --budget repeats roster pattern until next unit exceeds 1000; fixed defender; tower 190 <= 1000/3"
+  },
+  "burrowCommands": {
+    "moveKeepsBurrow": false,
+    "attackMoveKeepsBurrow": false
+  },
+  "rows": [
+    {
+      "difficulty": "easy",
+      "seed": 20261114,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261114,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 10.45,
+      "timeout": false
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261114,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261115,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261115,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 9.7,
+      "timeout": false
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261115,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261116,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261116,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 10.45,
+      "timeout": false
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261116,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261114,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261114,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 10.45,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261114,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261115,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261115,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 9.7,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261115,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261116,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261116,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 10.45,
+      "timeout": false
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261116,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261114,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261114,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 10.45,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261114,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261115,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261115,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 9.7,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261115,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261116,
+      "scenario": "C1",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s2",
+        "s2",
+        "s2",
+        "sB",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 0,
+        "defender": 2
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 940,
+      "attackerLoss": 945,
+      "defenderLoss": 600,
+      "R": 0.6349206349206349,
+      "reveals": 0,
+      "seconds": 13.3,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261116,
+      "scenario": "C2",
+      "attackerRoster": [
+        "aA",
+        "aA",
+        "aA",
+        "aB",
+        "aB",
+        "aA",
+        "aA",
+        "aA",
+        "aB"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "s1",
+        "s1"
+      ],
+      "survivors": {
+        "attacker": 9,
+        "defender": 0
+      },
+      "attackerBudget": 945,
+      "defenderBudget": 925,
+      "attackerLoss": 0,
+      "defenderLoss": 925,
+      "R": "Infinity",
+      "reveals": 0,
+      "seconds": 10.45,
+      "timeout": false
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261116,
+      "scenario": "C3",
+      "attackerRoster": [
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA",
+        "uA"
+      ],
+      "defenderRoster": [
+        "s3",
+        "s3",
+        "s1",
+        "tower"
+      ],
+      "survivors": {
+        "attacker": 3,
+        "defender": 0
+      },
+      "attackerBudget": 980,
+      "defenderBudget": 925,
+      "attackerLoss": 686,
+      "defenderLoss": 925,
+      "R": 1.348396501457726,
+      "reveals": 0,
+      "seconds": 15.3,
+      "timeout": false
+    }
+  ]
+}
