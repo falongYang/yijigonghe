@@ -2024,7 +2024,6 @@ export class Simulation {
   }
   _launchStrike(attacker, target, damage, dtype, ranged) {
     if (!this.canAttack(attacker, target)) return;
-    if (target.domain === 'air') damage *= attacker.attack?.airDamageMul ?? 1;
     if (!ranged) {
       this._dealDamage(attacker, target, damage, attacker.x, attacker.z, false, dtype);
       if (attacker.splash > 0) this._applySplash(attacker, target, damage);

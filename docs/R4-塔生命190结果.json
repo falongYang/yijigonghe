@@ -1,0 +1,95 @@
+{
+  "towerMul": 1,
+  "rows": [
+    {
+      "scenario": "C1",
+      "seed": 20261114,
+      "towerDmgMul": 1,
+      "atkBudget": 990,
+      "defBudget": 940,
+      "atkLoss": 990,
+      "defLoss": 190,
+      "R": 0.192,
+      "survivors": {
+        "atk": 0,
+        "def": 4
+      },
+      "seconds": 6.1
+    },
+    {
+      "scenario": "C1",
+      "seed": 20261115,
+      "towerDmgMul": 1,
+      "atkBudget": 990,
+      "defBudget": 940,
+      "atkLoss": 990,
+      "defLoss": 190,
+      "R": 0.192,
+      "survivors": {
+        "atk": 0,
+        "def": 4
+      },
+      "seconds": 6.1
+    },
+    {
+      "scenario": "C1",
+      "seed": 20261116,
+      "towerDmgMul": 1,
+      "atkBudget": 990,
+      "defBudget": 940,
+      "atkLoss": 990,
+      "defLoss": 190,
+      "R": 0.192,
+      "survivors": {
+        "atk": 0,
+        "def": 4
+      },
+      "seconds": 6.1
+    },
+    {
+      "scenario": "C3",
+      "seed": 20261114,
+      "towerDmgMul": 1,
+      "atkBudget": 910,
+      "defBudget": 925,
+      "atkLoss": 780,
+      "defLoss": 925,
+      "R": 1.186,
+      "survivors": {
+        "atk": 1,
+        "def": 0
+      },
+      "seconds": 17.3
+    },
+    {
+      "scenario": "C3",
+      "seed": 20261115,
+      "towerDmgMul": 1,
+      "atkBudget": 910,
+      "defBudget": 925,
+      "atkLoss": 780,
+      "defLoss": 925,
+      "R": 1.186,
+      "survivors": {
+        "atk": 1,
+        "def": 0
+      },
+      "seconds": 17.3
+    },
+    {
+      "scenario": "C3",
+      "seed": 20261116,
+      "towerDmgMul": 1,
+      "atkBudget": 910,
+      "defBudget": 925,
+      "atkLoss": 780,
+      "defLoss": 925,
+      "R": 1.186,
+      "survivors": {
+        "atk": 1,
+        "def": 0
+      },
+      "seconds": 17.3
+    }
+  ]
+}

@@ -259,8 +259,8 @@ export const BUILDINGS = {
     color: 0x7a5a3e, desc: '生产陆面兵种（兵蚁/酸蚁/巨颚卫），随纪元解锁更高级。',
   },
   tower: {
-    detectRadius: 26, id: 'tower', name: '警戒塔', hp: 560, size: 3.4, cost: { bio: 150, min: 40 }, build: 6,
-    role: '防御 · 远程', attack: { airDamageMul: 0.6, dmg: 26, range: 22, atkcd: 0.7, ranged: true, weapon: 'w_tower' },
+    detectRadius: 26, id: 'tower', name: '警戒塔', hp: 190, size: 3.4, cost: { bio: 150, min: 40 }, build: 6,
+    role: '防御 · 远程', attack: { dmg: 26, range: 22, atkcd: 0.7, ranged: true, weapon: 'w_tower' },
     color: 0x5e4a34, desc: '自动攻击射程内敌方单位/建筑，并可锁定空中目标，是防线支点。',
   },
   tech: {
@@ -767,7 +767,6 @@ export function effectiveBuilding(bid, sp) {
     out.attack = {
       dmg: Math.round(base.attack.dmg * r.towerBonus),
       range: base.attack.range * (0.9 + r.towerBonus * 0.12),
-      airDamageMul: base.attack.airDamageMul ?? 1,
       atkcd: base.attack.atkcd,
       ranged: base.attack.ranged,
       weapon: base.attack.weapon,
