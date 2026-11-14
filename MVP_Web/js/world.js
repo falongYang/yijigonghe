@@ -3061,6 +3061,17 @@ export class World {
       }
     }
   }
+  /** 触屏双指捏合：与滚轮共用「目标距离 + 阻尼」通道，但不做鼠标锚点补偿。
+   *  连续手势每帧都会调用，若逐帧按屏幕点重算 cam.tx/tz 会累积漂移；
+   *  双指同向平移由 panByPixels 独立负责，因此这里只推进距离目标。 */
+  pinchZoom(delta) {
+    const d = Number(delta);
+    if (!Number.isFinite(d)) return;
+    const T = this._camEnsure();
+    T.dist = clamp(T.dist * (1 + d * 0.0012), 42, 250);
+    this.follow = false; this._followX = null; this._followZ = null;
+    this._camFocusT = null;
+  }
   /** 中键旋转：目标角度 + 阻尼，消除逐帧硬跳。 */
   rotate(dyaw, dpitch) {
     const T = this._camEnsure();

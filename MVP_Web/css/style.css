@@ -1,9 +1,10 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #eef2e6; user-select: none; }
-#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; color: #eef2e6; user-select: none; -webkit-tap-highlight-color: transparent; }
+/* 触屏手势由 JS 接管：关掉浏览器默认的双击缩放 / 拖拽滚动，pointermove 才不会被系统抢走 */
+#scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; touch-action: none; }
 #scene.grabbing { cursor: grabbing; }
 /* 首页轮播：拖动时关掉吸附过渡，卡片实时跟手；抓手光标提示可拖 */
-.sp-carousel, .ch-carousel { cursor: grab; }
+.sp-carousel, .ch-carousel { cursor: grab; touch-action: none; }
 .sp-carousel.dragging, .ch-carousel.dragging { cursor: grabbing; }
 .sp-carousel.dragging .sp-track, .ch-carousel.dragging .ch-track { transition: none; }
 .sp-carousel.dragging *, .ch-carousel.dragging * { user-select: none; }
@@ -169,7 +170,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 
 /* 小地图 */
 #minimap-wrap { position: fixed; right: 12px; bottom: 12px; background: rgba(14,20,10,.86); border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 6px; }
-#minimap { display: block; border-radius: 6px; cursor: crosshair; }
+#minimap { display: block; border-radius: 6px; cursor: crosshair; touch-action: none; }
 #domain-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; justify-content: center; margin-top: 4px; font-size: 11px; color: #cdd8b8; }
 #domain-legend .mm-tip { color: #8a9678; font-size: 10px; white-space: nowrap; }
 /* 情报图层开关与类别图例（读 A 侧 minimapSpec() 的 label / color） */
@@ -744,3 +745,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 #front-status .fs-sub { color: #8a9678; font-size: 9.5px; text-align: center; }
 /* 窄屏下小地图已压缩，态势条让位给画布与图例 */
 @media (max-width: 880px) { #front-status { display: none; } }
+
+/* ---------------- 触屏 / 粗指针：点按目标放大、去掉 300ms 双击延迟 ---------------- */
+button, .sp-nav, .ch-nav, .bbtn, .abtn, .tbtn, .mtab, .dtab, .atab, .mm-intel-btn { touch-action: manipulation; }
+@media (pointer: coarse) {
+  #topright { gap: 5px; }
+  #topright .ghost.sm { min-height: 32px; padding: 6px 10px; }
+  .bbtn, .abtn, .dtab, .atab, .mtab { min-height: 36px; }
+  .mm-intel-btn { min-height: 26px; padding: 3px 8px; }
+  #minimap-wrap { padding: 8px; }
+  /* 触屏没有 hover：把按钮说明留在 title / 帮助页，不让提示气泡挡住手指 */
+  .hud-tip { display: none; }
+}

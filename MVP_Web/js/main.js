@@ -3,6 +3,7 @@ import { Simulation } from './sim.js';
 import { World } from './world.js';
 import { UI } from './ui.js';
 import { Sound } from './audio.js';
+import { bindTouchInput, isSyntheticMouse, isTouchActive } from './touch.js';
 import { installBridge } from './bridge.js';
 import { MAP, HALF_W, HALF_H, BUILDINGS, SIDES, ABILITIES, UNITS, TERRAIN } from './rts.js';
 
@@ -273,6 +274,7 @@ function bindInput() {
   const DRAG_THRESHOLD = 5;
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('mousedown', e => {
+    if (isSyntheticMouse(e)) return;   // 触屏手势补发的兼容鼠标事件，不重复点选 / 下令
     down = true; button = e.button; downX = lastX = e.clientX; downY = lastY = e.clientY;
     pendingClick = null; dragging = false;
     if (button === 1) return; // 中键旋转由 move 处理
@@ -307,6 +309,9 @@ function bindInput() {
     if (dragging) world.panByPixels(dx, dy);
   });
   canvas.addEventListener('mousemove', e => {
+    // 触屏没有 hover：手势期间浏览器补发的兼容 mousemove 不能触发贴边滚屏 / 地貌提示，
+    // 否则镜头会在手指离开后自己漂走。此处只查询活跃窗口，不消费合成事件标记。
+    if (isTouchActive()) { world.setEdge(0, 0, false); return; }
     // 屏幕边缘滚屏：仅在战场进行中生效（暂停/引导/选种页不平移，拖拽时也不叠加）
     world.setEdge(e.clientX, e.clientY, game.running && !game.paused && !game.tutOpen && !dragging);
     if (game.pendingAbility) {
@@ -351,7 +356,25 @@ function bindInput() {
     pendingClick = null;
     down = false;
   });
-  canvas.addEventListener('wheel', e => { e.preventDefault(); world.zoom(e.deltaY, e.clientX, e.clientY); }, { passive: false });
+  canvas.addEventListener('wheel', e => {
+    if (isSyntheticMouse(e)) return;
+    e.preventDefault(); world.zoom(e.deltaY, e.clientX, e.clientY);
+  }, { passive: false });
+  // 触屏 / 触控笔：点选、长按、拖动、双指捏合与旋转（鼠标仍走上面的原生路径）
+  bindTouchInput(canvas, {
+    enabled: () => game.running && !game.paused && !game.tutOpen && !game.glLost,
+    tap: (x, y) => touchPrimary(x, y),
+    longPress: (x, y) => touchSecondary(x, y),
+    pan: (dx, dy) => world.panByPixels(dx, dy),
+    // 连续捏合只推距离目标；锚点补偿若逐帧重算会让镜头漂移（双指平移另走 pan）
+    zoom: (d, px, py) => {
+      if (typeof world.pinchZoom === 'function') world.pinchZoom(d);
+      else world.zoom(d, px, py);
+    },
+    rotate: (dyaw, dpitch) => world.rotate(dyaw, dpitch),
+    drag: on => { world.setDragPan(on); canvas.classList.toggle('grabbing', !!on); },
+    firstTouch: () => showTouchHint(),
+  });
   window.addEventListener('keydown', onKey);
   window.addEventListener('keyup', e => {
     const k = e.key.toLowerCase();
@@ -359,6 +382,54 @@ function bindInput() {
     if (e.key === 'Shift') game.shift = false;
   });
   document.addEventListener('mousemove', e => { if (game.box) { game.box.x1 = e.clientX; game.box.y1 = e.clientY; drawBox(); } });
+}
+
+/* ------------------------------------------------- 触屏手势的语义落点（B 侧） */
+/** 轻点 = 左键：瞄准态优先放置 / 施放 / 巡逻落点，其余按点选处理。 */
+function touchPrimary(x, y) {
+  lastMouse.x = x; lastMouse.y = y;
+  if (game.pendingAbility) { castAbilityAt(x, y); return; }
+  if (game.pendingBuild) { placeBuild(x, y); return; }
+  if (game.pendingPatrol) {
+    const g = world.screenToGround(x, y);
+    if (g) {
+      game.pendingPatrol.pts.push({ x: g.x, z: g.z });
+      world.addPing(g.x, g.z, 0x7ef0c8, { dur: 2.2 });
+      ui.toast(`已落第 ${game.pendingPatrol.pts.length} 个点`);
+    }
+    return;
+  }
+  pickAt(x, y);
+}
+/** 长按 = 右键：巡逻确认 / 取消瞄准 / 下发移动或攻击指令；附带轻微触觉反馈。 */
+function touchSecondary(x, y) {
+  try { if (navigator.vibrate) navigator.vibrate(12); } catch { /* 不支持则忽略 */ }
+  if (game.pendingPatrol) { commitPatrol(); return; }
+  if (game.pendingAbility) { cancelAbility(); return; }
+  if (game.pendingBuild) { game.pendingBuild = null; world.hideCursor(); ui.setBuildHint(''); return; }
+  const hasSel = playerSel().length > 0 || sim.selectedBuilding != null;
+  commandAt(x, y);
+  if (!hasSel) ui.toast('长按可下令：先轻点选中己方单位或生产建筑');
+}
+let touchHintShown = false;
+/** 首次在该设备触屏进入战场时给一条操作提示，之后不再打扰（存储不可用时只在本次会话提示）。 */
+function showTouchHint() {
+  if (touchHintShown) return;
+  touchHintShown = true;
+  try {
+    if (localStorage.getItem('ant_epoch_touch_hint_v1')) return;
+    localStorage.setItem('ant_epoch_touch_hint_v1', '1');
+  } catch { /* 隐私模式：退化为本次会话一次 */ }
+  if (ui && ui.toast) ui.toast('触屏操作 · 轻点点选 / 长按下令 / 单指拖动平移 / 双指缩放与旋转', { life: 5200, priority: 1 });
+}
+/** Esc 按浮层层级由顶至底依次收起；返回 true 表示本次按键已被消费。 */
+const ESC_OVERLAYS = ['help', 'era-panel'];
+function closeTopOverlay() {
+  for (const id of ESC_OVERLAYS) {
+    const box = document.getElementById(id);
+    if (box && !box.classList.contains('hidden')) { box.classList.add('hidden'); return true; }
+  }
+  return false;
 }
 
 let lastPick = { t: 0, id: null };
@@ -485,6 +556,8 @@ function onKey(e) {
   const k = e.key.toLowerCase();
   if (k === 'shift') game.shift = true;
   if (k === 'escape') {
+    // 先收起最上层浮层（帮助 / 纪元谱），避免暂停中开着帮助时按 Esc 直接恢复战局
+    if (closeTopOverlay()) return;
     if (game.pendingPatrol) { cancelPatrol(); return; }
     if (game.paused) { togglePause(); return; }
     game.pendingBuild = null; game.pendingAbility = null; world.hideCursor();

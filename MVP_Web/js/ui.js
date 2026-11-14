@@ -825,9 +825,24 @@ export class UI {
       const wz = py * 2 * HH - HH;
       if (this.hooks.onMinimap) this.hooks.onMinimap(wx, wz);
     };
-    this.mm.addEventListener('mousedown', e => { e.preventDefault(); jump(e); this._mmDrag = true; });
-    window.addEventListener('mousemove', e => { if (this._mmDrag) jump(e); });
-    window.addEventListener('mouseup', () => { this._mmDrag = false; });
+    // 统一走 Pointer Events：鼠标点击 / 拖动照旧，触屏点按与拖动小地图同样能跳转镜头。
+    // pointerdown 上 preventDefault 可抑制浏览器补发的兼容鼠标事件，避免一次点击跳两次。
+    this._mmDrag = false; this._mmPid = null;
+    this.mm.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+      this._mmDrag = true; this._mmPid = e.pointerId;
+      try { this.mm.setPointerCapture(e.pointerId); } catch { /* 老浏览器忽略 */ }
+      jump(e);
+    });
+    window.addEventListener('pointermove', e => {
+      if (!this._mmDrag) return;
+      if (this._mmPid != null && e.pointerId != null && e.pointerId !== this._mmPid) return;
+      jump(e);
+    });
+    const endDrag = () => { this._mmDrag = false; this._mmPid = null; };
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
     this.mm.style.cursor = 'crosshair';
     const tip = $('#mm-tip');
     if (tip) tip.textContent = '白框 视野 · 红晕 交战 · 黄圈 标记 · 金圈 井';
