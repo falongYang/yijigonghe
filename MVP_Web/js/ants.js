@@ -40,11 +40,14 @@ function mergeGeometries(geoms) {
   const pos = new Float32Array(vc * 3);
   const nor = new Float32Array(vc * 3);
   const idx = new Uint32Array(ic);
+  const hasHinges = list.some(g => g.userData.antHinge);
+  const hinges = hasHinges ? new Float32Array(vc * 4) : null;
   let vo = 0, io = 0;
   for (const g of list) {
     pos.set(g.attributes.position.array, vo * 3);
     nor.set(g.attributes.normal.array, vo * 3);
     const n = g.attributes.position.count;
+    if (hinges && g.userData.antHinge) for (let k = 0; k < n; k++) hinges.set(g.userData.antHinge, (vo + k) * 4);
     if (g.index) {
       const a = g.index.array;
       for (let k = 0; k < a.length; k++) idx[io + k] = a[k] + vo;
@@ -60,6 +63,7 @@ function mergeGeometries(geoms) {
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   out.setIndex(new THREE.BufferAttribute(idx, 1));
+  if (hinges) out.setAttribute('antHinge', new THREE.BufferAttribute(hinges, 4));
   out.computeBoundingSphere();
   return out;
 }
@@ -115,9 +119,9 @@ export function buildAntGeometry(sp, caste = 'worker', carry = false, domain = '
       const knee = V(bx + (0.06 - i * 0.10) * S, 0.02 * S + 0.46 * S, side * legLen * 0.52);
       const ankle = V(bx + (0.22 - i * 0.20) * S, -0.34 * S, side * legLen * 1.02);
       const foot = V(bx + (0.30 - i * 0.16) * S, -0.44 * S, side * legLen * 1.18);
-      parts.push(cyl(V(bx, 0.0, side * 0.20 * S), knee, 0.055 * S, 0.045 * S));
-      parts.push(cyl(knee, ankle, 0.045 * S, 0.03 * S));
-      parts.push(cyl(ankle, foot, 0.03 * S, 0.012 * S));
+      const leg = [cyl(V(bx, 0.0, side * 0.20 * S), knee, 0.055 * S, 0.045 * S),
+        cyl(knee, ankle, 0.045 * S, 0.03 * S), cyl(ankle, foot, 0.03 * S, 0.012 * S)];
+      for (const g of leg) { g.userData.antHinge = [bx, 0, side * 0.20 * S, (i + (side > 0 ? 1 : 0)) % 2 + 1]; parts.push(g); }
     }
   }
   // 触角：每侧两段弯曲上扬
@@ -125,8 +129,9 @@ export function buildAntGeometry(sp, caste = 'worker', carry = false, domain = '
     const a0 = V(headX + 0.10 * S, 0.20 * S, side * 0.12 * S);
     const a1 = V(headX + 0.40 * S, 0.40 * S, side * 0.30 * S);
     const a2 = V(headX + 0.62 * S, 0.30 * S, side * 0.46 * S);
-    parts.push(cyl(a0, a1, 0.04 * S, 0.03 * S));
-    parts.push(cyl(a1, a2, 0.03 * S, 0.014 * S));
+    for (const g of [cyl(a0, a1, 0.04 * S, 0.03 * S), cyl(a1, a2, 0.03 * S, 0.014 * S)]) {
+      g.userData.antHinge = [a0.x, a0.y, a0.z, side > 0 ? 3 : 4]; parts.push(g);
+    }
   }
   // 复眼：头部两侧半球（同材质靠位置/弧度辨识；world.js 另叠加深色发光眼点）
   const eyeR = 0.15 * S, eyeX = headX + 0.02 * S, eyeY = 0.17 * S, eyeZ = headR * 0.62;
@@ -230,9 +235,12 @@ export function buildAntGeometry(sp, caste = 'worker', carry = false, domain = '
 
   const geo = mergeGeometries(parts);
   geo.scale(2.2, 2.2, 2.2);
+  const hinges = geo.getAttribute('antHinge');
+  if (hinges) for (let i=0;i<hinges.count;i++) { hinges.setX(i,hinges.getX(i)*2.2); hinges.setY(i,hinges.getY(i)*2.2); hinges.setZ(i,hinges.getZ(i)*2.2); }
   // 暴露复眼在 body 局部坐标系（已含 2.2 倍缩放）的位置，供 world.js 叠加深色发光眼点
   const k = 2.2;
   geo.userData = {
+    stanceHeight: 0.44 * S * 2.2,
     eyes: [
       { x: eyeX * k, y: eyeY * k, z: eyeZ * k, r: eyeR * k },
       { x: eyeX * k, y: eyeY * k, z: -(eyeZ * k), r: eyeR * k },

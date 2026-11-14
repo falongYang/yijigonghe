@@ -3,6 +3,7 @@
  * 经验升级与进化·敌方 AI·资源掠夺·胜负判定。纯逻辑 + 事件，渲染由 world.js 镜像。
  */
 import { SPECIES_BY_ID } from './data.js';
+import { ScoutingMemory } from './scouting.js';
 import { Navigation } from './navigation.js';
 import {
   MAP, HALF_W, HALF_H, SIDES, START_BIO, START_MIN, START_PH, POP_CAP,
@@ -58,6 +59,8 @@ const AI_OFFENSIVE_ABILITIES = new Set(['a_acidpool', 'a_whirl', 'a_venom', 'a_d
 
 export class Simulation {
   constructor() {
+    this.scouting = new ScoutingMemory();
+    this._scoutAt = -1;
     this.navigation = new Navigation(HALF_W, HALF_H);
     this.listeners = [];
     this.selected = new Set();
@@ -94,6 +97,7 @@ export class Simulation {
     this.resonancePhase = -1;
     this.ridgeZones = [];
     this.milestones = {};             // 战场里程碑播报去重
+    this.projectiles = [];
     this.tracers = [];                // 弹道只读记录（渲染层可轮询，不参与结算）
     this.decor = [];                  // 地图装饰点位（确定性，纯视觉）
     this.waterVisual = [];            // 水域视觉增强属性（波纹/潮汐/闪光/水体色，纯视觉）
@@ -271,6 +275,7 @@ export class Simulation {
     this.selectedBuilding = null;
     this.effects.length = 0;
     this.hazards.length = 0;
+    this.projectiles.length = 0;
     this.tracers.length = 0;
     this.corpses.length = 0;
     this.sceneState = null;
@@ -280,6 +285,7 @@ export class Simulation {
     this.nextId = 1;
     this.ended = null;
     this.time = 0;
+    this.scouting = new ScoutingMemory(); this._scoutAt = -1;
     this.battleTime = 0;        // 实战累计秒数（仅在有真实伤害发生的 tick 累加，纯结算叙事）
     this._dmgFlag = false;      // 本 tick 是否发生真实伤害（驱动 battleTime 累计）
     this._battlePulse = 0;      // 全局战斗能量脉冲（每次真实命中 +、逐帧衰减，纯只读镜头/音效信号）
@@ -435,12 +441,12 @@ export class Simulation {
     const sources = [];
     const vm = this._wea().visionMul;   // 天气视野修正（遭遇战晴空 = 1.0，零影响）
     for (const u of this.units) {
-      if (u.side !== SIDES.PLAYER) continue;
+      if (u.side !== SIDES.PLAYER || u.hp <= 0) continue;
       if (u.domain === 'underground' && u.burrowed) continue;   // 潜行单位不提供视野
       sources.push({ x: u.x, z: u.z, r: (u.domain === 'air' ? 42 : 30) * vm });
     }
     for (const b of this.buildings) {
-      if (b.side !== SIDES.PLAYER) continue;
+      if (b.side !== SIDES.PLAYER || b.hp <= 0) continue;
       sources.push({ x: b.x, z: b.z, r: (b.type === 'hq' ? 50 : 44) * vm });
     }
     const seen = (x, z) => {
@@ -457,6 +463,9 @@ export class Simulation {
     for (const b of this.buildings) {
       if (b.side === SIDES.PLAYER || b.type === 'hq') { b.visible = true; continue; }
       b.visible = seen(b.x, b.z);
+    }
+    if (this.time - this._scoutAt >= 0.25 || this._scoutAt < 0) {
+      this.scouting.update(sources, this.buildings, this.time); this._scoutAt = this.time;
     }
   }
 
@@ -897,7 +906,7 @@ export class Simulation {
   commandMove(ids, x, z, opts = {}) {
     const n = ids.length;
     ids.forEach((id, i) => {
-      const u = this.getUnit(id); if (!u) return; u.repairId = null; u.cmdFlash = 1;
+      const u = this.getUnit(id); if (!u) return; u.repairId = null; u.strike = null; u.advanceGoal = null; u.cmdFlash = 1;
       const p = opts.formation === false ? { x, z }
         : this._formationPoint(i, n, x, z, opts.formation || u.formation || 'auto');
       if (opts.append) {
@@ -918,15 +927,15 @@ export class Simulation {
   commandAttack(ids, targetId) {
     const tgt = this.getUnit(targetId) || this.getBuilding(targetId) || this.getObstacle(targetId);
     if (!tgt) return;
-    for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.cmdFlash = 1; u.waypoints = []; u.state = 'attack'; u.order = 'manual'; u.target = { id: targetId, x: tgt.x, z: tgt.z }; if (u.domain === 'underground') u.burrowed = false; }
+    for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.strike = null; u.advanceGoal = null; u.cmdFlash = 1; u.waypoints = []; u.state = 'attack'; u.order = 'manual'; u.target = { id: targetId, x: tgt.x, z: tgt.z }; if (u.domain === 'underground') u.burrowed = false; }
   }
   commandAttackMove(ids, x, z, opts = {}) {
     const n = ids.length;
     ids.forEach((id, i) => {
-      const u = this.getUnit(id); if (!u) return; u.repairId = null; u.cmdFlash = 1;
+      const u = this.getUnit(id); if (!u) return; u.repairId = null; u.strike = null; u.advanceGoal = null; u.cmdFlash = 1;
       const p = opts.formation === false ? { x, z }
         : this._formationPoint(i, n, x, z, opts.formation || u.formation || 'auto');
-      u.waypoints = []; u.state = 'attackmove'; u.order = 'manual'; u.target = p;
+      u.waypoints = []; u.advanceGoal = { ...p }; u.state = 'attackmove'; u.order = 'manual'; u.target = p;
       if (u.domain === 'underground') u.burrowed = false;
     });
   }
@@ -934,14 +943,14 @@ export class Simulation {
     const n = this.nodes.find(x => x.id === nodeId);
     for (const id of ids) { const u = this.getUnit(id); if (!u || UNITS[u.type].role !== 'econ') continue; if (n) { u.repairId = null; u.nodeId = n.id; u.state = 'harvest'; u.order = 'manual'; u.target = { x: n.x, z: n.z }; } }
   }
-  commandStop(ids) { for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.cmdFlash = 1; u.state = 'idle'; u.order = 'auto'; u.target = null; u.waypoints = []; u.patrol = null; } }
+  commandStop(ids) { for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.strike = null; u.advanceGoal = null; u.cmdFlash = 1; u.state = 'idle'; u.order = 'auto'; u.target = null; u.waypoints = []; u.patrol = null; } }
 
   /** 驻守：原地守住当前位置，只攻击 HOLD_LEASH 内的目标，绝不追击出圈（守住隘口/巢口）。 */
   commandHold(ids) {
     let n = 0;
     for (const id of ids) {
       const u = this.getUnit(id); if (!u || UNITS[u.type].role === 'econ') continue;
-      u.repairId = null; u.cmdFlash = 1; u.waypoints = []; u.patrol = null; u.target = null;
+      u.repairId = null; u.strike = null; u.advanceGoal = null; u.cmdFlash = 1; u.waypoints = []; u.patrol = null; u.target = null;
       u.holdX = u.x; u.holdZ = u.z; u.state = 'hold'; u.order = 'manual'; n++;
       this._fx('ring', u.x, 0.3, u.z, { color: 0x7ef0c8, r: 3 });
     }
@@ -956,7 +965,7 @@ export class Simulation {
     let n = 0;
     for (const id of ids) {
       const u = this.getUnit(id); if (!u || UNITS[u.type].role === 'econ') continue;
-      u.repairId = null; u.cmdFlash = 1; u.waypoints = []; u.target = null;
+      u.repairId = null; u.strike = null; u.advanceGoal = null; u.cmdFlash = 1; u.waypoints = []; u.target = null;
       u.patrol = pts.map(p => ({ ...p })); u.patrolIdx = 0; u.state = 'patrol'; u.order = 'manual'; n++;
       this._fx('ring', pts[0].x, 0.3, pts[0].z, { color: 0x7ec8f0, r: 3 });
     }
@@ -992,16 +1001,13 @@ export class Simulation {
     const t = this._nearestEnemyEntity(u.side, u.holdX ?? u.x, u.holdZ ?? u.z, HOLD_LEASH, this._targetOpts(u));
     if (t && dist(u.x, u.z, t.x, t.z) <= u.range * this._terrainRangeMul(u) + (t.size ? t.size * 0.5 : 0)) {
       if (u.atkTimer <= 0) {
-        this._strikeFeel(u);
-        this._dealDamage(u, t, u.dmg, u.x, u.z, !u.melee, u.dtype);
-        if (u.splash > 0) this._applySplash(u, t, u.dmg);
-        u.atkTimer = u.atkcd;
+        this._beginStrike(u, t);
       }
     } else if (t) {
       // 在防区内但够不着：小幅向目标挪动，仍不越过防区边界
       const dx = t.x - u.x, dz = t.z - u.z, d = Math.hypot(dx, dz) || 1;
       const nx = u.x + dx / d * Math.min(1.2, d), nz = u.z + dz / d * Math.min(1.2, d);
-      if (dist(nx, nz, u.holdX, u.holdZ) <= HOLD_LEASH * 0.5) { u.x = nx; u.z = nz; u.heading = Math.atan2(dz, dx); u.moving = true; }
+      if (dist(nx, nz, u.holdX, u.holdZ) <= HOLD_LEASH * 0.5) this._moveTo(u, nx, nz, dt);
     }
   }
   _patrolUnit(u, dt) {
@@ -1157,6 +1163,7 @@ export class Simulation {
     for (const s of ['P', 'E']) {
       this.refined[s] = this.buildings.some(b => b.side === s && b.type === 'refinery' && b.state === 'idle' && b.hp > 0);
     }
+    this._tickProjectiles(dt);
     for (const u of this.units) this._tickUnit(u, dt);
     this._tickHazards(dt);
     this._tickTerrain(dt);
@@ -1319,18 +1326,18 @@ export class Simulation {
     if (!u.feel) return;
     const spec = UNIT_FEEL[u.type] || UNIT_FEEL.worker;
     u.feel.windup = spec.windup;
-    u.feel.recoil = 1;
+    u.feel.recoil = 0;
     u.feel.shotAt = this.time;
   }
 
-  /** 记录一条远程弹道（只读表现数据）。伤害仍按既定语义在命中当帧结算，
-   *  这里只补齐「从哪飞到哪、飞多久、什么颜色/弧度」，供渲染层画飞行物与拖尾。 */
+  /** 记录弹道。普攻由 _launchStrike 共用其飞行寿命延迟结算；其他直接伤害仍可附带表现弹道。 */
   _addTracer(fromX, fromZ, toX, toZ, dtype, side, unitAtk) {
     if (!this.tracers) return;         // 裸实例（未 reset）容错
     const spec = projectileFor(dtype);
     const d = dist(fromX, fromZ, toX, toZ);
     this.tracers.push({
       from: { x: fromX, z: fromZ }, to: { x: toX, z: toZ },
+      fromY: terrainHeight(fromX, fromZ) + 2, toY: terrainHeight(toX, toZ) + 2,
       dtype, key: this._projFor(dtype), side, color: spec.color,
       speed: spec.speed, arc: spec.arc, trail: spec.trail,
       life: +Math.min(1.2, 0.12 + d / Math.max(12, spec.speed)).toFixed(3),
@@ -1342,7 +1349,7 @@ export class Simulation {
   _tickTracers(dt) {
     const a = this.tracers;
     for (let i = a.length - 1; i >= 0; i--) {
-      a[i].t += dt;
+      a[i].t = a[i].launched ? Math.max(0, this.time - a[i].at) : a[i].t + dt;
       if (a[i].t >= a[i].life) a.splice(i, 1);
     }
   }
@@ -1714,7 +1721,7 @@ export class Simulation {
   /** 只读查询：结算页战报（纯聚合派生，不改任何模拟字段，不消耗随机流）。 */
   battleSummary() {
     const P = this.stats ? this.stats.P : null, E = this.stats ? this.stats.E : null;
-    const win = this.ended ? (this.ended.winner === SIDES.PLAYER ? 'player' : this.ended.winner === SIDES.ENEMY ? 'enemy' : 'draw') : null;
+    const win = this.ended === 'win' ? 'player' : this.ended === 'lose' ? 'enemy' : null;
     const pk = P ? P.kills : 0, ek = E ? E.kills : 0;
     const pl = P ? P.losses : 0, el = E ? E.losses : 0;
     return {
@@ -1791,7 +1798,7 @@ export class Simulation {
       b.cooldown = Math.max(0, b.cooldown - dt);   // 长期无目标时不让冷却累积成巨大负数
       if (b.cooldown <= 0) {
         const tgt = this._nearestEnemyEntity(b.side, b.x, b.z, b.attack.range + b.size * 0.5);
-        if (tgt) { this._dealDamage(b, tgt, b.attack.dmg, b.x, b.z, true, b.attack.dtype); b.cooldown = b.attack.atkcd; }
+        if (tgt) { this._launchStrike(b, tgt, b.attack.dmg, b.attack.dtype, true); b.cooldown = b.attack.atkcd; }
       }
     }
   }
@@ -1821,7 +1828,15 @@ export class Simulation {
     // 战术掩体受击闪白衰减（与单位共用 0.16 包络）
     for (const ob of this.obstacles) if (ob.flash > 0) ob.flash -= dt;
     if (u.buff.t > 0) { u.buff.t -= dt; if (u.buff.t <= 0) { u.buff.dmg = 1; u.buff.tank = 1; u.buff.spd = 1; } }
+    const wasStunned = u.stunT > 0;
     this._tickStatuses(u, dt);
+    if (u.hp <= 0 || wasStunned) {
+      u.strike = null;
+      if (u.feel) u.feel.windup = 0;
+      this._tickAnim(u, dt); this._tickFeel(u, dt);
+      return;
+    }
+    this._tickStrike(u, dt);
     // 地下掘蚁：静止/移动时潜行（不可锁定、提速）
     if (u.domain === 'underground') {
       const surfaced = u.state === 'attack' || u.state === 'harvest' || u.state === 'return' || u.order === 'manual';
@@ -1858,7 +1873,6 @@ export class Simulation {
     if (u.stunT > 0) {
       u.stunT = Math.max(0, u.stunT - dt);
       if (this.stats && this.stats[u.side]) this.stats[u.side].stunTicks += dt;
-      return;   // 眩晕期间不行动（索敌 / 移动 / 攻击全停），但上面的计时照常衰减
     }
     const p = u.poison;
     if (p && p.t > 0 && p.stacks > 0 && u.hp > 0) {
@@ -1943,6 +1957,7 @@ export class Simulation {
       if (u.retPatrol && u.patrol && u.patrol.length) { u.state = 'patrol'; u.order = 'manual'; u.retPatrol = false; }
       else u.state = 'idle';
       u.target = null;
+      if (u.advanceGoal) { u.target = { ...u.advanceGoal }; u.state = 'attackmove'; }
       return;
     }
     if (u.domain === 'underground') u.burrowed = false;
@@ -1954,11 +1969,64 @@ export class Simulation {
       // 交战锁定朝向：进入射程后面向目标（纯视觉，不消费任何结算字段 / 不读 heading 做判定）。
       u.heading = Math.atan2(tgt.z - u.z, tgt.x - u.x);
       if (u.atkTimer <= 0) {
-        this._strikeFeel(u);   // 攻击动作 / 起手 / 后坐窗口（表现层只读，不影响伤害与冷却）
-        this._dealDamage(u, tgt, u.dmg, u.x, u.z, !u.melee, u.dtype);
-        if (u.splash > 0) this._applySplash(u, tgt, u.dmg);
-        u.atkTimer = u.atkcd;
+        this._beginStrike(u, tgt);
       }
+    }
+  }
+
+  /** Actual attack timing, independent of render frames and cosmetic UNIT_FEEL. */
+  _beginStrike(u, target) {
+    if (u.strike) return;
+    const windup = u.melee ? 0.16 : 0.2;
+    u.strike = { targetId: target.id, remaining: windup, state: u.state };
+    u.atkTimer = u.atkcd;
+    this._strikeFeel(u);
+    if (u.feel) u.feel.windup = windup;
+  }
+  _tickStrike(u, dt) {
+    const strike = u.strike;
+    if (!strike) return;
+    if (u.state !== strike.state || !['attack', 'hold'].includes(u.state) || (u.state === 'attack' && u.target?.id !== strike.targetId)) { u.strike = null; return; }
+    strike.remaining -= dt;
+    if (strike.remaining > 1e-6) return;
+    u.strike = null;
+    const target = this.getUnit(strike.targetId) || this.getBuilding(strike.targetId) || this.getObstacle(strike.targetId);
+    if (!target || target.hp <= 0 || (target.domain && !this.isTargetable(target))) return;
+    const reach = u.range * this._terrainRangeMul(u) + (target.r || (target.size || 0) * 0.5);
+    if (dist(u.x, u.z, target.x, target.z) > reach + 0.25) return;
+    if (u.feel) { u.feel.windup = 0; u.feel.recoil = 1; }
+    this._launchStrike(u, target, u.dmg, u.dtype, !u.melee);
+  }
+  _launchStrike(attacker, target, damage, dtype, ranged) {
+    if (!ranged) {
+      this._dealDamage(attacker, target, damage, attacker.x, attacker.z, false, dtype);
+      if (attacker.splash > 0) this._applySplash(attacker, target, damage);
+      return;
+    }
+    this._addTracer(attacker.x, attacker.z, target.x, target.z, dtype, attacker.side, attacker.critChance !== undefined);
+    const tracer = this.tracers[this.tracers.length - 1];
+    tracer.launched = true;
+    tracer.fromY = terrainHeight(attacker.x, attacker.z) + (attacker.domain === 'air' ? 8 : 2);
+    tracer.toY = terrainHeight(target.x, target.z) + (target.domain === 'air' ? 8 : (target.size || 4) * 0.5);
+    this.projectiles.push({ attackerId: attacker.id, targetId: target.id,
+      source: { ...attacker, buff: attacker.buff ? { ...attacker.buff } : undefined, strike: null, navigation: null, xp: undefined },
+      buffDamage: attacker.buff?.dmg || 1,
+      damage, dtype, fromX: attacker.x, fromZ: attacker.z,
+      remaining: tracer.life, tracer });
+  }
+  _tickProjectiles(dt) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const shot = this.projectiles[i];
+      const target = this.getUnit(shot.targetId) || this.getBuilding(shot.targetId) || this.getObstacle(shot.targetId);
+      if (target && target.hp > 0) { shot.tracer.to.x = target.x; shot.tracer.to.z = target.z; shot.tracer.toY = terrainHeight(target.x, target.z) + (target.domain === 'air' ? 8 : (target.size || 4) * 0.5); }
+      shot.remaining -= dt;
+      if (shot.remaining > 1e-6) continue;
+      this.projectiles.splice(i, 1);
+      if (!target || target.hp <= 0 || (target.domain && !this.isTargetable(target))) continue;
+      const live = this.getUnit(shot.attackerId) || this.getBuilding(shot.attackerId);
+      const attacker = live && live.hp > 0 ? live : { ...shot.source, hp: 0 };
+      this._dealDamage(attacker, target, shot.damage, shot.fromX, shot.fromZ, true, shot.dtype, { impact: true, buffDamage: shot.buffDamage });
+      if (attacker.splash > 0) this._applySplash(attacker, target, shot.damage * shot.buffDamage);
     }
   }
 
@@ -1989,8 +2057,8 @@ export class Simulation {
 
   _attackMove(u, dt) {
     const tgt = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO + 6, this._targetOpts(u));
-    if (tgt) { u.target = { id: tgt.id, x: tgt.x, z: tgt.z }; u.state = 'attack'; return; }
-    if (u.target) this._moveTo(u, u.target.x, u.target.z, dt, () => { u.state = 'idle'; u.order = 'auto'; });
+    if (tgt) { u.advanceGoal = u.target ? { x: u.target.x, z: u.target.z } : null; u.target = { id: tgt.id, x: tgt.x, z: tgt.z }; u.state = 'attack'; return; }
+    if (u.target) this._moveTo(u, u.target.x, u.target.z, dt, () => { u.advanceGoal = null; u.state = 'idle'; u.order = 'auto'; });
     else { u.state = 'idle'; u.order = 'auto'; }   // 无落点时不要滞留在 attackmove 空转
   }
 
@@ -2128,7 +2196,7 @@ export class Simulation {
     return best;
   }
 
-  _dealDamage(attacker, tgt, dmg, fromX, fromZ, ranged, dtype) {
+  _dealDamage(attacker, tgt, dmg, fromX, fromZ, ranged, dtype, opts = {}) {
     // 总闸：尸体不再吃伤害。同帧集火 / 范围溅射 / 持续酸雨都经此路径，
     // 避免「打死之后还有 4 发命中」把攻防统计与击杀归因抬虚。
     if (!tgt || tgt.hp <= 0) return;
@@ -2139,6 +2207,7 @@ export class Simulation {
     const unitAtk = !!(attacker && attacker.critChance !== undefined);
     const st = this.stats && aSide ? this.stats[aSide] : null;
     let d = dmg;
+    if (unitAtk) d *= opts.buffDamage ?? (attacker.buff?.dmg || 1);
     if (aSide) d *= this.aura[aSide].dmg;
     if (tgt.buff) d *= tgt.buff.tank;
     const baseMult = dmgMult(dtype, armor);
@@ -2263,9 +2332,11 @@ export class Simulation {
       if (tgt.side && this.stats[tgt.side]) this.stats[tgt.side].dmgTaken += d;
     }
     this._emit('dmg', { x: tgt.x, z: tgt.z, amount: Math.max(1, Math.round(d)), victim: tgt.side, atk: aSide,
-      y: (tgt.size ? tgt.size : 2) + 1, mult, dtype, armor, crit });
-    const y = (tgt.size ? tgt.size : 2) + 1;
-    if (ranged) {
+      y: terrainHeight(tgt.x, tgt.z) + (tgt.size ? tgt.size : 2) + 1, mult, dtype, armor, crit });
+    const y = terrainHeight(tgt.x, tgt.z) + (tgt.size ? tgt.size : 2) + 1;
+    if (opts.impact) {
+      this._fx(dtype === 'bomb' ? 'bomb' : 'hit', tgt.x, y, tgt.z, { color: projectileFor(dtype).color });
+    } else if (ranged) {
       this._fx(this._projFor(dtype), tgt.x, y, tgt.z, { from: { x: fromX, y: 1, z: fromZ }, color: aSide === SIDES.PLAYER ? 0xaef06a : 0xff8a5a, dtype });
       // 真实单位普攻 + 箭塔齐射都记弹道；能力 / 危害 / 溅射的 { side } 代理没有 type，不入队。
       if (unitAtk || (attacker && attacker.type && BUILDINGS[attacker.type])) {

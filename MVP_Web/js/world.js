@@ -9,6 +9,7 @@ import {
 } from './rts.js';
 import { ERAS } from './data.js';
 import { FX_BUILDERS } from './fx.js';
+import { installLocomotion, updateLocomotion } from './locomotion.js';
 import { buildAntGeometry, buildBuildingGeometry } from './ants.js';
 import { CAM_DIST_MIN, CAM_DIST_MAX, VIEW_PRESETS, focusDistance } from './camera-focus.js';
 
@@ -786,7 +787,9 @@ export class World {
       const k = Math.max(0, Math.min(1, r.t / r.life));
       const x = r.from.x + (r.to.x - r.from.x) * k;
       const z = r.from.z + (r.to.z - r.from.z) * k;
-      const y = 1 + Math.sin(k * Math.PI) * (4 + 18 * (r.arc || 0));   // 抛物弧（arc 越大越拱）
+      const startY = Number.isFinite(r.fromY) ? r.fromY : 1;
+      const endY = Number.isFinite(r.toY) ? r.toY : 1;
+      const y = startY + (endY - startY) * k + Math.sin(k * Math.PI) * (4 + 18 * (r.arc || 0));   // 抛物弧（arc 越大越拱）
       m.position.set(x, y, z);
       m.rotation.y = Math.atan2(r.to.x - r.from.x, r.to.z - r.from.z);  // +Z 指向飞行方向，拖尾朝后
       const fade = k > 0.85 ? 1 - (k - 0.85) / 0.15 : 1;               // 命中末段渐隐
@@ -1773,7 +1776,7 @@ export class World {
     const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.5, 9, 8),
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.32, depthWrite: false }));
     beam.position.y = 4.6; beam.renderOrder = 3;
-    g.add(ring); g.add(beam); g.position.set(x, 0, z);
+    g.add(ring); g.add(beam); g.position.set(x, this._groundY(x,z), z);
     this.scene.add(g);
     this.pings.push({ g, ring, beam, t: 0, dur, x, z, color, priority: prio });
     return this.pings[this.pings.length - 1];
@@ -1953,11 +1956,14 @@ export class World {
     const geo = this._antGeo(u.side, u.caste, u.domain, u.sig);
     // 每个单位独立克隆材质：便于受击闪白（自发光）与地下潜行半透各自独立
     let bodyMat = this._antMat[u.side].clone();
+    installLocomotion(bodyMat);
     const isClone = true;
     const accent = u.accent || null;
     if (u.domain === 'underground') bodyMat.transparent = true;
     if (accent) { bodyMat.emissive = new THREE.Color(accent); bodyMat.emissiveIntensity = 0.22; }
     const body = new THREE.Mesh(geo, bodyMat);
+    body.customDepthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+    installLocomotion(body.customDepthMaterial, bodyMat.userData.locomotion);
     body.castShadow = true; body.receiveShadow = true;
     body.userData = { kind: 'unit', id: u.id };
 
@@ -2097,7 +2103,7 @@ export class World {
     alertRing.raycast = () => {};
     group.add(alertRing);
 
-    group.position.set(u.x, 0, u.z);
+    group.position.set(u.x, this._groundY(u.x, u.z), u.z);
     this.scene.add(group);
     this.unitMeshes.set(u.id, { group, body, bar, fill, ring, eliteRing, statusRing, vetRing, cmdRing, alertRing,
       pips: null, wings, cargo, mound, shadow,
@@ -2152,7 +2158,7 @@ export class World {
       const sign = (Number(dir.x) < -0.01) ? -1 : 1;
       m.group.rotation.z = m.bank * (1 - k) + 1.35 * spin * sign * fallK;
       m.group.rotation.x = clamp(Number(dir.z) || 0, -1, 1) * 0.45 * fallK;
-      m.group.position.y = -sink * 0.85 * k + (m.burrowMix > 0 ? -2.4 * m.burrowMix * (1 - k) : 0);
+      m.group.position.y = this._groundY(m.group.position.x, m.group.position.z) -sink * 0.85 * k + (m.burrowMix > 0 ? -2.4 * m.burrowMix * (1 - k) : 0);
       if (m.body) {
         m.body.rotation.z = 0.9 * spin * fallK;
         m.body.scale.setScalar(Math.max(0.05, 1 - k * 0.55));
@@ -2181,6 +2187,7 @@ export class World {
   _disposeUnitMesh(m) {
     this.scene.remove(m.group);
     if (m.bodyIsClone && m.body.material) m.body.material.dispose();
+    m.body?.customDepthMaterial?.dispose();
     if (m.cargo) { m.cargo.geometry.dispose(); m.cargo.material.dispose(); }
     if (m.mound) { m.mound.geometry.dispose(); m.mound.material.dispose(); }
     if (m.statusRing) { m.statusRing.geometry.dispose(); m.statusRing.material.dispose(); }
@@ -2206,7 +2213,7 @@ export class World {
     const mat = new THREE.MeshStandardMaterial({ color: baseColor.clone().lerp(tint, 0.35), roughness: 0.92, metalness: 0.05 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true; mesh.receiveShadow = true;
-    mesh.position.set(b.x, 0, b.z);
+    mesh.position.set(b.x, this._groundY(b.x, b.z), b.z);
     mesh.userData = { kind: 'building', id: b.id };
     this.scene.add(mesh);
 
@@ -2222,7 +2229,7 @@ export class World {
 
     const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.2;
+    ring.position.set(b.x, this._groundY(b.x,b.z) + 0.2, b.z);
     ring.scale.setScalar((BUILDINGS[b.type].size || 5) / 2.6);
     ring.visible = false;
     this.scene.add(ring);
@@ -2286,6 +2293,7 @@ export class World {
   _syncUnit(u, force, sel) {
     const m = this.unitMeshes.get(u.id);
     if (!m) return;
+    updateLocomotion(m.body?.material, u, this.time);
     // A 侧手感只读层（facing / step / windup / recoil），缺失时全部走既有硬编码表现
     const feel = u.feel || null;
     m.group.position.x = u.x;
@@ -2305,7 +2313,8 @@ export class World {
         m.mound.material.opacity = 0.85 * m.burrowMix;
       }
     }
-    m.group.position.y = y;
+    m.group.position.y = this._groundY(u.x, u.z) + y;
+    m.body.position.y = Number(m.body.geometry?.userData?.stanceHeight) || 0;
 
     // —— 受击物理包络（读 A 侧 u.phys 只读）：方向击退 + 顿帧 + 伤害类型着色 ——
     // 只偏移渲染层位置/姿态，绝不回写 sim 坐标；与既有 u.flash 应激叠加而非覆盖。
@@ -2431,9 +2440,9 @@ export class World {
       m.body.rotation.z += Math.sin(this.time * 82 + u.id * 3.1) * 0.2 * f;
       m.body.rotation.x += Math.sin(this.time * 61 + u.id) * 0.09 * f;
       m.body.position.x -= 0.7 * f;                       // 沿身体前后轴向后缩
-      m.body.position.y = Math.abs(Math.sin(this.time * 44 + u.id)) * 0.25 * f;
+      m.body.position.y += Math.abs(Math.sin(this.time * 44 + u.id)) * 0.25 * f;
     } else {
-      m.body.position.y = 0;
+      m.body.position.y = Number(m.body.geometry?.userData?.stanceHeight) || 0;
     }
 
     // 采集货载：按已携带量显隐/缩放，并按资源类型着色，随步伐轻微晃动
@@ -2694,7 +2703,7 @@ export class World {
     } else if (!this._corpseById) this._corpseById = new Map();
     this._syncWeather(sim);          // 只读读取 A 侧当前天气（含动态时间线切换），不新增事件
     this._syncScene(sim);            // 只读拉取章节氛围 / 周期场景事件（降频，不新增事件）
-    this._syncTracers(sim);          // 只读渲染 A 侧在飞弹道（复合/近战命中当帧结算，此处仅画飞行物与拖尾）
+    this._syncTracers(sim);          // 按模拟的飞行时钟画弹体；命中由模拟层负责
     const uids = new Set(sim.units.map(u => u.id));
     for (const id of [...this.unitMeshes.keys()]) if (!uids.has(id)) this.removeUnit(id);
     const bids = new Set(sim.buildings.map(b => b.id));
@@ -2743,7 +2752,7 @@ export class World {
         let s = 0;
         for (const u of sim.units) {
           if (s >= 3) break;
-          if (u.hp / u.maxHp < 0.4 && Math.random() < 0.5) { this.addEffect('smoke', { x: u.x, y: 2.6, z: u.z }); s++; }
+          if (u.hp / u.maxHp < 0.4 && Math.random() < 0.5) { this.addEffect('smoke', { x: u.x, y: this._groundY(u.x,u.z) + 2.6, z: u.z }); s++; }
         }
         for (const b of sim.buildings) {
           if (s >= 5) break;
@@ -2753,16 +2762,16 @@ export class World {
             ? 0.15 + clamp(Number(vs.smoke), 0, 1) * 0.62
             : (b.hp / b.maxHp < 0.5 ? 0.5 : 0);
           if (b.state !== 'constructing' && smokeP > 0 && Math.random() < smokeP) {
-            this.addEffect('smoke', { x: b.x, y: b.size * 0.7, z: b.z }); s++;
+            this.addEffect('smoke', { x: b.x, y: this._groundY(b.x,b.z) + b.size * 0.7, z: b.z }); s++;
           }
         }
       }
     }
   }
 
-  _footDust(x, z) { this.addEffect('foot', { x, y: 0.3, z }); }
-  _footBubble(x, z) { this.addEffect('bubble', { x, y: 0.4, z }); }
-  _footRipple(x, z) { this.addEffect('ripple', { x, y: 0.2, z }); }
+  _footDust(x, z) { this.addEffect('foot', { x, y: this._groundY(x,z) + 0.3, z }); }
+  _footBubble(x, z) { this.addEffect('bubble', { x, y: this._groundY(x,z) + 0.4, z }); }
+  _footRipple(x, z) { this.addEffect('ripple', { x, y: this._groundY(x,z) + 0.2, z }); }
 
   // ---------------------------------------------------------------- 特效
   _updateFx() {
@@ -2939,7 +2948,7 @@ export class World {
         let m = this.rallyMeshes.get(b.id);
         if (!m) { m = this._makeRallyFlag(); this.scene.add(m); this.rallyMeshes.set(b.id, m); }
         m.visible = true;
-        m.position.set(b.rally.x, 0, b.rally.z);
+        m.position.set(b.rally.x, this._groundY(b.rally.x,b.rally.z), b.rally.z);
         const p = 0.5 + 0.25 * Math.sin(this.time * 4 + b.id);
         m.children[2].material.opacity = p;   // 地面环脉动
       }
@@ -2968,7 +2977,7 @@ export class World {
     }
     while (this.orderLines.length < want.length) {
       const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(256 * 3), 3));
       const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x7ef0ff, transparent: true, opacity: 0.55, depthWrite: false }));
       line.renderOrder = 7; line.frustumCulled = false;
       const mark = new THREE.Mesh(new THREE.RingGeometry(1.5, 2.1, 20),
@@ -2981,13 +2990,23 @@ export class World {
       const line = this.orderLines[i], mark = this.orderMarks[i], u = want[i];
       if (!u || !u.target) { line.visible = false; mark.visible = false; continue; }
       const a = line.geometry.attributes.position;
-      a.array[0] = u.x; a.array[1] = 0.55; a.array[2] = u.z;
-      a.array[3] = u.target.x; a.array[4] = 0.55; a.array[5] = u.target.z;
+      const route = u.navigation?.route?.slice(u.navigation.index) || [];
+      const points = [{x:u.x,z:u.z}, ...route, u.target, ...(u.waypoints || [])];
+      let count = 0;
+      for (let j=1;j<points.length && count<255;j++) {
+        const start=points[j-1], end=points[j], segments=Math.max(1,Math.ceil(Math.hypot(end.x-start.x,end.z-start.z)/4));
+        for (let k=0;k<segments && count<255;k++) {
+          const t=k/segments, x=start.x+(end.x-start.x)*t, z=start.z+(end.z-start.z)*t;
+          a.setXYZ(count++,x,this._groundY(x,z)+0.55,z);
+        }
+      }
+      const final=points[points.length-1];a.setXYZ(count++,final.x,this._groundY(final.x,final.z)+0.55,final.z);
+      line.geometry.setDrawRange(0,count);
       a.needsUpdate = true;
       line.visible = true;
       const col = u.rally ? 0x9fe0c8 : (u.state === 'attack' ? 0xffb070 : 0x7ef0ff);
       line.material.color.setHex(col); mark.material.color.setHex(col);
-      mark.position.set(u.target.x, 0.5, u.target.z);
+      mark.position.set(u.target.x, this._groundY(u.target.x,u.target.z) + 0.5, u.target.z);
       mark.material.opacity = 0.42 + 0.22 * Math.sin(this.time * 4 + i);
       mark.scale.setScalar(1 + 0.06 * Math.sin(this.time * 4 + i));
       mark.visible = true;
@@ -3011,7 +3030,7 @@ export class World {
       m.visible = true;
       m.material.color.setHex(colors[h.fx] || colors[h.dtype] || 0xffffff);
       m.material.opacity = 0.30 + 0.14 * Math.sin(this.time * 4 + i);
-      m.position.set(h.x, 0.35, h.z);
+      m.position.set(h.x, this._groundY(h.x,h.z) + 0.35, h.z);
       const s = h.r;   // hazardGeo 为半径 1 的圆盘，缩放即实际作用半径
       m.scale.set(s, s, s);
     }
@@ -3038,7 +3057,7 @@ export class World {
       const rate = h.type === 'acid' ? 1.6 : 2.4;             // 熔岩翻涌更急
       const br = 0.5 + 0.5 * Math.sin(this.time * rate + i * 1.7);
       v.g.visible = true;
-      v.g.position.set(h.x, 0, h.z);
+      v.g.position.set(h.x, this._groundY(h.x,h.z), h.z);
       v.disc.position.y = 0.28; v.disc.scale.set(h.r, h.r, h.r);
       v.ring.position.y = 0.32; v.ring.scale.set(h.r * 1.04, h.r * 1.04, h.r * 1.04);
       v.disc.material.color.setHex(col); v.ring.material.color.setHex(col);
@@ -3393,7 +3412,7 @@ export class World {
   setCursor(x, z, color, radius) {
     if (x === null) { this.cursor.visible = false; return; }
     this.cursor.visible = true;
-    this.cursor.position.set(x, 0.3, z);
+    this.cursor.position.set(x, this._groundY(x,z) + 0.3, z);
     if (color) this.cursor.material.color.set(color);
     // 按给定半径缩放准星（默认不缩放）。用于建筑占地与技能作用范围的视觉提示。
     const base = 3.3;
@@ -3407,7 +3426,7 @@ export class World {
     const m = this.buildPreview;
     if (!m) return;
     m.visible = true;
-    m.position.set(x, 0.26, z);
+    m.position.set(x, this._groundY(x,z) + 0.26, z);
     m.scale.setScalar(Math.max(0.5, size || 4));
     m.material.color.set(ok ? 0x7ef0a0 : 0xff6a5a);
   }
@@ -3482,7 +3501,7 @@ export class World {
 
   screenToGround(x, y) {
     this._setNdc(x, y);
-    const hit = this.raycaster.intersectObject(this.pickPlane, false)[0];
+    const hit = this.raycaster.intersectObject(this.ground || this.pickPlane, false)[0];
     if (!hit) return null;
     const p = hit.point;
     if (Math.abs(p.x) > HALF_W || Math.abs(p.z) > HALF_H) return null;

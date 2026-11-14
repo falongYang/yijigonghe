@@ -435,8 +435,8 @@ export const UNIT_FEEL = Object.fromEntries(Object.values(UNITS).map(u => {
   }];
 }));
 
-/* 弹道只读规格：键与 sim._projFor 的输出一致（acid/sting/bolt/bomb/melee/psi）。
- * speed 仅用于推算弹道寿命与视觉插值，不改变伤害「结算当帧」这一既定语义。 */
+/* 弹道规格：键与 sim._projFor 的输出一致（acid/sting/bolt/bomb/melee/psi）。
+ * 普攻用 speed 推算的飞行寿命同步渲染与命中延迟；范围技能、状态效果保持各自结算规则。 */
 export const PROJECTILE_SPEC = {
   acid:  { speed: 34, arc: 0.18, trail: 0.70, color: 0x9be05a, hit: 'acid' },
   sting: { speed: 46, arc: 0.08, trail: 0.50, color: 0xffe27f, hit: 'hit'  },

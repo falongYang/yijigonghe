@@ -13,7 +13,7 @@
 yijigonghe/                     # git 仓库根
 ├── MVP_Web/                    # 站点源码（部署打包的就是这个目录）
 │   ├── index.html
-│   ├── js/                     # 19 个 ES 模块
+│   ├── js/                     # 23 个 ES 模块
 │   ├── css/style.css
 │   └── vendor/three.module.js
 ├── MVP_Web_部署/
@@ -34,7 +34,7 @@ python3 -m http.server 8000
 # 浏览器打开 http://localhost:8000/
 ```
 
-也可以用 `npm run serve`（等价于上面的命令）。语法自检：`npm run check`；完整回归：`npm test`。
+也可以用 `npm run serve`（等价于上面的命令）。语法自检：`npm run check`；完整回归：`npm test`；六章三难度持续模拟：`npm run test:soak`。
 
 当前开发路线、寻路规则与验收记录见 [开发路线与验收](docs/开发路线与验收.md)。
 
@@ -78,3 +78,7 @@ bash MVP_Web_部署/push_github.sh "本轮改动说明"
 3. **部署与推送只由 A 侧执行**；打包前后各核对一次时间戳 / 哈希，防止并发写入导致半套代码上线。
 
 事件桥接已拆成 `bridge.js`（装配）+ `bridge-core.js`（A）+ `bridge-view.js`（B）双路监听；特效分发改为 `fx.js` 的 `FX_BUILDERS` 注册表；地图规则在 `maps.js`、地图美术在 `map-art.js`。三方都不必再改 `main.js` / `world.js` / `rts.js` 的公共段落。
+
+## 战斗与战术体验升级（2026-11-14）
+
+普通攻击具备起手和真实命中延迟，六足采用交替步态，触角随工作状态探查，单位与建筑随地形贴地。按 **L** 打开战术全图，可定位、下令、查看资源储量与战场纪事；地图保留探索和敌巢最后目击记忆，结算展示本局高光。驻守、攻击移动续行、眩晕行动限制和开始页战役/难度选择也已修复。设计依据、规则边界与验证见 [体验升级说明](docs/战斗与战术体验升级.md)。

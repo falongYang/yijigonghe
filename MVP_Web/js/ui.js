@@ -11,6 +11,9 @@ import {
 } from './rts.js';
 import { SIDES, UNIT_INTENT } from './rts.js';
 import { Sound } from './audio.js';
+import { drawScouting } from './scouting.js';
+import { BattlefieldAtlas } from './atlas.js';
+import { timelineHTML, victoryReason } from './battle-report.js';
 import { Profile, cleanName, fmtTime, summary } from './profile.js';
 
 const $ = sel => document.querySelector(sel);
@@ -56,6 +59,7 @@ export class UI {
     this._wire();
     this._initMinimap();
     this._initSettings();
+    this.atlas = new BattlefieldAtlas(this);
     // 指挥官档案：本机身份 + 战绩（开始页档案卡 / HUD 徽记 / 结算页写回）
     this._profile = Profile.get();
     this._profileNew = this._profile.isNew;
@@ -1231,7 +1235,9 @@ export class UI {
         : '核心被攻破，失去指挥的工蚁四散奔逃，纪元的故事在此断层。';
     }
     $('#end-title').textContent = title;
-    $('#end-desc').textContent = desc;
+    $('#end-desc').textContent = victoryReason(payload, s.objective) + ' ' + (win && payload.objective && payload.objective !== 'destroy' ? '蚁群以另一种方式赢得了这一纪元。' : desc);
+    const highlights = document.getElementById('end-highlights');
+    if (highlights) highlights.innerHTML = '<h3>本局高光</h3><ol>' + timelineHTML(typeof s.timelineHighlights === 'function' ? s.timelineHighlights(5).sort((a,b)=>a.at-b.at) : [], true) + '</ol>';
     const st0 = s.stats && s.stats.P;
     const stE = s.stats && s.stats.E;
     const climName = s.climate?.name || '—';
@@ -1357,6 +1363,7 @@ export class UI {
       `交换比：${(Number(safe.tradeRatio && safe.tradeRatio.P) || 0).toFixed(2)} · 峰值兵力：${num(safe.peakArmy)} · 累计出兵：${num(safe.born && safe.born.P)}`,
       `精英击杀：${num(safe.eliteKills)} · 老兵晋升：${num(safe.veterans)} · 共振命中：${num(safe.resonanceHits)}`,
       `气象转变：${num(safe.weatherShifts)} · 场景异象：${num(safe.sceneEvents)} · 里程碑：${num(safe.milestones)}`,
+      ...(safe.highlights || []).map(e => `高光 ${fmtTime(e.at)} · ${e.label} · ${e.text}`),
     ].join('\n');
   }
 
@@ -1743,6 +1750,7 @@ export class UI {
     this._refreshSelection();
     this._drawMinimap();
     this._refreshGroups();
+    this.atlas?.render();
   }
 
   /** 资源净速率：每 1 秒窗口结算一次，显示每秒入账/支出的实时净值（正绿 / 负橙）。
@@ -2071,8 +2079,8 @@ export class UI {
 
   // ----------------------------------------------------------- 小地图绘制
   /** 生成战术底图：地形明暗 / 网格 / 水域 / 巢区环，仅在换地图时重算一次。 */
-  _buildMinimapBase(cfg) {
-    const W = this.mm.width, H = this.mm.height, HW = 94, HH = 67;
+  _buildMinimapBase(cfg, size = null) {
+    const W = size ? size.width : this.mm.width, H = size ? size.height : this.mm.height, HW = 94, HH = 67;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
     const pal = cfg.pal || { low: 0x6e6647, mid: 0x8a7f56, high: 0x9fa86a };
@@ -2200,6 +2208,7 @@ export class UI {
       }
       // zones.water 与 cfg.water 同源，浅滩 / 水体已在上面绘制，不重复叠色。
     }
+    if (size) return cv;
     this._mmBase = cv; this._mmBaseName = cfg.name || '';
   }
 
@@ -2263,6 +2272,8 @@ export class UI {
     if (s.map && (!this._mmBase || this._mmBaseName !== s.map.name)) this._buildMinimapBase(s.map);
     if (this._mmBase) g.drawImage(this._mmBase, 0, 0);
     else { g.fillStyle = '#22241c'; g.fillRect(0, 0, W, H); }
+
+    drawScouting(g, s.scouting?.snapshot(), W, H);
 
     // 战术掩体：岩石/断木按 kind 区分，受损按 hp/maxHp 变暗，受击 flash 加白边；
     // 被摧毁后 sim 从 obstacles 移除，小地图同步消失（动态层而非静态底图）

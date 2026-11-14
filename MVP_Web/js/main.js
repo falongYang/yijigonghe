@@ -31,7 +31,7 @@ function boot() {
     world = new World(canvas);
     game.sim = sim; game.world = world;
     const hooks = {
-      onStart: spId => startGame(spId),
+      onStart: (spId, selection) => startGame(spId, selection),
       onBuild: type => beginBuild(type),
       onProduce: (bid, tid) => sim.produce(bid, tid),
       onCancelProduce: (bid, i) => sim.cancelProduce(bid, i),
@@ -131,6 +131,7 @@ function startGame(spId, sel = {}) {
   Sound.init(); // 首次用户手势：解锁音频
   Sound.startAmbient();   // 蚁巢环境氛围音（低音量持续嗡鸣）
   sim.reset(spId, { mode, chapter, archetype, difficulty });
+  ui.atlas?.close();
   world.resetBattle();
   world.setSides(sim.sp.P, sim.sp.E);
   world.loadMap(sim.map, sim);   // 第二参数只读消费 A 侧细节八：水域视觉 / 地标 / 地表高程
@@ -260,7 +261,7 @@ function cycleFormation() {
 }
 function holdUnits(ids) {
   if (!ids || !ids.length) return;
-  for (const id of ids) { const u = sim.getUnit(id); if (u) { u.state = 'idle'; u.order = 'auto'; } }
+  sim.commandHold(ids);
   Sound.play('select');
 }
 function resumeHarvest(ids) {
@@ -585,6 +586,7 @@ function onKey(e) {
   if (k === 'shift') game.shift = true;
   if (k === 'escape') {
     // 先收起最上层浮层（帮助 / 纪元谱），避免暂停中开着帮助时按 Esc 直接恢复战局
+    if (ui?.atlas?.open) { ui.atlas.close(); return; }
     if (closeTopOverlay()) return;
     if (ui && typeof ui.disarmMinimapOrder === 'function' && ui.disarmMinimapOrder()) return;
     if (game.pendingPatrol) { cancelPatrol(); return; }
@@ -594,8 +596,10 @@ function onKey(e) {
   }
   if (!game.running) return;
   if (game.tutOpen) return;  // 引导期间屏蔽战场快捷键
+  if (ui.atlas?.open && k !== 'l') return; // Map dialog owns input while open.
   if (k === 'enter' && game.pendingPatrol) { commitPatrol(); return; }
   if (k === 'p') { e.preventDefault(); togglePause(); return; }
+  if (k === 'l') { e.preventDefault(); ui.atlas?.toggle(); return; }
   if (k === 'y') { ui.toggleEraPanel(); return; }
   // M：切换小地图情报图层（暂停时也可用，方便复盘查看敌方聚簇）
   if (k === 'm') { ui.toggleIntelLayer(); Sound.play('select'); return; }
@@ -655,7 +659,7 @@ function onKey(e) {
     if (ids.length && g) { sim.commandAttackMove(ids, g.x, g.z); orderFx(g.x, g.z, 0xffb070); Sound.play('move', { x: g.x, z: g.z }); }
   }
   if (k === 's') sim.commandStop(playerSel());
-  if (k === 'h') { for (const id of playerSel()) { const u = sim.getUnit(id); if (u) { u.state = 'idle'; u.order = 'auto'; } } }
+  if (k === 'h') holdUnits(playerSel());
   if (k === 'q') { if (game.ui._unitKey) beginAbility(game.ui._unitKey); }
   if (k === 'e') beginAbility('a_rally');
   if (k === 'r') beginAbility('a_resonance');
