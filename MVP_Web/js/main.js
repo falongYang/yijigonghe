@@ -9,7 +9,7 @@ import { MAP, HALF_W, HALF_H, BUILDINGS, SIDES, ABILITIES, UNITS, TERRAIN } from
 const canvas = document.getElementById('scene');
 let world, ui, sim;
 const game = {
-  sim: null, world: null, ui: null, running: false, speed: 1, paused: false, tutOpen: false,
+  sim: null, world: null, ui: null, running: false, speed: 1, paused: false, tutOpen: false, glLost: false,
   pendingBuild: null, buildValid: false,
   pendingAbility: null,
   pendingPatrol: null,   // 巡逻布点：进行中为 { pts: [{x,z}...] }，落点用绿色 ping 标注
@@ -54,6 +54,7 @@ function boot() {
     world._onMapName = cfg => ui.setMapName(cfg);
     installBridge(sim, { game, ui, world, Sound, SIDES });
     bindInput();
+    bindRuntimeGuards();
     window.__ANT_EPOCH__ = { game, VERSION: '2.1-四域' };
     if (location.hash.startsWith('#auto')) {
       const q = new URLSearchParams(location.hash.slice(5));
@@ -78,6 +79,49 @@ function showBootError(e) {
   console.error(e);
 }
 
+/**
+ * 运行时守卫（纯 B 侧）：显卡上下文中断、标签页切换、未捕获 Promise 异常。
+ * 只做提示与节流，不写 sim 状态、不新增任何事件类型或命令签名。
+ */
+function bindRuntimeGuards() {
+  const status = document.getElementById('gl-status');
+  const setGlStatus = (msg, on) => {
+    if (!status) return;
+    status.textContent = msg || '';
+    status.classList.toggle('hidden', !on);
+  };
+  if (canvas && canvas.addEventListener) {
+    canvas.addEventListener('webglcontextlost', e => {
+      if (e && e.preventDefault) e.preventDefault();   // 允许浏览器后续恢复上下文
+      game.glLost = true;
+      setGlStatus('显卡上下文暂时中断 · 战局已冻结，正在等待恢复…', true);
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      game.glLost = false;
+      last = performance.now(); acc = 0;               // 不补算中断期间的时间
+      if (world && world.resize) world.resize();
+      setGlStatus('', false);
+      if (ui && ui.toast) ui.toast('画面已恢复，战局继续');
+    });
+  }
+  document.addEventListener('visibilitychange', () => {
+    // 后台标签页 rAF 停摆；回到前台时丢弃积压时间，避免一次性追帧
+    last = performance.now(); acc = 0;
+  });
+  window.addEventListener('unhandledrejection', e => {
+    const reason = e && e.reason;
+    const msg = reason && reason.message ? reason.message : String(reason || '未知异步错误');
+    console.error('[unhandledrejection]', reason);
+    if (ui && ui.toast) ui.toast('发生异常：' + msg);
+  });
+}
+
+/** 系统「减少动态效果」偏好：命中的话跳过入场俯冲运镜与界面装饰动画。 */
+function prefersReducedMotion() {
+  return !!(typeof window !== 'undefined' && window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
 function startGame(spId, sel = {}) {
   const { mode = 'skirmish', chapter = 0, archetype = null, difficulty = 'normal' } = sel;
   Sound.init(); // 首次用户手势：解锁音频
@@ -94,12 +138,17 @@ function startGame(spId, sel = {}) {
   ui.setMapName(sim.map);
   // 首次引导为全屏覆盖层，简报卡等引导结束后再弹出，避免被遮挡
   if (!maybeShowTutorial()) ui.showMapBrief(sim.map);
-  // 入场运镜：从高空斜侧俯冲至己方巢区，2.6s 揭示战场
+  // 入场运镜：从高空斜侧俯冲至己方巢区，2.6s 揭示战场；系统开启「减少动态效果」时直接到位
   const introTo = { tx: 0, tz: HALF_H * 0.60, dist: 150, pitch: 0.92, yaw: Math.PI };
-  world.cam.tx = introTo.tx; world.cam.tz = introTo.tz;
-  world.cam.dist = 260; world.cam.pitch = 1.24; world.cam.yaw = introTo.yaw + 0.55;
   world.setFollow(false);
-  world.startIntro(introTo);
+  if (prefersReducedMotion()) {
+    Object.assign(world.cam, introTo);
+    world.intro = null;
+  } else {
+    world.cam.tx = introTo.tx; world.cam.tz = introTo.tz;
+    world.cam.dist = 260; world.cam.pitch = 1.24; world.cam.yaw = introTo.yaw + 0.55;
+    world.startIntro(introTo);
+  }
   game.speed = 1; game.paused = false; acc = 0;
   document.querySelectorAll('#speeds .tbtn').forEach(x => x.classList.toggle('on', x.dataset.s === '1'));
   ui.hideStart();
@@ -619,7 +668,7 @@ function takeScreenshot() {
 let acc = 0, last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (game.running && !game.paused && !game.tutOpen && game.speed > 0) {
+  if (game.running && !game.paused && !game.tutOpen && !game.glLost && game.speed > 0) {
     acc += dt * game.speed;
     const step = 1 / 30;
     let n = 0;

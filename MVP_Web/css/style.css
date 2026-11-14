@@ -610,3 +610,124 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .mb-reslegend-note { flex-basis: 100%; color: #7f8a70; font-size: 10px; margin-top: 2px; }
 .unit-terrain { background: rgba(255,255,255,.04); border-radius: 4px; padding: 2px 4px; margin: 4px 0; }
 #mm-tip { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* ---------------- 显卡上下文中断提示（恢复后自动隐藏） ---------------- */
+#gl-status { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); z-index: 200;
+  padding: 14px 22px; border: 1px solid #ffb070; border-radius: 10px;
+  background: rgba(38,24,8,.94); color: #ffe1b0; font-size: 14px; letter-spacing: .5px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.55); pointer-events: none; text-align: center; }
+
+/* 键盘操作可见焦点（不改变布局，仅补可访问性） */
+:focus-visible { outline: 2px solid #9fe0a0; outline-offset: 2px; }
+
+/* ================================================================
+   视口自适应：画布会随窗口重建绘图缓冲（world.bindViewport）。
+   这里让 HUD 在窄屏 / 矮屏下同步收敛，避免面板互相遮挡、挤出视口。
+   规则一律追加在文件末尾，桌面尺寸不受影响。
+   ================================================================ */
+
+/* 中等宽度：轻度收紧侧栏与卡片 */
+@media (max-width: 1180px) {
+  #sel { width: 224px; padding: 10px; }
+  #minimap { width: 176px; height: 125px; }
+  #build-buttons { max-width: 54vw; }
+  .sp-card { flex-basis: 220px; }
+  .ch-card { flex-basis: 210px; width: 210px; }
+  .start-inner { width: min(1000px, 98vw); }
+}
+
+/* 平板 / 小窗：顶部三层信息改为纵向错开，次要文字让位 */
+@media (max-width: 880px) {
+  #res { top: 8px; left: 8px; gap: 4px; }
+  .res-chip { padding: 4px 7px; font-size: 11px; gap: 4px; }
+  .res-chip b { min-width: 20px; }
+  .res-rate { display: none; }
+  #topright { top: 8px; right: 8px; gap: 4px; }
+  .cmd-chip { max-width: 100px; font-size: 10.5px; padding: 4px 6px; }
+  .tbtn { padding: 3px 6px; font-size: 11px; }
+  /* 顶部三段：左资源 / 中作战目标 / 右气象，收窄中段避免与两侧 HUD 相撞 */
+  #mission { top: 42px; max-width: min(420px, 46vw); padding: 5px 10px; font-size: 11px; }
+  #econ-status { top: 42px; bottom: auto; left: 8px; }
+  #weather-hud { top: 42px; left: auto; right: 8px; min-width: 0; }
+  #sel { top: 100px; right: 8px; width: 194px; max-height: 56vh; overflow-y: auto; }
+  #minimap { width: 152px; height: 108px; }
+  #minimap-wrap { right: 8px; bottom: 8px; padding: 4px; }
+  #domain-legend { font-size: 10px; gap: 3px 6px; }
+  #domain-legend .mm-tip { display: none; }
+  #build-panel { left: 8px; bottom: 8px; gap: 5px; }
+  #build-buttons { max-width: 46vw; }
+  .bbtn { min-width: 54px; padding: 5px 7px; }
+  .bbtn b { font-size: 11px; } .bbtn small { font-size: 10px; }
+  .abtn { padding: 6px 8px; font-size: 11px; }
+  #log { width: min(400px, 52vw); max-height: 90px; bottom: 8px; }
+  #toast { top: 88px; font-size: 12px; padding: 7px 12px; }
+  #toast.under-raid { top: 132px; }
+  #raid-alert { top: 96px; font-size: 11px; padding: 7px 14px; }
+  #scene-event { top: 132px; }
+  #cue-subtitle { bottom: 132px; }
+  #start h1 { font-size: 30px; letter-spacing: 4px; }
+  .lead { font-size: 12px; }
+  .sp-carousel { padding: 12px 34px; }
+  .sp-card { flex-basis: 200px; }
+}
+
+/* 手机 / 极窄窗：进一步压缩，面板限高可滚动，隐藏纯装饰信息 */
+@media (max-width: 620px) {
+  #res { gap: 3px; }
+  .res-chip { padding: 3px 5px; font-size: 10px; }
+  .res-chip .dot { width: 7px; height: 7px; }
+  #topright .cmd-chip { display: none; }
+  #mission { top: 38px; max-width: min(300px, 52vw); font-size: 10px; }
+  #weather-hud { top: 38px; right: 6px; }
+  #weather-hud .wh-fc { display: none; }
+  #econ-status { top: 38px; bottom: auto; left: 6px; }
+  #sel { top: 92px; right: 6px; width: 152px; padding: 8px; max-height: 48vh; }
+  #sel h3 { font-size: 13px; }
+  #sel-body .kv { font-size: 11px; }
+  .ctx-btn { font-size: 11px; padding: 5px; }
+  #minimap { width: 128px; height: 91px; }
+  #minimap-wrap { right: 6px; bottom: 6px; }
+  #mm-intel-legend { font-size: 9px; }
+  #build-buttons { max-width: 52vw; gap: 4px; }
+  .bbtn { min-width: 46px; padding: 4px 5px; }
+  .bbtn small { display: none; }
+  #ability-bar { flex-wrap: wrap; max-width: 52vw; }
+  .abtn { padding: 5px 6px; font-size: 10px; }
+  #log { width: 44vw; max-height: 64px; }
+  .log-item { font-size: 10px; padding: 2px 5px; }
+  #start h1 { font-size: 25px; letter-spacing: 3px; }
+  .subtitle { font-size: 11px; letter-spacing: 2px; }
+  .lead { display: none; }
+  .sp-carousel { padding: 8px 24px; }
+  .sp-card { flex-basis: 172px; }
+  .sp-meta b { font-size: 14px; }
+  .sp-perk { font-size: 10.5px; }
+  .sp-nav { width: 30px; height: 48px; font-size: 22px; }
+  .ch-card { flex-basis: 172px; width: 172px; }
+  #end-stats { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+}
+
+/* 矮屏（横屏手机 / 小高度窗口）：纵向收紧，保证建造与开局按钮仍可见 */
+@media (max-height: 680px) {
+  .start-inner { gap: 3px; padding: 6px 10px; }
+  #start h1 { font-size: 26px; }
+  .subtitle { margin: 0 0 2px; }
+  .sp-card { height: min(100%, 220px); }
+  .ch-card { height: clamp(110px, 20vh, 150px); }
+  #sel { max-height: 56vh; overflow-y: auto; }
+  #log { max-height: 72px; }
+  #build-panel { gap: 4px; }
+  .cc-body, .cc-recent { display: none; }
+}
+
+/* 系统「减少动态效果」：关掉装饰动画与过渡，功能状态切换仍即时生效 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+  #commander-card { animation: none; }
+  #start-fx { display: none; }
+}

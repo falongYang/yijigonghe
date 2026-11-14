@@ -223,7 +223,8 @@ export class World {
   constructor(canvas) {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.8));
+    this._dpr = Math.min(globalThis.devicePixelRatio || 1, 1.8);
+    this.renderer.setPixelRatio(this._dpr);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
@@ -369,6 +370,7 @@ export class World {
     this._buildDust();
     this.updateCamera(0);
     this.resize();
+    this.bindViewport();
   }
 
   // ---------------------------------------------------------------- 灯光
@@ -3180,11 +3182,42 @@ export class World {
     this.resize();
   }
 
+  /**
+   * 视口同步：窗口尺寸变化或跨屏拖动导致 DPR 变化时，重建绘图缓冲与相机宽高比。
+   * 只改渲染层尺寸，不动相机目标 / 缩放 / sim 状态；尺寸取不到时回落到视口宽高。
+   */
   resize() {
-    const w = this.canvas.clientWidth || window.innerWidth;
-    const h = this.canvas.clientHeight || window.innerHeight;
+    const win = (typeof window !== 'undefined') ? window : {};
+    const w = this.canvas.clientWidth || win.innerWidth || 1;
+    const h = this.canvas.clientHeight || win.innerHeight || 1;
+    const dpr = Math.min(globalThis.devicePixelRatio || 1, 1.8);
+    if (dpr !== this._dpr) {
+      this._dpr = dpr;
+      this.renderer.setPixelRatio(dpr);
+    }
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();
+  }
+
+  /**
+   * 注册视口监听：resize / orientationchange 合并到下一帧执行，
+   * 避免拖拽窗口时每个事件都重建一次绘图缓冲；重复调用安全（只注册一次）。
+   */
+  bindViewport() {
+    if (this._viewportBound) return this;
+    this._viewportBound = true;
+    const schedule = () => {
+      if (this._resizeRaf) return;
+      const raf = (typeof requestAnimationFrame === 'function')
+        ? requestAnimationFrame : (cb => setTimeout(cb, 16));
+      this._resizeRaf = raf(() => { this._resizeRaf = 0; this.resize(); });
+    };
+    this._onViewportResize = schedule;
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('resize', schedule);
+      window.addEventListener('orientationchange', schedule);
+    }
+    return this;
   }
 }
