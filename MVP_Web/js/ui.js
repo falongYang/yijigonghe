@@ -870,12 +870,24 @@ export class UI {
     for (const k of Object.keys(g)) {
       if (!g[k] || !g[k].length) continue;
       const chip = el('div', 'grp-chip', `${k}<small>×${g[k].length}</small>`);
-      chip.title = `编队 ${k} · 按 ${k} 快速选中（${g[k].length} 只存活）`;
+      chip.title = `编队 ${k} · 按 ${k} 快速选中 · 连按两次或点 ◎ 聚焦镜头（${g[k].length} 只存活）`;
       chip.onclick = () => {
         const ids = g[k]; if (!ids || !ids.length) return;
         this.sim.selected.clear(); this.sim.selectedBuilding = null;
         ids.forEach(id => this.sim.selected.add(id));
         this.toast(`选中编队 ${k}（${ids.length} 只）`);
+      };
+      // 双击（桌面）与 ◎ 小按钮（触屏/鼠标）共用 main 的统一聚焦入口：
+      // 同时选中、平滑跳到队伍质心，并按队伍散布自适应视距。
+      const focusBtn = el('span', 'grp-focus', '◎');
+      focusBtn.title = `聚焦编队 ${k} 的镜头`;
+      focusBtn.onclick = ev => {
+        if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+        if (this.hooks && typeof this.hooks.onGroupFocus === 'function') this.hooks.onGroupFocus(k);
+      };
+      chip.appendChild(focusBtn);
+      chip.ondblclick = () => {
+        if (this.hooks && typeof this.hooks.onGroupFocus === 'function') this.hooks.onGroupFocus(k);
       };
       box.appendChild(chip);
     }

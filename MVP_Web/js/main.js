@@ -4,6 +4,7 @@ import { World } from './world.js';
 import { UI } from './ui.js';
 import { Sound } from './audio.js';
 import { bindTouchInput, isSyntheticMouse, isTouchActive } from './touch.js';
+import { groupBounds, createDoubleTap, VIEW_PRESETS, VIEW_PRESET_KEYS } from './camera-focus.js';
 import { installBridge } from './bridge.js';
 import { MAP, HALF_W, HALF_H, BUILDINGS, SIDES, ABILITIES, UNITS, TERRAIN } from './rts.js';
 
@@ -45,6 +46,7 @@ function boot() {
       onScreenshot: () => takeScreenshot(),
       onRepair: bid => { if (sim.assignRepair(bid)) Sound.play('build'); },
       onPatrolStart: () => beginPatrol(),
+      onGroupFocus: d => focusGroup(d),
       onFormation: (ids, type) => applyFormation(ids, type),
       onStop: ids => sim.commandStop(ids),
       onHold: ids => holdUnits(ids),
@@ -151,6 +153,7 @@ function startGame(spId, sel = {}) {
     world.startIntro(introTo);
   }
   game.speed = 1; game.paused = false; acc = 0;
+  groupTap.reset(); viewPresetIdx = 0;   // 换局清掉上一局的连击计时与视角预设序号
   document.querySelectorAll('#speeds .tbtn').forEach(x => x.classList.toggle('on', x.dataset.s === '1'));
   ui.hideStart();
   ui.showPause(false);
@@ -579,6 +582,14 @@ function onKey(e) {
   // 空格：镜头回到己方巢区；F：切换跟随选中单位
   if (k === ' ') {
     e.preventDefault();
+    // Shift + 空格：循环视角预设（标准 → 俯瞰 → 低角），只改角度/距离目标，不改镜头落点
+    if (e.shiftKey) {
+      viewPresetIdx = (viewPresetIdx + 1) % VIEW_PRESET_KEYS.length;
+      const key = VIEW_PRESET_KEYS[viewPresetIdx];
+      world.setViewPreset(key);
+      ui.toast(`镜头视角：${VIEW_PRESETS[key].label}（Shift + 空格继续切换）`);
+      return;
+    }
     world.setFollow(false); world.focus(0, HALF_H * 0.62);
     ui.toast('镜头回到己方巢区'); return;
   }
@@ -628,30 +639,50 @@ const lastMouse = { x: 0, y: 0 };
 canvas.addEventListener('mousemove', e => { lastMouse.x = e.clientX; lastMouse.y = e.clientY; });
 function playerSel() { return [...sim.selected].filter(id => { const u = sim.getUnit(id); return u && u.side === SIDES.PLAYER; }); }
 
+/** 编队连按计时与视角预设序号：纯 B 侧状态，不写模拟层。 */
+const groupTap = createDoubleTap();
+let viewPresetIdx = 0;
+
 /* ---------------------------------------------------------------- 编队 */
 function setGroup(d) {
   const ids = playerSel();
   if (!ids.length) { ui.toast('先选择单位再编队（Ctrl/⌘+数字）'); return; }
   game.groups[d] = ids.slice();
-  ui.toast(`编队 ${d} 已保存（${ids.length} 个单位）`);
+  groupTap.reset();   // 刚编完队，避免上一次数字键的计时串到新编队上
+  ui.toast(`编队 ${d} 已保存（${ids.length} 个单位）· 连按 ${d} 聚焦镜头`);
 }
 function recallGroup(d) {
   const ids = game.groups[d];
   if (!ids || !ids.length) return;
   const valid = ids.filter(id => { const u = sim.getUnit(id); return u && u.side === SIDES.PLAYER; });
+  if (!valid.length) return;
   sim.selected.clear(); sim.selectedBuilding = null;
   valid.forEach(id => sim.selected.add(id));
-  if (valid.length) { Sound.play('select'); ui.toast(`选中编队 ${d}（${valid.length} 个单位）`); }
+  Sound.play('select');
+  // 短间隔内连按同一个数字 = 聚焦该编队（与「双击全选同类单位」的手感一致）
+  if (groupTap.tap(d, Date.now())) focusGroup(d);
+  else ui.toast(`选中编队 ${d}（${valid.length} 个单位）· 连按两次聚焦镜头`);
+}
+/** 选中并平滑聚焦编队：键盘连按与编队芯片的「◎」按钮共用同一入口。 */
+function focusGroup(d) {
+  const ids = (game.groups[d] || []).filter(id => { const u = sim.getUnit(id); return u && u.side === SIDES.PLAYER; });
+  if (!ids.length) { ui.toast(`编队 ${d} 暂无存活单位`); return; }
+  const bounds = groupBounds(ids.map(id => sim.getUnit(id)));
+  if (!bounds) return;   // 坐标异常时不动相机，避免镜头跳到原点
+  sim.selected.clear(); sim.selectedBuilding = null;
+  ids.forEach(id => sim.selected.add(id));
+  const dist = world.focusGroup(bounds.x, bounds.z, bounds.spread);
+  ui.toast(`镜头聚焦编队 ${d}（${bounds.count} 只 · 视距 ${Math.round(dist || world.cam.dist)}）`);
 }
 
 /* ---------------------------------------------------------------- 首次引导 */
 const TUT_STEPS = [
-  { t: '镜头操作', d: '按住左键或右键在地图上拖动即可跟手平移视角（单击仍是点选 / 下令，拖动超过 5px 自动切换为平移，不会误发指令）；中键拖动旋转视角，滚轮缩放远近，方向键 / W·D 平移镜头，鼠标贴近屏幕边缘也会自动平移（可在暂停菜单设置中关闭）。点击或拖动右下角小地图可快速跳转，空格回到己方巢区，F 跟随选中单位（手动平移即退出）。地面贴有战术坐标网格、中轴基准线与边缘刻度，拉近镜头更清晰；小地图带主次网格、坐标刻度、地形、水域与白框视野，交战处会亮起短寿红橙热点。开局会弹出战场简报（点资源栏地图名可重看），Alt + 左键可在地面放战术标记。地面高台 / 泥沼 / 浅滩有发光描边与标签，鼠标所指地形显示在图例条；金色信息素井可驻兵占领、持续产信息素。A / S 专用于战场指令。' },
+  { t: '镜头操作', d: '按住左键或右键在地图上拖动即可跟手平移视角（单击仍是点选 / 下令，拖动超过 5px 自动切换为平移，不会误发指令）；中键拖动旋转视角，滚轮缩放远近，方向键 / W·D 平移镜头，鼠标贴近屏幕边缘也会自动平移（可在暂停菜单设置中关闭）。点击或拖动右下角小地图可快速跳转，空格回到己方巢区，F 跟随选中单位（手动平移即退出），Shift + 空格循环切换标准 / 俯瞰 / 低角视角预设。地面贴有战术坐标网格、中轴基准线与边缘刻度，拉近镜头更清晰；小地图带主次网格、坐标刻度、地形、水域与白框视野，交战处会亮起短寿红橙热点。开局会弹出战场简报（点资源栏地图名可重看），Alt + 左键可在地面放战术标记。地面高台 / 泥沼 / 浅滩有发光描边与标签，鼠标所指地形显示在图例条；金色信息素井可驻兵占领、持续产信息素。A / S 专用于战场指令。' },
   { t: '选择单位', d: '左键点选单个单位（左侧显示完整属性、经验、武器克制与所处地形，敌方也可查看）；双击己方单位全选同兵种；按住 Shift 拖拽可框选多个。右键命令移动或攻击（多选自动按阵型散开）；Shift + 右键追加路径点。A 攻击移动、S 停止、H 驻守。I 可选中闲置工蚁，C 让选中工蚁就近续采；选中受损巢室点「派工蚁维修」或选中工蚁右键该建筑，工蚁会耗矿修复。' },
   { t: '建造', d: '点击下方「建造」按钮，移动鼠标会实时显示占地预览与可建原因（绿色可建 / 红色不可建；深水与陡坡不可建），在己方巢区附近左键放置（Esc 取消）。蚁后巢会自动缓慢补充工蚁；生产队列可点 × 取消并退还资源。' },
   { t: '出兵与纪元', d: '选中蚁后巢 / 巢室，在右侧点兵种生产。研究史官堂推进纪元，解锁更强兵种并全族群属性成长。选中生产建筑后右键地面可设集结点。' },
   { t: '主动能力', d: '选中作战兵种后按 Q 放兵种能力；或点能力栏按钮 → 移动鼠标选落点、左键施放、右键取消。E 号令、R 纪元共鸣（均消耗信息素）。' },
-  { t: '进化与编队 · 胜利条件', d: '单位作战升级；达条件按 T 进化（如兵蚁→巨颚卫）。Ctrl/⌘+数字 编队、数字键快速选中编队。P 暂停可看战局统计，并调整音量、边缘滚屏、伤害数字与画质档位（自动保存）；右上可全屏与保存截图。敌方进攻时顶部会发出警报。摧毁敌方蚁后巢即获胜！' },
+  { t: '进化与编队 · 胜利条件', d: '单位作战升级；达条件按 T 进化（如兵蚁→巨颚卫）。Ctrl/⌘+数字 编队、数字键快速选中编队，短间隔连按两次同一数字（或点编队芯片上的 ◎）可平滑聚焦该编队并按队伍范围自动调整视距。P 暂停可看战局统计，并调整音量、边缘滚屏、伤害数字与画质档位（自动保存）；右上可全屏与保存截图。敌方进攻时顶部会发出警报。摧毁敌方蚁后巢即获胜！' },
 ];
 let tutIdx = 0;
 function maybeShowTutorial() {

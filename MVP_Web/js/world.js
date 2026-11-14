@@ -10,6 +10,7 @@ import {
 import { ERAS } from './data.js';
 import { FX_BUILDERS } from './fx.js';
 import { buildAntGeometry, buildBuildingGeometry } from './ants.js';
+import { CAM_DIST_MIN, CAM_DIST_MAX, VIEW_PRESETS, focusDistance } from './camera-focus.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 /* 纯环境粒子（移动扬尘 / 气泡 / 涟漪）：只由渲染层自发产生，不承载任何战斗语义。
@@ -3339,6 +3340,44 @@ export class World {
       this.cam.tx = p.x; this.cam.tz = p.z; this._camFocusT = null;
     } else this._camFocusT = { x: p.x, z: p.z };
   }
+  /** 编队聚焦：平滑滑行到队伍质心，并按散布半径自适应视距。
+   *  距离只推进阻尼目标 _camT.dist（与滚轮/捏合共用通道），不写 cam.dist；
+   *  角度保持玩家当前设定，避免「跳到编队」时顺手把视角也改掉。
+   *  返回本次目标距离，供 HUD 提示使用。 */
+  focusGroup(x, z, spread = 0) {
+    const cx = Number(x), cz = Number(z);
+    if (!Number.isFinite(cx) || !Number.isFinite(cz)) return null;
+    this.focus(cx, cz, false);
+    const T = this._camEnsure();
+    T.dist = focusDistance(spread, T.dist);
+    // 入场俯冲运镜期间 tx/tz/dist 每帧由 intro 曲线接管，直接写目标会被下一帧覆盖；
+    // 把聚焦点并入运镜终点，揭示动画结束后正好停在编队上。
+    if (this.intro && this.intro.to) {
+      const p = this._clampTarget(cx, cz);
+      this.intro.to.tx = p.x; this.intro.to.tz = p.z; this.intro.to.dist = T.dist;
+    }
+    return T.dist;
+  }
+  /** 视角预设：只改角度与距离的阻尼目标，不动落点 tx/tz，也不打断正在进行的聚焦缓动。
+   *  非法/缺失键一律回落 standard，返回实际生效的键名。 */
+  setViewPreset(name) {
+    const key = Object.prototype.hasOwnProperty.call(VIEW_PRESETS, name) ? name : 'standard';
+    const p = VIEW_PRESETS[key];
+    const T = this._camEnsure();
+    T.yaw = p.yaw;
+    T.pitch = clamp(p.pitch, 0.28, 1.32);
+    T.dist = clamp(p.dist, CAM_DIST_MIN, CAM_DIST_MAX);
+    // 同理：运镜未结束时把角度/距离并入终点，避免本次切换被揭示动画吞掉
+    if (this.intro && this.intro.to) {
+      this.intro.to.yaw = T.yaw;
+      this.intro.to.pitch = T.pitch;
+      this.intro.to.dist = T.dist;
+    }
+    return key;
+  }
+  /** 视角复位：等价于标准预设，供外部快捷入口直接调用。 */
+  resetView() { return this.setViewPreset('standard'); }
+
   /** 镜头跟随：跟随点由 main.js 每帧按选中单位质心写入。 */
   setFollow(on) {
     this.follow = !!on;
