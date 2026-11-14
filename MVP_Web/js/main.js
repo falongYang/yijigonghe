@@ -195,7 +195,7 @@ function castAbilityAt(x, y) {
   const g = world.screenToGround(x, y);
   if (!g) return;
   if (sim.castAbility(SIDES.PLAYER, key, g.x, g.z)) {
-    Sound.play('ability');
+    Sound.play('ability', { x: g.x, z: g.z });
     game.pendingAbility = null;
     world.hideCursor();
     ui.setArmedAbility(null);
@@ -477,7 +477,7 @@ function placePing(x, y) {
   const g = world.screenToGround(x, y);
   if (!g) return;
   world.addPing(g.x, g.z, 0xffd27f);
-  Sound.play('select');
+  Sound.play('select', { x: g.x, z: g.z });
   ui.toast(`战术标记已放置 (${Math.round(g.x)}, ${Math.round(g.z)})`);
 }
 function commandAt(x, y) {
@@ -486,7 +486,7 @@ function commandAt(x, y) {
     const b = sim.getBuilding(sim.selectedBuilding);
     if (b && b.side === SIDES.PLAYER && BUILDINGS[b.type].produces) {
       const g = world.screenToGround(x, y);
-      if (g && sim.setRally(b.id, g.x, g.z)) { Sound.play('move'); orderFx(g.x, g.z, 0x7ef0ff, 'rally'); }
+      if (g && sim.setRally(b.id, g.x, g.z)) { Sound.play('move', { x: g.x, z: g.z }); orderFx(g.x, g.z, 0x7ef0ff, 'rally'); }
       return;
     }
   }
@@ -515,7 +515,7 @@ function commandAt(x, y) {
     const lead = sim.getUnit(ids[0]);
     const dir = lead ? Math.atan2(g.z - lead.z, g.x - lead.x) : 0;
     sim.commandMove(ids, g.x, g.z, { append: game.shift });
-    Sound.play('move');
+    Sound.play('move', { x: g.x, z: g.z });
     orderFx(g.x, g.z, game.shift ? 0xffd27f : 0x7ef0c8, 'move', dir);
     if (game.shift) ui.toast('已追加路径点（单位将依次经过）');
   }
@@ -534,14 +534,14 @@ function orderFromMinimap(x, z, opts = {}) {
   if (opts && opts.attackMove) {
     sim.commandAttackMove(ids, tx, tz);
     orderFx(tx, tz, 0xffb070);
-    Sound.play('move');
+    Sound.play('move', { x: tx, z: tz });
     ui.toast('攻击移动指令已下达');
     return;
   }
   const append = !!(opts && opts.append);
   sim.commandMove(ids, tx, tz, { append });
   orderFx(tx, tz, append ? 0xffd27f : 0x7ef0c8, 'move');
-  Sound.play('move');
+  Sound.play('move', { x: tx, z: tz });
   ui.toast(append ? '已追加路径点（单位将依次经过）' : `已下令前往 (${Math.round(tx)}, ${Math.round(tz)})`);
 }
 function placeBuild(x, y) {
@@ -652,7 +652,7 @@ function onKey(e) {
   const cam = world.cam;
   if (k === 'a') {
     const ids = playerSel(), g = world.screenToGround(lastMouse.x, lastMouse.y);
-    if (ids.length && g) { sim.commandAttackMove(ids, g.x, g.z); orderFx(g.x, g.z, 0xffb070); Sound.play('move'); }
+    if (ids.length && g) { sim.commandAttackMove(ids, g.x, g.z); orderFx(g.x, g.z, 0xffb070); Sound.play('move', { x: g.x, z: g.z }); }
   }
   if (k === 's') sim.commandStop(playerSel());
   if (k === 'h') { for (const id of playerSel()) { const u = sim.getUnit(id); if (u) { u.state = 'idle'; u.order = 'auto'; } } }
@@ -853,6 +853,8 @@ function loop(now) {
     if (world.setThreat) world.setThreat(game.threat, game.pulse);
     if (ui.setThreat) ui.setThreat(game.threat, game.pulse);
     if (Sound.setThreat) Sound.setThreat(game.threat, game.pulse);
+    // 空间音频听者：与态势同拍降频更新，镜头平移/旋转后声像跟着变，不增加每帧开销
+    if (Sound.setListener) Sound.setListener(world.cam.tx, world.cam.tz, world.cam.yaw, world.cam.dist);
   }
   frameNo++;
   world.syncFrame(sim, game.paused);

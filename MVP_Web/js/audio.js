@@ -7,6 +7,10 @@ export const Sound = (() => {
   // A 侧细节十只读态势（threatAt / battlePulse）：威胁越高越压低蚁巢底噪，
   // 战斗脉冲则轻微抬升提示音，让会战中的关键反馈更清楚；不改动任何音色定义。
   let threatLevel = 0, pulseLevel = 0;
+  // 空间音频听者（由主循环按镜头状态降频写入）：世界坐标 + 朝向 + 视距。
+  // 只用于声像与响度衰减，不改任何音色定义，也不参与模拟层。
+  let listener = { x: 0, z: 0, yaw: Math.PI, dist: 150 };
+  let spatial = null;   // 当前一次性音效的 { pan, atten }，同步调用结束后立即清空
 
   function ensure() {
     if (ctx) return;
@@ -34,12 +38,42 @@ export const Sound = (() => {
   // 对音高(±2.5%)、音量(±10%)、时长(±8%)做轻微抖动，让同一音效每次都略有生命感。
   const human = (v, amt) => v * (1 + (Math.random() - 0.5) * 2 * amt);
 
+  /** 镜头写入听者状态；非法/缺失字段保持上次有效值，dist 与相机限幅一致。 */
+  function setListener(x, z, yaw, dist) {
+    const nx = Number(x), nz = Number(z), ny = Number(yaw), nd = Number(dist);
+    if (Number.isFinite(nx)) listener.x = nx;
+    if (Number.isFinite(nz)) listener.z = nz;
+    if (Number.isFinite(ny)) listener.yaw = ny;
+    if (Number.isFinite(nd)) listener.dist = Math.max(42, Math.min(250, nd));
+  }
+  /** 世界坐标 → 立体声像 / 距离衰减：右向量为 (cos yaw, -sin yaw)，与 World 相机一致。
+   *  无坐标的事件保持正中央；远处的战斗略轻，但不会低到听不见。 */
+  function spatialAt(x, z) {
+    const wx = Number(x), wz = Number(z);
+    if (!Number.isFinite(wx) || !Number.isFinite(wz)) return null;
+    const dx = wx - listener.x, dz = wz - listener.z;
+    const right = dx * Math.cos(listener.yaw) - dz * Math.sin(listener.yaw);
+    const span = Math.max(30, listener.dist * 0.85);
+    const pan = Math.max(-1, Math.min(1, right / span));
+    const atten = Math.max(0.45, Math.min(1, 1 - Math.hypot(dx, dz) / (Math.max(60, listener.dist) * 3)));
+    return { pan, atten };
+  }
+  /** 声源接入 master：支持 StereoPanner 时按像位分左右；老实现只保留响度衰减。 */
+  function connectOut(node) {
+    if (spatial && Math.abs(spatial.pan) > 0.01 && typeof ctx.createStereoPanner === 'function') {
+      const p = ctx.createStereoPanner();
+      p.pan.value = spatial.pan;
+      node.connect(p); p.connect(master);
+    } else node.connect(master);
+  }
+  const spatialGain = () => (spatial ? spatial.atten : 1);
+
   function tone({ freq = 440, type = 'sine', dur = 0.12, gain = 0.3, slide = 0, delay = 0 }) {
     if (!ready || muted) return;
     const bud = voiceBudget();
     const fq = human(freq, 0.025);
     const du = human(dur, 0.08);
-    const gn = human(gain, 0.10) * bud * cueGain;
+    const gn = human(gain, 0.10) * bud * cueGain * spatialGain();
     const t0 = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
@@ -49,14 +83,14 @@ export const Sound = (() => {
     g.gain.setValueAtTime(0.0001, t0);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gn), t0 + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + du);
-    osc.connect(g); g.connect(master);
+    osc.connect(g); connectOut(g);
     osc.start(t0); osc.stop(t0 + du + 0.03);
   }
   function noise({ dur = 0.12, gain = 0.2, hp = 800, lp = 4000 }) {
     if (!ready || muted) return;
     const bud = voiceBudget();
     const du = human(dur, 0.08);
-    const gn = human(gain, 0.10) * bud * cueGain;
+    const gn = human(gain, 0.10) * bud * cueGain * spatialGain();
     const t0 = ctx.currentTime;
     const n = Math.max(1, Math.floor(ctx.sampleRate * du));
     const buf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -66,7 +100,7 @@ export const Sound = (() => {
     const hpf = ctx.createBiquadFilter(); hpf.type = 'highpass'; hpf.frequency.value = hp;
     const lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.frequency.value = lp;
     const g = ctx.createGain(); g.gain.value = gn;
-    src.connect(hpf); hpf.connect(lpf); lpf.connect(g); g.connect(master);
+    src.connect(hpf); hpf.connect(lpf); lpf.connect(g); connectOut(g);
     src.start(t0);
   }
 
@@ -134,7 +168,14 @@ export const Sound = (() => {
 
   return {
     init() { ensure(); resume(); },
-    play(name) { if (!ready || muted) return; (defs[name] || (() => {}))(); },
+    /** opts 可带 { x, z }：把这条音效放到战场对应位置（声像 + 距离衰减）。
+     *  不传坐标时与旧行为逐字一致，全部声源仍从正中央播放。 */
+    play(name, opts) {
+      if (!ready || muted) return;
+      spatial = opts ? spatialAt(opts.x, opts.z) : null;
+      try { (defs[name] || (() => {}))(); } finally { spatial = null; }
+    },
+    setListener,
     toggleMute() { muted = !muted; if (master) master.gain.value = muted ? 0 : volume; return muted; },
     setVolume(v) {
       volume = Math.max(0, Math.min(1, Number(v)));
@@ -173,7 +214,9 @@ export const Sound = (() => {
       const name = MAP[best.c.cat] || 'hit';
       cueGain = Math.max(0.55, Math.min(1.6,
         (Number(best.c.vol) || 0.5) * (0.8 + 0.8 * best.mag) * (1 + 0.12 * pulseLevel)));
-      try { (defs[name] || defs.hit)(); } finally { cueGain = 1; }
+      // A 侧 cue 自带真实事件坐标：让会战音效从画面里对应的方位传来，镜头转动时声像随之改变
+      spatial = spatialAt(best.c.x, best.c.z);
+      try { (defs[name] || defs.hit)(); } finally { cueGain = 1; spatial = null; }
     },
   };
 })();

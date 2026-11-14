@@ -41,7 +41,7 @@ has(u, /now - last < 900/, '字幕节流');
 has(u, /_cueLastAt : -Infinity/, '首次播报不被启动时间误判节流');
 has(a, /applyCues\(cues\)/, '音效提示入口');
 has(a, /cueGain/, '临时增益');
-has(a, /finally \{ cueGain = 1; \}/, '播完复位增益');
+has(a, /finally \{ cueGain = 1;[^}]*\}/, '播完复位增益（批次33 起同时复位空间参数）');
 has(a, /now - lastCueAt < 180/, '音效节流');
 has(html, /id="cue-subtitle"/, '字幕节点存在');
 has(html, /镜头冲击与推拉/, '帮助页补充镜头提示说明');
