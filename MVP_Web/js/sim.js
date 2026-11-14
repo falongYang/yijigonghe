@@ -945,7 +945,6 @@ export class Simulation {
         u.waypoints = [];
         u.state = 'move'; u.order = 'manual'; u.target = p;
       }
-      u.burrowed = false;
     });
   }
   commandAttack(ids, targetId) {
@@ -960,7 +959,6 @@ export class Simulation {
       const p = opts.formation === false ? { x, z }
         : this._formationPoint(i, n, x, z, opts.formation || u.formation || 'auto');
       u.waypoints = []; u.advanceGoal = { ...p }; u.state = 'attackmove'; u.order = 'manual'; u.target = p;
-      if (u.domain === 'underground') u.burrowed = false;
     });
   }
   commandHarvest(ids, nodeId) {
@@ -1865,7 +1863,7 @@ export class Simulation {
     this._tickStrike(u, dt);
     // 地下掘蚁：静止/移动时潜行（不可锁定、提速）
     if (u.domain === 'underground') {
-      const surfaced = u.state === 'attack' || u.state === 'harvest' || u.state === 'return' || u.order === 'manual';
+      const surfaced = u.state === 'attack' || u.state === 'harvest' || u.state === 'return' || (u.order === 'manual' && !['move', 'attackmove'].includes(u.state));
       u.burrowed = !surfaced;
     }
     switch (u.state) {
@@ -2026,6 +2024,7 @@ export class Simulation {
   }
   _launchStrike(attacker, target, damage, dtype, ranged) {
     if (!this.canAttack(attacker, target)) return;
+    if (target.domain === 'air') damage *= attacker.attack?.airDamageMul ?? 1;
     if (!ranged) {
       this._dealDamage(attacker, target, damage, attacker.x, attacker.z, false, dtype);
       if (attacker.splash > 0) this._applySplash(attacker, target, damage);
@@ -2084,7 +2083,7 @@ export class Simulation {
   }
 
   _attackMove(u, dt) {
-    const tgt = this._nearestEnemyEntity(u.side, u.x, u.z, AGGRO + 6, this._targetOpts(u));
+    const tgt = this._nearestEnemyEntity(u.side, u.x, u.z, (u.domain === 'underground' && u.burrowed ? AGGRO : AGGRO + 6), this._targetOpts(u));
     if (tgt) { u.advanceGoal = u.target ? { x: u.target.x, z: u.target.z } : null; u.target = { id: tgt.id, x: tgt.x, z: tgt.z }; u.state = 'attack'; return; }
     if (u.target) this._moveTo(u, u.target.x, u.target.z, dt, () => { u.advanceGoal = null; u.state = 'idle'; u.order = 'auto'; });
     else { u.state = 'idle'; u.order = 'auto'; }   // 无落点时不要滞留在 attackmove 空转
