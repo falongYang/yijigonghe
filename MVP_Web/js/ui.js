@@ -1181,6 +1181,31 @@ export class UI {
       `<div class="se-bar"><i style="width:${pct.toFixed(1)}%"></i></div>`;
   }
 
+  /** 战场叙事字幕：消费 A 侧 cue 的 tag / mag（只读），只播报重大事件并节流，避免混战刷屏。
+   *  同帧多条取强度最高者；0.9s 内不重复、1.6s 后自动收起。 */
+  pushCueSubtitles(cues) {
+    const el = document.getElementById('cue-subtitle');
+    if (!el || !Array.isArray(cues) || !cues.length) return;
+    let best = null, bestMag = 0;
+    for (const c of cues) {
+      if (!c) continue;
+      const mag = Number(c.mag != null ? c.mag : (Number(c.intensity) || 0) / 3);
+      if (mag > bestMag) { bestMag = mag; best = c; }
+    }
+    if (!best || bestMag < 0.42) return;
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    // 首次播报不能被「进程刚启动 performance.now() 还很小」误判为节流窗口内
+    const last = (this._cueLastAt != null) ? this._cueLastAt : -Infinity;
+    if (now - last < 900) return;
+    this._cueLastAt = now;
+    const tag = String(best.tag || '战场动态');
+    const col = bestMag >= 0.8 ? '#ff8a5a' : bestMag >= 0.55 ? '#ffd27f' : '#9fe0a0';
+    el.innerHTML = `<b style="color:${col}">${tag}</b><small>战场播报</small>`;
+    el.classList.remove('hidden');
+    if (this._cueTimer) clearTimeout(this._cueTimer);
+    this._cueTimer = setTimeout(() => { el.classList.add('hidden'); }, 1600);
+  }
+
   // 战场地图名（六章差异化地图）：传入配置对象时附带主题 tooltip，点击可重看简报
   setMapName(cfg) {
     const e = document.getElementById('map-name');

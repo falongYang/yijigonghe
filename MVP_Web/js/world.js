@@ -247,6 +247,7 @@ export class World {
     this.ndc = new THREE.Vector2();
     this.time = 0;
     this._shake = 0;            // 摄像机冲击震屏当前幅度（世界单位），随时间指数衰减
+    this._cueZoomK = 0;         // A 侧 cue.zoom 驱动的瞬时推拉（渲染时乘在 dist 上，自动回弹、不污染相机目标）
     this.playerSp = null; this.enemySp = null;
     this.era = 0;
     this._dayT = 30;            // 开局从清晨开始，避免直接深夜
@@ -1729,8 +1730,12 @@ export class World {
       d.gauge.geometry.setDrawRange(0, segs * 6);
       d.gauge.material.color.copy(d.col).lerp(new THREE.Color(0xff7040), 1 - k > 0.7 ? (1 - k - 0.7) / 0.3 * 0.8 : 0);
       d.gauge.material.opacity = 0.35 + 0.2 * heat;
-      const pulse = 0.28 + 0.32 * k + 0.22 * heat + 0.1 * Math.sin(this.time * 2.1 + n.id);
-      for (const m of d.glowMats) if (m.emissiveIntensity != null) m.emissiveIntensity = pulse;
+      // 储量阶段（读 A 侧 n.phaseGlow / n.phasePulse，纯表现）：丰饶更亮、枯竭更暗且脉冲更慢
+      const phaseGlow = (n.phaseGlow != null) ? clamp(Number(n.phaseGlow), 0, 1) : k;
+      const phasePulse = (n.phasePulse != null) ? clamp(Number(n.phasePulse), 0.1, 2) : 1;
+      const pulse = (0.28 + 0.32 * k + 0.22 * heat) * (0.72 + 0.28 * phaseGlow)
+        + 0.1 * Math.sin(this.time * 2.1 * phasePulse + n.id);
+      for (const m of d.glowMats) if (m.emissiveIntensity != null) m.emissiveIntensity = Math.max(0.04, pulse);
       // 枯竭去饱和：储量越低，本体与自发光越接近灰白，直观表达"快采空了"
       const spent = clamp((1 - k - 0.35) / 0.65, 0, 1) * 0.7;
       for (const t of d.tintMats) {
@@ -2045,7 +2050,8 @@ export class World {
     prog.visible = false;
     mesh.add(prog);
 
-    this.buildingMeshes.set(b.id, { mesh, bar, fill, ring, prog, progFill, side: b.side, type: b.type });
+    this.buildingMeshes.set(b.id, { mesh, bar, fill, ring, prog, progFill, side: b.side, type: b.type,
+      baseColor: mat.color.clone() });
     this.pickables.push(mesh);
   }
 
@@ -2377,6 +2383,18 @@ export class World {
       m.mesh.material.emissiveIntensity = 0;
       m.ring.visible = selected;
       if (selected) m.ring.material.color.set(m.side === SIDES.PLAYER ? 0x7ef0ff : 0xffb070);
+      // —— 建筑外观分级（读 A 侧 b.visual，纯表现）：焦痕 / 裂痕染色 + 余烬脉冲 ——
+      const vs = b.visual;
+      if (vs && m.baseColor) {
+        if (!this._bScorch) { this._bScorch = new THREE.Color(0x2e211a); this._bCrack = new THREE.Color(0x6a2a18); }
+        const scar = clamp(Number(vs.scar) || 0, 0, 1), crack = clamp(Number(vs.crack) || 0, 0, 1);
+        m.mesh.material.color.copy(m.baseColor).lerp(this._bScorch, scar * 0.45).lerp(this._bCrack, crack * 0.18);
+        const ember = clamp(Number(vs.ember) || 0, 0, 1);
+        if (ember > 0) {
+          m.mesh.material.emissive.setHex(0xff5a1a);
+          m.mesh.material.emissiveIntensity = ember * (0.25 + 0.18 * Math.sin(this.time * 5 + b.id));
+        }
+      } else if (m.baseColor) m.mesh.material.color.copy(m.baseColor);
     }
     // 生产进度环：出兵中（idle 且有队列）显示 0→1 填充弧，独立于血条/施工条
     let pProg = 0, producing = false;
@@ -2469,7 +2487,14 @@ export class World {
         }
         for (const b of sim.buildings) {
           if (s >= 5) break;
-          if (b.state !== 'constructing' && b.hp / b.maxHp < 0.5 && Math.random() < 0.5) { this.addEffect('smoke', { x: b.x, y: b.size * 0.7, z: b.z }); s++; }
+          // 建筑外观分级：A 侧 b.visual.smoke 决定烟尘密度（完好不冒烟、危急更浓）
+          const vs = b.visual;
+          const smokeP = (vs && Number.isFinite(vs.smoke))
+            ? 0.15 + clamp(Number(vs.smoke), 0, 1) * 0.62
+            : (b.hp / b.maxHp < 0.5 ? 0.5 : 0);
+          if (b.state !== 'constructing' && smokeP > 0 && Math.random() < smokeP) {
+            this.addEffect('smoke', { x: b.x, y: b.size * 0.7, z: b.z }); s++;
+          }
         }
       }
     }
@@ -2852,10 +2877,14 @@ export class World {
       c.tz += (this._followZ - c.tz) * k;
     }
     const cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
+    // 事件瞬时推拉：只作用于本帧渲染距离，不写回相机目标，随后指数回弹（与滚轮缩放互不干扰）
+    if (this._cueZoomK) this._cueZoomK *= Math.pow(0.015, Math.max(0, simDt));
+    if (Math.abs(this._cueZoomK) < 0.0005) this._cueZoomK = 0;
+    const effDist = c.dist * (1 + this._cueZoomK);
     this.camera.position.set(
-      c.tx + c.dist * cp * Math.sin(c.yaw),
-      c.dist * sp,
-      c.tz + c.dist * cp * Math.cos(c.yaw),
+      c.tx + effDist * cp * Math.sin(c.yaw),
+      effDist * sp,
+      c.tz + effDist * cp * Math.cos(c.yaw),
     );
     this.camera.lookAt(c.tx, 0, c.tz);
     // 冲击震屏：在相机本地右/上轴施加随时间的相干抖动，幅度随 _shake 指数衰减。
@@ -2970,6 +2999,28 @@ export class World {
   /** 触发摄像机冲击震屏：取较大者，避免连续小冲击被大冲击覆盖时反而变小。
    *  幅度单位为世界单位，约 0.4s 内可见衰减；典型值：克制/重创 1.4、能力 2.5、建筑损毁 4、纪元跃迁 5。 */
   shake(mag) { if (Number.isFinite(mag) && mag > this._shake) this._shake = mag; }
+  /** A 侧 cue.zoom 触发的一次性镜头呼吸（正值推近、负值拉远），限幅并自动回弹。 */
+  pushZoom(v) {
+    const z = Number(v);
+    if (!Number.isFinite(z)) return;
+    this._cueZoomK = clamp(this._cueZoomK - z * 2.2, -0.14, 0.14);
+  }
+  /** 消费 A 侧 drainCues() 取出的镜头提示（只读）：按 mag/weight 归一强度叠加震屏与推拉。
+   *  不新增事件/特效类型；同帧多条提示取最大冲击，避免大规模会战镜头抖成筛子。 */
+  applyCues(cues) {
+    if (!Array.isArray(cues) || !cues.length) return;
+    let maxShake = 0, zoom = 0, zoomMag = 0;
+    for (const c of cues) {
+      if (!c) continue;
+      const mag = clamp(Number(c.mag != null ? c.mag : (Number(c.intensity) || 0) / 3), 0, 1);
+      const sh = 1.1 + 4.0 * mag + (Number(c.shake) || 0) * 1.6;
+      if (sh > maxShake) maxShake = sh;
+      const z = Number(c.zoom) || 0;
+      if (Math.abs(z) > 0.001 && mag >= zoomMag) { zoom = z; zoomMag = mag; }
+    }
+    if (maxShake > 0) this.shake(maxShake);
+    if (zoom && zoomMag >= 0.3) this.pushZoom(zoom);
+  }
   /** 聚焦：默认平滑滑行到目标；instant=true 用于小地图拖动（需要严格跟手）。 */
   focus(x, z, instant = false) {
     if (!Number.isFinite(x) || !Number.isFinite(z)) return;

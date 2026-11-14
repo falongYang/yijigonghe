@@ -634,6 +634,16 @@ function loop(now) {
       if (n) world.setFollowPoint(x / n, z / n);
     }
   }
+  // A 侧镜头/音效提示（只读，drainCues 一次性取走）：分发到镜头冲击、战场字幕与程序化音效。
+  // 放在主循环单点消费，避免多处 drain 丢提示；无该接口时整段静默跳过（向后兼容）。
+  if (game.running && typeof sim.drainCues === 'function') {
+    const cues = sim.drainCues();
+    if (cues && cues.length) {
+      world.applyCues(cues);
+      ui.pushCueSubtitles(cues);
+      Sound.applyCues(cues);
+    }
+  }
   world.syncFrame(sim, game.paused);
   ui.refresh();
   world.update(game.paused ? 0 : dt, dt);   // 暂停冻结场景时间，但相机阻尼仍用真实帧时间推进

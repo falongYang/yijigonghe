@@ -2,6 +2,8 @@
  * 受浏览器自动播放策略限制，必须在首次用户手势后 init()。 */
 export const Sound = (() => {
   let ctx = null, master = null, muted = false, ready = false, volume = 0.5;
+  // A 侧 cue 的 vol / mag 驱动的临时增益（仅在播放该条提示期间生效，播完立即复位）
+  let cueGain = 1, lastCueAt = -Infinity;
 
   function ensure() {
     if (ctx) return;
@@ -34,7 +36,7 @@ export const Sound = (() => {
     const bud = voiceBudget();
     const fq = human(freq, 0.025);
     const du = human(dur, 0.08);
-    const gn = human(gain, 0.10) * bud;
+    const gn = human(gain, 0.10) * bud * cueGain;
     const t0 = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
@@ -51,7 +53,7 @@ export const Sound = (() => {
     if (!ready || muted) return;
     const bud = voiceBudget();
     const du = human(dur, 0.08);
-    const gn = human(gain, 0.10) * bud;
+    const gn = human(gain, 0.10) * bud * cueGain;
     const t0 = ctx.currentTime;
     const n = Math.max(1, Math.floor(ctx.sampleRate * du));
     const buf = ctx.createBuffer(1, n, ctx.sampleRate);
@@ -140,5 +142,26 @@ export const Sound = (() => {
     get muted() { return muted; },
     get ready() { return ready; },
     startAmbient, stopAmbient, setAmbient,
+    /** 消费 A 侧 cue（只读）：把音色类别映射到既有程序化音色，按 vol/mag 调整响度。
+     *  同帧只播最重要的一条、180ms 节流，避免大规模会战形成音墙。 */
+    applyCues(cues) {
+      if (!ready || muted || !Array.isArray(cues) || !cues.length) return;
+      let best = null, bestScore = -1;
+      for (const c of cues) {
+        if (!c) continue;
+        const mag = Math.max(0, Math.min(1, Number(c.mag != null ? c.mag : (Number(c.intensity) || 0) / 3)));
+        const score = mag + (Number(c.vol) || 0) * 0.25;
+        if (score > bestScore) { bestScore = score; best = { c, mag }; }
+      }
+      if (!best) return;
+      const now = performance.now();
+      if (now - lastCueAt < 180) return;
+      lastCueAt = now;
+      const MAP = { hit: 'hit', death: 'death', ability: 'ability', ambush: 'crash', boom: 'crash',
+        chime: 'era', ambient: 'echo', power: 'ability' };
+      const name = MAP[best.c.cat] || 'hit';
+      cueGain = Math.max(0.55, Math.min(1.6, (Number(best.c.vol) || 0.5) * (0.8 + 0.8 * best.mag)));
+      try { (defs[name] || defs.hit)(); } finally { cueGain = 1; }
+    },
   };
 })();
