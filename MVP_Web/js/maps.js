@@ -315,11 +315,23 @@ export function decorFor(mode, chapter) {
       roll -= cfg.weights[k];
       if (roll <= 0) { kind = DECOR_KINDS[k]; break; }
     }
+    // 生态分区：依装饰点相对 水体 / 地图边缘 / 资源点 的位置微调明暗与色调，
+    // 让地图呈现自然生态层次（近水偏冷亮、近边偏暗、近资源点偏暖亮）。纯视觉，零平衡。
+    let dn = Infinity, dw = Infinity, de = Infinity;
+    for (const n of rules.nodes) dn = Math.min(dn, Math.hypot(x - n.x, z - n.z));
+    for (const w of water) dw = Math.min(dw, Math.hypot(x - w.x, z - w.z) - (w.r || 0));
+    de = Math.min(DECOR_HALF_W - Math.abs(x), DECOR_HALF_H - Math.abs(z));
+    let biome = 'field', shadeExtra = 0, tintMix = 0, mixCol = cfg.tint;
+    if (dw < 12) { biome = 'water'; tintMix = 0.5; mixCol = 0x9fd0dc; shadeExtra = 0.06; }
+    else if (de < 12) { biome = 'edge'; tintMix = 0.45; mixCol = 0x4a3f33; shadeExtra = -0.10; }
+    else if (dn < 12) { biome = 'core'; tintMix = 0.30; mixCol = 0xfff0c0; shadeExtra = 0.05; }
+    const shade = +(0.82 + _dhash(ci, i, salt + 5) * 0.36 + shadeExtra).toFixed(3);
+    const tint = tintMix > 0 ? _lerpHex(cfg.tint, mixCol, tintMix) : cfg.tint;
     out.push({
-      id: `d${i}`, x: +x.toFixed(2), z: +z.toFixed(2), kind,
+      id: `d${i}`, x: +x.toFixed(2), z: +z.toFixed(2), kind, biome,
       scale: +(0.6 + _dhash(ci, i, salt + 3) * 0.9).toFixed(3),
       rot: +(_dhash(ci, i, salt + 4) * Math.PI * 2).toFixed(3),
-      tint: cfg.tint, shade: +(0.82 + _dhash(ci, i, salt + 5) * 0.36).toFixed(3),
+      tint, shade,
     });
   }
   return out;
@@ -366,3 +378,131 @@ export function sceneEventsFor(mode, chapter) {
     ...e, key: `se${chapter}_${i}`, nextAt: e.at, fired: 0,
   }));
 }
+
+/* --------------------------------------------------------------------------
+ * 水域视觉增强：为每章 water 圆盘补纯视觉属性（波纹频率 / 相位、潮汐周期与振幅、
+ * 闪光强度、水体色）。不改 MAP_RULES 的水域约束语义（sim 只用 x/z/r 做 sea 节点
+ * 落位约束，不读以下字段），遭遇战（第 0 章）也生效，纯表现，零平衡。
+ * ------------------------------------------------------------------------ */
+const WATER_TINTS = [0x6f9e94, 0x5f9ec0, 0xb5a182, 0x4f8f8a, 0x4f86b8, 0x7a6fc8];
+export function waterVisualFor(mode, chapter) {
+  const ci = (mode === 'campaign' && chapter != null) ? (chapter % MAP_RULES.length) : 0;
+  const water = MAP_RULES[ci].water || [];
+  const tint = WATER_TINTS[ci % WATER_TINTS.length];
+  return water.map((w, j) => ({
+    x: w.x, z: w.z, r: w.r, tint,
+    ripple: +(0.6 + _dhash(ci, j, 71) * 0.8).toFixed(3),        // 波纹频率
+    ripplePhase: +(_dhash(ci, j, 72) * Math.PI * 2).toFixed(3),  // 波纹相位
+    tide: _dhash(ci, j, 73) > 0.5 ? +(18 + _dhash(ci, j, 74) * 22).toFixed(2) : 0, // 潮汐周期(秒)，0=无
+    tideAmp: +(0.4 + _dhash(ci, j, 75) * 0.8).toFixed(3),        // 潮汐振幅(纯视觉半径波动)
+    shimmer: +(0.3 + _dhash(ci, j, 76) * 0.5).toFixed(3),        // 水面闪光强度
+  }));
+}
+
+/* --------------------------------------------------------------------------
+ * 地形特征（大尺度地标）：每章确定性布点的大件地形特征（巨岩 / 枯木 / 晶柱 /
+ * 残骸堆 / 菌盖 / 盐柱 / 碑石 / 骸骨）。纯视觉渲染锚点，B 侧据以做场景大件；
+ * 不读 Math.random（自有 hash），不写任何模拟字段，零平衡。
+ * 避开资源点 / 水域 / 静态危害 / 双方巢区（距巢基 > 26），避免遮挡交互与行军。
+ * ------------------------------------------------------------------------ */
+const FEATURE_KINDS = ['rock', 'boulder', 'crystal', 'mast', 'pillar', 'rubble', 'salt', 'monolith'];
+const FEATURE_CFG = [
+  { count: 11, weights: [4, 3, 0, 1, 0, 2, 0, 1], palette: 0x9a8362 },  // 0 焦土
+  { count: 13, weights: [2, 2, 0, 3, 0, 1, 0, 1], palette: 0x7fae68 },  // 1 沃野
+  { count: 10, weights: [5, 3, 0, 0, 0, 2, 0, 1], palette: 0xb5a182 },  // 2 荒原
+  { count: 12, weights: [1, 1, 0, 2, 0, 1, 3, 0], palette: 0x6f9e94 },  // 3 泽国
+  { count: 12, weights: [2, 2, 0, 2, 3, 1, 2, 0], palette: 0x8fa8b8 },  // 4 海岸
+  { count: 10, weights: [0, 1, 4, 0, 1, 1, 0, 3], palette: 0xa48fd0 },  // 5 虚空
+];
+export function terrainFeaturesFor(mode, chapter) {
+  const ci = (mode === 'campaign' && chapter != null) ? (chapter % MAP_RULES.length) : 0;
+  const cfg = FEATURE_CFG[ci];
+  const rules = MAP_RULES[ci];
+  const water = rules.water || [];
+  const hazards = STATIC_HAZARDS[ci] || [];
+  const wsum = cfg.weights.reduce((a, b) => a + b, 0) || 1;
+  const salt = 41 + ci;
+  const out = [];
+  const baseZ = DECOR_HALF_H * 0.62;
+  const maxTry = cfg.count * 16;
+  for (let i = 0; i < maxTry && out.length < cfg.count; i++) {
+    const x = (_dhash(ci, i, salt) * 2 - 1) * (DECOR_HALF_W - 10);
+    const z = (_dhash(ci, i, salt + 1) * 2 - 1) * (DECOR_HALF_H - 10);
+    if (rules.nodes.some(n => Math.hypot(x - n.x, z - n.z) < 11)) continue;
+    if (water.some(w => Math.hypot(x - w.x, z - w.z) < w.r + 4)) continue;
+    if (hazards.some(h => Math.hypot(x - h.x, z - h.z) < h.r + 4)) continue;
+    if (Math.hypot(x, z - baseZ) < 26 || Math.hypot(x, z + baseZ) < 26) continue;   // 避开巢区
+    let roll = _dhash(ci, i, salt + 2) * wsum, kind = FEATURE_KINDS[0];
+    for (let k = 0; k < cfg.weights.length; k++) {
+      roll -= cfg.weights[k];
+      if (roll <= 0) { kind = FEATURE_KINDS[k]; break; }
+    }
+    const size = +(1.4 + _dhash(ci, i, salt + 3) * 2.6).toFixed(3);
+    out.push({
+      id: `f${ci}_${i}`, x: +x.toFixed(2), z: +z.toFixed(2), kind,
+      size, rot: +(_dhash(ci, i, salt + 4) * Math.PI * 2).toFixed(3),
+      tint: cfg.palette, shade: +(0.7 + _dhash(ci, i, salt + 5) * 0.5).toFixed(3),
+      solid: (kind === 'rock' || kind === 'boulder' || kind === 'pillar' || kind === 'monolith' || kind === 'crystal'),
+    });
+  }
+  return out;
+}
+
+/* --------------------------------------------------------------------------
+ * 地表高程控制点：每章一组高程锚点（纯视觉，sim 逻辑层只有 x/z，不读 h）。
+ * elevationAt 用高斯核做距离加权采样，返回平滑地表高度（与场景尺度一致），
+ * B 侧据以做地形起伏 mesh；不写任何模拟字段、不改单位坐标，零平衡。
+ * 锚点避开巢区与资源点中心，避免巢穴 / 矿区被抬成陡坎。
+ * ------------------------------------------------------------------------ */
+const ELEV_CFG = [
+  { count: 7, amp: 1.4, radius: 20 },   // 0 焦土：平缓起伏
+  { count: 8, amp: 1.1, radius: 22 },   // 1 沃野：低缓丘陵
+  { count: 9, amp: 2.0, radius: 18 },   // 2 荒原：垄岗明显
+  { count: 6, amp: 0.8, radius: 24 },   // 3 泽国：近水平
+  { count: 7, amp: 1.6, radius: 20 },   // 4 海岸：浪蚀台地
+  { count: 8, amp: 1.8, radius: 19 },   // 5 虚空：漂浮感台块
+];
+export function elevationPointsFor(mode, chapter) {
+  const ci = (mode === 'campaign' && chapter != null) ? (chapter % MAP_RULES.length) : 0;
+  const cfg = ELEV_CFG[ci];
+  const rules = MAP_RULES[ci];
+  const baseZ = DECOR_HALF_H * 0.62;
+  const pts = [];
+  for (let i = 0; i < cfg.count * 20 && pts.length < cfg.count; i++) {
+    const x = (_dhash(ci, i, 91) * 2 - 1) * (DECOR_HALF_W - 12);
+    const z = (_dhash(ci, i, 92) * 2 - 1) * (DECOR_HALF_H - 12);
+    if (rules.nodes.some(n => Math.hypot(x - n.x, z - n.z) < 12)) continue;
+    if (Math.hypot(x, z - baseZ) < 24 || Math.hypot(x, z + baseZ) < 24) continue;
+    const h = +((_dhash(ci, i, 93) * 2 - 1) * cfg.amp).toFixed(3);
+    pts.push({ x: +x.toFixed(2), z: +z.toFixed(2), h, radius: cfg.radius });
+  }
+  return pts;
+}
+/** 采样某点地表高度（高斯核距离加权，返回有限数；超出控制点范围回落 0）。
+ *  纯视觉，零平衡。 */
+export function elevationAt(mode, chapter, x, z) {
+  const pts = elevationPointsFor(mode, chapter);
+  let num = 0, den = 0;
+  for (const p of pts) {
+    const d2 = (x - p.x) * (x - p.x) + (z - p.z) * (z - p.z);
+    const s2 = (p.radius * 0.5) * (p.radius * 0.5);
+    const w = Math.exp(-d2 / (2 * s2));
+    if (w < 1e-4) continue;
+    num += w * p.h; den += w;
+  }
+  return den > 0 ? +(num / den).toFixed(3) : 0;
+}
+
+/* --------------------------------------------------------------------------
+ * 小地图静态图层：把水域 / 静态危害 / 地形特征 / 地图边界整理成 B 侧可直接绘制的
+ * 底图要素（纯只读，不与单位 / 建筑 blip 混淆）。零平衡。
+ * ------------------------------------------------------------------------ */
+export function minimapZonesFor(mode, chapter) {
+  const ci = (mode === 'campaign' && chapter != null) ? (chapter % MAP_RULES.length) : 0;
+  const rules = MAP_RULES[ci];
+  const water = (rules.water || []).map(w => ({ x: w.x, z: w.z, r: w.r, kind: 'water' }));
+  const hazards = (STATIC_HAZARDS[ci] || []).map(h => ({ x: h.x, z: h.z, r: h.r, kind: 'hazard', type: h.type }));
+  const features = terrainFeaturesFor(mode, chapter).map(f => ({ x: f.x, z: f.z, r: +(f.size * 1.5).toFixed(2), kind: 'feature', type: f.kind }));
+  return { edge: { w: DECOR_HALF_W * 2, h: DECOR_HALF_H * 2 }, water, hazards, features };
+}
+

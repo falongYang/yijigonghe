@@ -21,7 +21,8 @@ import {
 } from './rts.js';
 import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor,
   weatherTimelineFor, mapDynamicsFor, dayPhaseAt, decorFor, ambienceFor,
-  sceneEventsFor } from './maps.js';
+  sceneEventsFor, waterVisualFor, terrainFeaturesFor, elevationPointsFor,
+  minimapZonesFor } from './maps.js';
 
 const dist = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -92,6 +93,10 @@ export class Simulation {
     this.milestones = {};             // 战场里程碑播报去重
     this.tracers = [];                // 弹道只读记录（渲染层可轮询，不参与结算）
     this.decor = [];                  // 地图装饰点位（确定性，纯视觉）
+    this.waterVisual = [];            // 水域视觉增强属性（波纹/潮汐/闪光/水体色，纯视觉）
+    this.features = [];               // 大尺度地形特征地标（纯视觉渲染锚点）
+    this._elevPts = [];               // 地表高程控制点（纯视觉，采样供地形 mesh）
+    this._minimapZones = null;        // 小地图静态底图图层（水域/危害/特征/边界）
     this.ambience = null;             // 场景氛围基准（粒子 / 风向 / 辉光）
     this.corpses = [];                // 死亡演出只读快照队列（按寿命回收，上限 80）
     this.cues = [];                   // 镜头 / 音效提示队列（B 侧每帧 drainCues() 取走，不参与结算）
@@ -215,6 +220,10 @@ export class Simulation {
     this.decor = decorFor(mode, chapter);
     this.ambience = ambienceFor(mode, chapter);
     this.sceneEvents = sceneEventsFor(mode, chapter);
+    this.waterVisual = waterVisualFor(mode, chapter);
+    this.features = terrainFeaturesFor(mode, chapter);
+    this._elevPts = elevationPointsFor(mode, chapter);
+    this._minimapZones = minimapZonesFor(mode, chapter);
     this.terrainHazards = staticHazardsFor(mode, chapter).map(h => ({ ...h, accum: 0 }));
     // 场景目标：默认 'destroy'（摧毁敌方蚁后巢）＝既有胜负判定，逐字不变。
     // 可选 'survive'（存活到时限）、'harvest'（累计采集达标）、'dominate'（占领全部信息素井并守住）。
@@ -1328,8 +1337,27 @@ export class Simulation {
   projectileSpec() { return { ...PROJECTILE_SPEC }; }
   /** 只读查询：当前昼夜光照快照（纯画面，任何模拟数值都不读它）。 */
   dayPhase() { return dayPhaseAt(this.mode, this.chapter, this.time); }
-  /** 只读查询：本图确定性装饰点位。 */
+  /** 只读查询：本图确定性装饰点位（含生态分区 biome 与微调 tint/shade）。 */
   decorPoints() { return this.decor; }
+  /** 只读查询：本图水域视觉增强属性（波纹 / 潮汐 / 闪光 / 水体色），纯视觉。 */
+  waterVisuals() { return this.waterVisual; }
+  /** 只读查询：本图大尺度地形特征地标（纯视觉渲染锚点）。 */
+  terrainFeatures() { return this.features; }
+  /** 只读查询：采样某点地表高度（高斯核距离加权，纯视觉，单位与场景尺度一致）。 */
+  elevationAt(x, z) {
+    const pts = this._elevPts || [];
+    let num = 0, den = 0;
+    for (const p of pts) {
+      const d2 = (x - p.x) * (x - p.x) + (z - p.z) * (z - p.z);
+      const s2 = (p.radius * 0.5) * (p.radius * 0.5);
+      const w = Math.exp(-d2 / (2 * s2));
+      if (w < 1e-4) continue;
+      num += w * p.h; den += w;
+    }
+    return den > 0 ? +(num / den).toFixed(3) : 0;
+  }
+  /** 只读查询：小地图静态底图图层（水域 / 危害 / 特征 / 边界），纯只读。 */
+  minimapZones() { return this._minimapZones; }
   /** 只读查询：场景汇总（B 侧单帧拉一次即可）。 */
   sceneInfo() {
     return { day: this.dayPhase(), ambience: this.ambience ? { ...this.ambience } : null,
