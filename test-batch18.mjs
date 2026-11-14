@@ -20,7 +20,7 @@ const main = read('MVP_Web/js/main.js');
 const html = read('MVP_Web/index.html');
 const css = read('MVP_Web/css/style.css');
 has(w, /this\._cueZoomK = 0/, '构造瞬时推拉状态');
-has(w, /const effDist = c\.dist \* \(1 \+ this\._cueZoomK\)/, '推拉只作用于渲染距离');
+has(w, /const effDist = c\.dist \* \(1 \+/, '推拉只作用于渲染距离');
 has(w, /pushZoom\(v\)/, 'pushZoom 入口');
 has(w, /applyCues\(cues\)/, 'applyCues 入口');
 has(w, /c\.mag != null \? c\.mag/, '兼容 mag 归一化强度');

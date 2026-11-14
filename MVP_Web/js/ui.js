@@ -1288,6 +1288,28 @@ export class UI {
       `<div class="se-bar"><i style="width:${pct.toFixed(1)}%"></i></div>`);
   }
 
+  /** 阵营态势条：读 A 侧 factionDensity()（只读存活数 / 平均聚簇密度），
+   *  500ms 降频采样 + 去重写入，窄屏由 CSS 隐藏。 */
+  _updateFrontStatus(s) {
+    const el = document.getElementById('front-status');
+    if (!el || typeof s.factionDensity !== 'function') return;
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    if (this._frontAt && now - this._frontAt < 500) return;
+    this._frontAt = now;
+    let acc;
+    try { acc = s.factionDensity(); } catch (_) { return; }
+    const P = acc && acc[SIDES.PLAYER], E = acc && acc[SIDES.ENEMY];
+    if (!P || !E) return;
+    const pc = Math.max(0, Number(P.count) || 0), ec = Math.max(0, Number(E.count) || 0);
+    const tot = pc + ec, pp = tot > 0 ? Math.round(pc / tot * 100) : 50;
+    const pd = Number(P.avgDensity) || 0, ed = Number(E.avgDensity) || 0;
+    this._setHTML(el,
+      `<div class="fs-row"><span class="fs-p">我方 <b>${pc}</b></span><span class="fs-e"><b>${ec}</b> 敌方</span></div>` +
+      `<div class="fs-bar"><i style="width:${pp}%"></i></div>` +
+      `<div class="fs-sub">聚簇均密度 ${pd.toFixed(2)} / ${ed.toFixed(2)}</div>`);
+    el.classList.remove('hidden');
+  }
+
   /** 战场叙事字幕：消费 A 侧 cue 的 tag / mag（只读），只播报重大事件并节流，避免混战刷屏。
    *  同帧多条取强度最高者；0.9s 内不重复、1.6s 后自动收起。 */
   pushCueSubtitles(cues) {
@@ -1466,6 +1488,7 @@ export class UI {
     this._updateEconStatus(s);
     this._updateWeather(s);
     this._updateScene(s);
+    this._updateFrontStatus(s);
 
     this._refreshSelection();
     this._drawMinimap();

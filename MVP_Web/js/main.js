@@ -9,7 +9,7 @@ import { MAP, HALF_W, HALF_H, BUILDINGS, SIDES, ABILITIES, UNITS, TERRAIN } from
 const canvas = document.getElementById('scene');
 let world, ui, sim;
 const game = {
-  sim: null, world: null, ui: null, running: false, speed: 1, paused: false, tutOpen: false, glLost: false,
+  sim: null, world: null, ui: null, running: false, speed: 1, paused: false, tutOpen: false, glLost: false, heat: 0,
   pendingBuild: null, buildValid: false,
   pendingAbility: null,
   pendingPatrol: null,   // 巡逻布点：进行中为 { pts: [{x,z}...] }，落点用绿色 ping 标注
@@ -665,7 +665,7 @@ function takeScreenshot() {
 }
 
 /* ---------------------------------------------------------------- 主循环 */
-let acc = 0, last = performance.now();
+let acc = 0, last = performance.now(), frameNo = 0;
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (game.running && !game.paused && !game.tutOpen && !game.glLost && game.speed > 0) {
@@ -695,10 +695,24 @@ function loop(now) {
       Sound.applyCues(cues);
     }
   }
+  // 局部战斗热度（A 侧 battleIntensityAt 只读聚合）：6 帧采样一次，驱动镜头持续微推近与环境音压低。
+  // 以相机中心为取样点，让「画面里正在打大仗」时氛围自动收紧；无该接口时整段静默跳过。
+  if (game.running && !game.glLost && typeof sim.battleIntensityAt === 'function' && world.setBattleHeat) {
+    if (frameNo % 6 === 0) {
+      let heat = 0;
+      try { heat = sim.battleIntensityAt(world.cam.tx, world.cam.tz, 34); } catch (_) { heat = 0; }
+      game.heat = Number.isFinite(Number(heat)) ? Math.max(0, Math.min(1, Number(heat))) : 0;
+      world.setBattleHeat(game.heat);
+    }
+  } else if (world.setBattleHeat) {
+    game.heat = 0; world.setBattleHeat(0);
+  }
+  frameNo++;
   world.syncFrame(sim, game.paused);
   ui.refresh();
   world.update(game.paused ? 0 : dt, dt);   // 暂停冻结场景时间，但相机阻尼仍用真实帧时间推进
-  Sound.setAmbient(world.dayFactor);    // 昼夜明暗驱动蚁巢环境音起伏（audio.js 内部含启动保护与节流）
+  // 昼夜明暗驱动蚁巢环境音起伏；会战处按热度轻微压低底噪，让战斗音效更清晰
+  Sound.setAmbient(world.dayFactor * (1 - 0.35 * game.heat));
   requestAnimationFrame(loop);
 }
 

@@ -18,6 +18,22 @@ const RING_R = { worker: 2.6, soldier: 3.2, soldier2: 3.0, soldier3: 4.0, queen:
 const NIGHT_SUN = new THREE.Color(0x9fb6ff);
 const NIGHT_BG = new THREE.Color(0x0b1422);
 
+/* B 侧姿态表现参数：读 A 侧 u.posture 的 10 态只读枚举，映射为渲染层的前倾 / 重心 /
+   摆幅 / 体量 / 步幅系数。纯外观，不回写 sim、不改碰撞与任何战斗数值；状态切换用指数
+   阻尼平滑，避免姿态跳变。缺 posture 字段时整表回落到 idle（旧行为等价）。 */
+const POSTURE_POSE = {
+  idle:     { lean: 0.00, crouch: 0.00, sway: 0.00, scale: 1.00, bob: 1.00 },
+  work:     { lean: 0.11, crouch: 0.06, sway: 0.35, scale: 0.98, bob: 1.30 },
+  carry:    { lean: 0.08, crouch: 0.04, sway: 0.20, scale: 1.00, bob: 1.18 },
+  march:    { lean: 0.07, crouch: 0.00, sway: 0.10, scale: 1.00, bob: 1.22 },
+  advance:  { lean: 0.18, crouch: 0.02, sway: 0.22, scale: 1.02, bob: 1.50 },
+  engage:   { lean: 0.14, crouch: 0.10, sway: 0.45, scale: 1.00, bob: 0.82 },
+  skirmish: { lean: 0.09, crouch: 0.06, sway: 0.55, scale: 0.99, bob: 1.08 },
+  hold:     { lean: 0.00, crouch: 0.15, sway: 0.00, scale: 0.95, bob: 0.60 },
+  patrol:   { lean: 0.06, crouch: 0.02, sway: 0.28, scale: 1.00, bob: 1.08 },
+  death:    { lean: 0.00, crouch: 0.00, sway: 0.00, scale: 1.00, bob: 0.00 },
+};
+
 /* 生物群系专属道具：每套地图配置引用若干 type，world 据此散布装饰，强化地形辨识。*/
 const PROP_BUILDERS = {
   bush(pal) {
@@ -249,6 +265,8 @@ export class World {
     this.time = 0;
     this._shake = 0;            // 摄像机冲击震屏当前幅度（世界单位），随时间指数衰减
     this._cueZoomK = 0;         // A 侧 cue.zoom 驱动的瞬时推拉（渲染时乘在 dist 上，自动回弹、不污染相机目标）
+    this._battleHeat = 0;       // A 侧 battleIntensityAt() 局部战斗热度（0..1，主循环降频写入）
+    this._heatZoomK = 0;        // 热度驱动的持续微推近（与瞬时推拉独立叠加，只乘渲染距离）
     this.playerSp = null; this.enemySp = null;
     this.era = 0;
     this._dayT = 30;            // 开局从清晨开始，避免直接深夜
@@ -2168,9 +2186,22 @@ export class World {
     // 步态优先用 A 侧 feel.step（按移速确定性累加相位、按域/兵种 bob 幅度），
     // 比原本全体同频的硬编码正弦更有层次；缺失时回落到原公式。
     const step = (feel && Number.isFinite(feel.step)) ? clamp(Number(feel.step), -0.25, 0.25) : null;
-    const walk = u.moving ? ((step != null ? step : Math.sin(this.time * 16 + u.id) * 0.07) * animK) : 0;
-    m.body.scale.set(pop * (1 - Math.abs(walk) * 0.3), pop * breath, pop * (1 - Math.abs(walk) * 0.3));
-    m.body.rotation.z = walk * 0.5;
+    // 姿态（u.posture）：10 态参数平滑过渡；顿帧期间冻结过渡，与呼吸/步频同步
+    const pp = POSTURE_POSE[u.posture] || POSTURE_POSE.idle;
+    const pm = m.pose || (m.pose = { lean: 0, crouch: 0, sway: 0, scale: 1, bob: 1 });
+    const pk = animK > 0 ? 1 - Math.pow(0.02, clamp(this._frameDt || 0.016, 0, 0.1)) : 0;
+    for (const key in pm) pm[key] += (pp[key] - pm[key]) * pk;
+    // 已接敌且静止输出（u.engaged）：极轻微的体量脉动，让对峙更有张力
+    const engaged = u.engaged === true;
+    const breatheInFight = engaged ? 1 + Math.sin(this.time * 7.5 + u.id) * 0.02 * animK : 1;
+    const walk = u.moving ? ((step != null ? step : Math.sin(this.time * 16 + u.id) * 0.07) * animK * pm.bob) : 0;
+    const bodyScale = pop * pm.scale * breatheInFight;
+    m.body.scale.set(
+      bodyScale * (1 - Math.abs(walk) * 0.3),
+      bodyScale * breath * (1 - pm.crouch),
+      bodyScale * (1 - Math.abs(walk) * 0.3));
+    m.body.rotation.z = walk * 0.5 + pm.lean
+      + (pm.sway ? Math.sin(this.time * 3.1 + u.id) * pm.sway * 0.12 * animK : 0);
     // 攻击前冲：刚发动攻击（atkTimer 接近满）时向头部(+X)小幅度突刺
     let lunge = 0;
     if (u.state === 'attack' && u.atkcd && u.atkTimer > u.atkcd * 0.66) {
@@ -2911,9 +2942,16 @@ export class World {
     }
     const cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
     // 事件瞬时推拉：只作用于本帧渲染距离，不写回相机目标，随后指数回弹（与滚轮缩放互不干扰）
-    if (this._cueZoomK) this._cueZoomK *= Math.pow(0.015, Math.max(0, simDt));
+    const cue = Number(this._cueZoomK) || 0;
+    if (cue) this._cueZoomK = cue * Math.pow(0.015, Math.max(0, simDt));
     if (Math.abs(this._cueZoomK) < 0.0005) this._cueZoomK = 0;
-    const effDist = c.dist * (1 + this._cueZoomK);
+    // 局部战斗热度：持续且极轻微的推近，平滑跟随；与事件瞬时推拉叠加但互不影响，
+    // 同样只作用于本帧渲染距离，绝不写回 cam.dist 或滚轮目标
+    const heat = clamp(Number(this._battleHeat) || 0, 0, 1);
+    const hz0 = Number(this._heatZoomK) || 0;
+    const hk = dt > 0 ? 1 - Math.pow(0.05, dt) : 0;
+    this._heatZoomK = hz0 + (-0.045 * heat - hz0) * hk;
+    const effDist = c.dist * (1 + (Number(this._cueZoomK) || 0) + this._heatZoomK);
     this.camera.position.set(
       c.tx + effDist * cp * Math.sin(c.yaw),
       effDist * sp,
@@ -3032,6 +3070,13 @@ export class World {
   /** 触发摄像机冲击震屏：取较大者，避免连续小冲击被大冲击覆盖时反而变小。
    *  幅度单位为世界单位，约 0.4s 内可见衰减；典型值：克制/重创 1.4、能力 2.5、建筑损毁 4、纪元跃迁 5。 */
   shake(mag) { if (Number.isFinite(mag) && mag > this._shake) this._shake = mag; }
+  /** A 侧 battleIntensityAt() 局部战斗热度（0..1）：只记录，渲染时做持续微推近。
+   *  主循环降频调用；非法入参按 0 处理，绝不改动相机目标与滚轮缩放。 */
+  setBattleHeat(v) {
+    const h = Number(v);
+    this._battleHeat = Number.isFinite(h) ? clamp(h, 0, 1) : 0;
+  }
+
   /** A 侧 cue.zoom 触发的一次性镜头呼吸（正值推近、负值拉远），限幅并自动回弹。 */
   pushZoom(v) {
     const z = Number(v);

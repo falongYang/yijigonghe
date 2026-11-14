@@ -731,3 +731,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
   #commander-card { animation: none; }
   #start-fx { display: none; }
 }
+
+/* ---------------- 阵营态势条（读 A 侧 factionDensity() 只读汇总） ---------------- */
+#front-status { margin-top: 5px; padding: 4px 6px 3px; border-top: 1px solid rgba(255,255,255,.10);
+  font-size: 10px; color: #b9c9a4; line-height: 1.35; }
+#front-status .fs-row { display: flex; justify-content: space-between; }
+#front-status .fs-p { color: #7ef0a0; }
+#front-status .fs-e { color: #ff9a7a; }
+#front-status b { font-variant-numeric: tabular-nums; font-size: 11px; }
+#front-status .fs-bar { height: 4px; margin: 3px 0 2px; border-radius: 3px; background: #ff9a7a; overflow: hidden; }
+#front-status .fs-bar i { display: block; height: 100%; background: #7ef0a0; transition: width .4s ease; }
+#front-status .fs-sub { color: #8a9678; font-size: 9.5px; text-align: center; }
+/* 窄屏下小地图已压缩，态势条让位给画布与图例 */
+@media (max-width: 880px) { #front-status { display: none; } }
