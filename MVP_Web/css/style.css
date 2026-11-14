@@ -531,6 +531,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .unit-tag { font-size: 11px; color: #9fd8e8; letter-spacing: 1px; margin-bottom: 6px; }
 .xpbar { height: 4px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; margin: 4px 0 6px; }
 .xpbar i { display: block; height: 100%; background: linear-gradient(90deg,#ffd27f,#ffb04a); border-radius: 3px; }
+/* 老兵阶梯进度：按阶梯辉光色着色，与 3D 光晕环同口径 */
+.xpbar.vetbar { height: 3px; margin: 3px 0 6px; }
+.xpbar.vetbar i { opacity: .85; }
 .unit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin: 8px 0; }
 .unit-grid > div { background: rgba(126,240,160,.07); border: 1px solid rgba(126,240,160,.16); border-radius: 5px; padding: 4px 6px; font-size: 10.5px; }
 .unit-grid span { display: block; color: #8a9678; }

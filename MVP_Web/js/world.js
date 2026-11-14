@@ -1878,6 +1878,26 @@ export class World {
     ring.visible = false;
     group.add(ring);
 
+    // 老兵阶梯光晕（纯外观，读 A 侧 u.vetTier；击杀越多颜色越炽、缩放越大）
+    const vetRing = new THREE.Mesh(new THREE.RingGeometry(0.70, 0.94, 30),
+      new THREE.MeshBasicMaterial({ color: 0x6cf0ff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    vetRing.rotation.x = -Math.PI / 2;
+    vetRing.position.y = 0.20;
+    vetRing.scale.setScalar((RING_R[u.caste] || 2.6) * 0.78);
+    vetRing.visible = false;
+    vetRing.raycast = () => {};
+    group.add(vetRing);
+
+    // 指令反馈环：A 侧 u.cmdFlash 点亮后向外扩散并淡出，让「下令已被接收」可视化
+    const cmdRing = new THREE.Mesh(new THREE.RingGeometry(0.88, 1.0, 30),
+      new THREE.MeshBasicMaterial({ color: 0x9fffd0, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    cmdRing.rotation.x = -Math.PI / 2;
+    cmdRing.position.y = 0.14;
+    cmdRing.scale.setScalar((RING_R[u.caste] || 2.6) * 0.9);
+    cmdRing.visible = false;
+    cmdRing.raycast = () => {};
+    group.add(cmdRing);
+
     // 战术状态环（内圈细环）：增益 / 减益 / 脚下地貌，用颜色直接读出单位处境
     const statusRing = new THREE.Mesh(new THREE.RingGeometry(0.82, 1.0, 28),
       new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }));
@@ -1890,9 +1910,9 @@ export class World {
 
     group.position.set(u.x, 0, u.z);
     this.scene.add(group);
-    this.unitMeshes.set(u.id, { group, body, bar, fill, ring, eliteRing, statusRing, pips: null, wings, cargo, mound, shadow,
+    this.unitMeshes.set(u.id, { group, body, bar, fill, ring, eliteRing, statusRing, vetRing, cmdRing, pips: null, wings, cargo, mound, shadow,
       burrowMix: u.burrowed ? 1 : 0, side: u.side, caste: u.caste, bodyIsClone: isClone, accent, spawnAt: this.time,
-      heading: u.heading || 0, bank: 0, knock: 0 });
+      heading: u.heading || 0, bank: 0, knock: 0, hitEnv: 0, hitColor: 0xffffff, vetTier: 0, cmdSeq: 0 });
     this.pickables.push(body);
     this._syncUnit(u, true, false);
   }
@@ -1911,32 +1931,56 @@ export class World {
     if (m.ring) m.ring.visible = false;
     if (m.eliteRing) m.eliteRing.visible = false;
     if (m.statusRing) m.statusRing.visible = false;
+    if (m.vetRing) m.vetRing.visible = false;
+    if (m.cmdRing) m.cmdRing.visible = false;
     if (m.pips) m.pips.visible = false;
     if (m.cargo) m.cargo.visible = false;
     if (m.shadow) m.shadow.visible = false;
-    this._dying.set(id, { m, t0: this.time });
+    // A 侧尸体规格（只读）参数化死亡演出：倒地时长 / 沉降 / 淡出 / 旋转 / 碎片数 / 倒向
+    const cp = this._corpseById ? this._corpseById.get(id) : null;
+    this._dying.set(id, { m, t0: this.time, cp: cp || null });
   }
 
-  /** 死亡演出：本体侧翻倒地 + 下沉 + 淡出，约 0.55s 后真正释放网格。 */
+  /** 死亡演出：本体侧翻倒地 + 下沉 + 淡出。
+   *  若 A 侧提供 corpses 只读快照，则用 CORPSE_SPEC（fall/sink/fade/spin/scatter）
+   *  与最后命中方向参数化演出；无快照时保持原有 0.55s 默认演出，保证向后兼容。 */
   _updateDying(dt) {
     for (const [id, rec] of this._dying) {
-      const { m, t0 } = rec;
+      const { m, t0, cp } = rec;
       const el = this.time - t0;
-      const dur = 0.55;
+      const sp = cp && cp.spec ? cp.spec : null;
+      const dur = sp ? clamp(sp.fade, 0.45, 2.4) : 0.55;
       if (el <= 0) continue;
       const k = Math.min(1, el / dur);
-      // 整体侧翻倒地（banking 渐归零），地下单位从土里翻出再消散
-      m.group.rotation.z = m.bank * (1 - k) + 1.35 * k;
+      const fallK = sp ? Math.min(1, el / Math.max(0.12, sp.fall)) : k;
+      const spin = sp ? clamp(sp.spin, 0.3, 2.4) : 1;
+      const sink = sp ? clamp(sp.sink, 0.4, 1.8) : 1;
+      const dir = (cp && cp.dir) || { x: 0, z: 0 };
+      // 倒向继承最后一击方向：左右由 x 决定，前后俯仰由 z 决定
+      const sign = (Number(dir.x) < -0.01) ? -1 : 1;
+      m.group.rotation.z = m.bank * (1 - k) + 1.35 * spin * sign * fallK;
+      m.group.rotation.x = clamp(Number(dir.z) || 0, -1, 1) * 0.45 * fallK;
+      m.group.position.y = -sink * 0.85 * k + (m.burrowMix > 0 ? -2.4 * m.burrowMix * (1 - k) : 0);
       if (m.body) {
-        m.body.rotation.z = 0.9 * k;
+        m.body.rotation.z = 0.9 * spin * fallK;
         m.body.scale.setScalar(Math.max(0.05, 1 - k * 0.55));
         if (m.body.material) {
           m.body.material.transparent = true;
-          m.body.material.opacity = Math.min(m.body.material.opacity ?? 1, 1 - k);
+          m.body.material.opacity = Math.min(m.body.material.opacity ?? 1, Math.pow(1 - k, sp ? 1.25 : 1));
         }
       }
       if (m.shadow) { m.shadow.visible = true; m.shadow.material.opacity = 0.30 * (1 - k); }
-      if (m.burrowMix > 0) m.group.position.y = -2.4 * m.burrowMix * (1 - k) + 0.25 * k;
+      // 落地碎片：按 spec.scatter 数量一次性生成，避免逐帧叠加
+      if (!rec.scattered) {
+        rec.scattered = true;
+        const n = sp ? clamp(Math.round(sp.scatter), 0, 6) : 0;
+        for (let i = 0; i < n; i++) {
+          const a = (i / Math.max(1, n)) * Math.PI * 2 + (id % 7) * 0.3;
+          this.addEffect(cp && cp.domain === 'sea' ? 'bubble' : 'foot', {
+            x: m.group.position.x + Math.cos(a) * 0.8, y: 0.3, z: m.group.position.z + Math.sin(a) * 0.8,
+          });
+        }
+      }
       if (el >= dur) { this._disposeUnitMesh(m); this._dying.delete(id); }
     }
   }
@@ -1948,6 +1992,8 @@ export class World {
     if (m.cargo) { m.cargo.geometry.dispose(); m.cargo.material.dispose(); }
     if (m.mound) { m.mound.geometry.dispose(); m.mound.material.dispose(); }
     if (m.statusRing) { m.statusRing.geometry.dispose(); m.statusRing.material.dispose(); }
+    if (m.vetRing) { m.vetRing.geometry.dispose(); m.vetRing.material.dispose(); }
+    if (m.cmdRing) { m.cmdRing.geometry.dispose(); m.cmdRing.material.dispose(); }
     if (m.shadow) m.shadow.material.dispose();
     if (m.fill) m.fill.material.dispose();
     if (m.ring) m.ring.material.dispose();
@@ -2035,6 +2081,28 @@ export class World {
       }
     }
     m.group.position.y = y;
+
+    // —— 受击物理包络（读 A 侧 u.phys 只读）：方向击退 + 顿帧 + 伤害类型着色 ——
+    // 只偏移渲染层位置/姿态，绝不回写 sim 坐标；与既有 u.flash 应激叠加而非覆盖。
+    const ph = u.phys;
+    let hitstopK = 0;
+    if (ph && Number(ph.env) > 0) {
+      const env = clamp(Number(ph.env), 0, 1);
+      const mag = Number(ph.mag) || 0;
+      m.group.position.x += (Number(ph.dx) || 0) * mag * env * 1.6;
+      m.group.position.z += (Number(ph.dz) || 0) * mag * env * 1.6;
+      m.group.position.y += Math.abs(Math.sin(this.time * 26 + u.id)) * 0.16 * env;
+      hitstopK = clamp((Number(ph.hitstopT) || 0) / 0.06, 0, 1);
+      m.hitEnv = env;
+      m.hitColor = ph.color != null ? ph.color : 0xffffff;
+      // 非玩家可见范围内的重击也给出轻微镜头冲击（取较大者，不叠加刷屏）
+      if (ph.shakeT > 0 && (u.side === SIDES.PLAYER || sel) && Number(ph.shake) > 0.12) {
+        this.shake(Math.min(2.2, Number(ph.shake) * 6));
+      }
+    } else {
+      m.hitEnv = 0;
+    }
+
     // —— 朝向平滑插值（最短弧）+ 行进转弯 banking 侧倾 ——
     let target = m.heading;
     if (u.heading !== undefined) target = Math.atan2(-Math.sin(u.heading), Math.cos(u.heading));
@@ -2067,16 +2135,17 @@ export class World {
     m.body.material.opacity = fullOp * fade * burrowFade;
     m.body.material.transparent = isUg || age < 0.32;
 
-    // —— 呼吸 + 行走腿部起伏 + 攻击前冲 ——
-    const breath = 1 + Math.sin(this.time * 2.2 + u.id) * 0.035;
-    const walk = u.moving ? Math.sin(this.time * 16 + u.id) * 0.07 : 0;
+    // —— 呼吸 + 行走腿部起伏 + 攻击前冲（受击顿帧期间冻结姿态，产生「打中了一下」的停顿感） ——
+    const animK = 1 - hitstopK;
+    const breath = 1 + Math.sin(this.time * 2.2 + u.id) * 0.035 * animK;
+    const walk = u.moving ? Math.sin(this.time * 16 + u.id) * 0.07 * animK : 0;
     m.body.scale.set(pop * (1 - Math.abs(walk) * 0.3), pop * breath, pop * (1 - Math.abs(walk) * 0.3));
     m.body.rotation.z = walk * 0.5;
     // 攻击前冲：刚发动攻击（atkTimer 接近满）时向头部(+X)小幅度突刺
     let lunge = 0;
     if (u.state === 'attack' && u.atkcd && u.atkTimer > u.atkcd * 0.66) {
       const p = (u.atkTimer - u.atkcd * 0.66) / (u.atkcd * 0.34);
-      lunge = Math.sin(p * Math.PI) * 1.1;
+      lunge = Math.sin(p * Math.PI) * 1.1 * animK;
     }
     m.body.position.x = lunge;
     // 攻击姿态差异：近战啃咬绕竖轴小幅摆头；远程/喷吐先微微后仰蓄力再弹回
@@ -2129,10 +2198,16 @@ export class World {
       }
     }
 
-    // 受击闪白：通过本体自发光（白）+ 轻微放大表达，sim 在受击时写入 u.flash（0.16 衰减）
+    // 受击闪光：本体自发光 + 轻微放大。有 A 侧 phys 快照时改用伤害类型色
+    // （撕咬暖黄 / 酸液翠绿 / 轰炸橙红 / 灵能紫），让「被什么打中」一眼可辨。
     if (u.flash > 0) {
-      m.body.material.emissive.setRGB(1, 1, 1);
+      const hc = m.hitEnv > 0 ? m.hitColor : 0xffffff;
+      if (hc === 0xffffff) m.body.material.emissive.setRGB(1, 1, 1);
+      else m.body.material.emissive.setHex(hc);
       m.body.material.emissiveIntensity = 0.12 + u.flash * 2.8;
+    } else if (m.hitEnv > 0.18 && m.hitColor !== 0xffffff) {
+      m.body.material.emissive.setHex(m.hitColor);
+      m.body.material.emissiveIntensity = 0.30 * m.hitEnv;
     } else if (m.accent) {
       m.body.material.emissive.set(m.accent);
       m.body.material.emissiveIntensity = 0.22;
@@ -2141,6 +2216,36 @@ export class World {
       m.body.material.emissiveIntensity = 0;
     }
     if (u.flash > 0) m.body.scale.multiplyScalar(1 + u.flash * 0.6);
+
+    // —— 老兵阶梯（读 A 侧 u.vetTier，纯外观：光晕环 + 微缩放，不改任何属性） ——
+    const vt = u.vetTier;
+    const tier = vt && Number(vt.tier) > 0 ? Math.min(3, Number(vt.tier)) : 0;
+    m.vetTier = tier;
+    if (m.vetRing) {
+      if (tier > 0) {
+        m.vetRing.visible = true;
+        m.vetRing.material.color.setHex(vt.glow != null ? vt.glow : 0x6cf0ff);
+        m.vetRing.material.opacity = (0.26 + 0.10 * tier) + 0.14 * Math.sin(this.time * 2.4 + u.id);
+        m.vetRing.scale.setScalar((RING_R[u.caste] || 2.6) * (0.74 + 0.05 * tier));
+        m.body.scale.multiplyScalar(clamp(Number(vt.scale) || 1, 1, 1.2));
+      } else m.vetRing.visible = false;
+    }
+
+    // —— 指令反馈环（读 A 侧 u.cmdFlash，命令方法点亮后 0.2s 衰减）：扩散 + 淡出 ——
+    if (m.cmdRing) {
+      const cf = clamp(Number(u.cmdFlash) || 0, 0, 1);
+      if (cf > 0.02) {
+        m.cmdRing.visible = true;
+        m.cmdRing.material.color.setHex(0x9fffd0);
+        m.cmdRing.material.opacity = 0.15 + 0.55 * cf;
+        m.cmdRing.scale.setScalar((RING_R[u.caste] || 2.6) * (0.9 + (1 - cf) * 1.1));
+      } else m.cmdRing.visible = false;
+    }
+
+    // —— 聚簇密度（读 A 侧 u.densityBand / u.density，纯视觉挤压，避免密集队形糊成一团） ——
+    const band = Number(u.densityBand != null ? u.densityBand : (Number(u.density) || 0) >= 8 ? 3
+      : (Number(u.density) || 0) >= 4 ? 2 : (Number(u.density) || 0) >= 1 ? 1 : 0);
+    if (band > 0) m.body.scale.multiplyScalar(1 - 0.018 * band);
 
     // 血条 / 等级星点 / 选择环 / 精英辉光（按需显示，降低画面杂乱与渲染开销）
     const ratio = clamp(u.hp / u.maxHp, 0, 1);
@@ -2302,6 +2407,13 @@ export class World {
   /** 每帧：同步全部单位/建筑的可视状态（位置/血条/选择环），并回收已消失实体。
    *  frozen=true 时（暂停）不生成新的扬尘，避免特效因时间冻结而无法回收。 */
   syncFrame(sim, frozen = false) {
+    // A 侧阵亡演出快照（只读，按 life 自动回收）：按 id 索引供 removeUnit 参数化演出
+    if (sim && typeof sim.activeCorpses === 'function') {
+      const cs = sim.activeCorpses() || [];
+      const map = new Map();
+      for (const c of cs) if (c && c.id != null) map.set(c.id, c);
+      this._corpseById = map;
+    } else if (!this._corpseById) this._corpseById = new Map();
     this._syncWeather(sim);          // 只读读取 A 侧当前天气（含动态时间线切换），不新增事件
     this._syncScene(sim);            // 只读拉取章节氛围 / 周期场景事件（降频，不新增事件）
     this._syncTracers(sim);          // 只读渲染 A 侧在飞弹道（复合/近战命中当帧结算，此处仅画飞行物与拖尾）

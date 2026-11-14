@@ -1592,12 +1592,26 @@ export class UI {
     if ((u.slowT || 0) > 0) stTags.push(`<b style="color:#8fa8c8">减速 ${u.slowT.toFixed(1)}s</b>`);
     if ((u.stunT || 0) > 0) stTags.push(`<b style="color:#e8eef6">眩晕 ${u.stunT.toFixed(1)}s</b>`);
     const statusHtml = stTags.length ? `<div class="kv"><span>状态效果</span><b>${stTags.join(' · ')}</b></div>` : '';
+    // 老兵阶梯（读 A 侧 u.vetTier / u.kills，纯外观成长）：击杀数 + 称号 + 下一阶进度
+    const vt = u.vetTier;
+    const kills = Math.max(0, Number(u.kills) || 0);
+    let vetHtml = '';
+    if (vt && Number(vt.tier) > 0) {
+      const glow = Number(vt.glow) || 0x6cf0ff;
+      const col = '#' + glow.toString(16).padStart(6, '0');
+      const prog = Math.max(0, Math.min(100, Math.round((Number(vt.prog) || 0) * 100)));
+      vetHtml = `<div class="kv"><span>战绩</span><b style="color:${col}">${vt.name || '老兵'} · ${kills} 击杀</b></div>
+        <div class="xpbar vetbar"><i style="width:${prog}%;background:${col}"></i></div>`;
+    }
+    const dens = Number(u.density) || 0;
+    const densityHtml = dens >= 4 ? `<div class="muted sm">周围单位 ${dens} · 密集队形</div>` : '';
     return `<div class="unit-tag">${u.side === SIDES.PLAYER ? '我方' : '敌方'} · ${dom} · ${def.role === 'econ' ? '采集单位' : '作战单位'}</div>
       <div class="hpbar"><i style="width:${hpPct}%"></i></div>
       <div class="kv"><span>耐久</span><b>${Math.ceil(Math.max(0, u.hp))} / ${u.maxHp}</b></div>
       <div class="kv"><span>等级</span><b>Lv${lv}${u.elite ? ' · 精英' : ''}</b></div>
       <div class="xpbar"><i style="width:${xpPct}%"></i></div>
       <div class="kv"><span>经验</span><b>${need ? `${Math.floor(u.xp || 0)} / ${need}` : '已满级'}</b></div>
+      ${vetHtml}${densityHtml}
       <div class="unit-grid">
         <div><span>攻击</span><b>${e.dmg}</b></div><div><span>射程</span><b>${e.range}</b></div>
         <div><span>攻速</span><b>${(1 / (e.atkcd || 1)).toFixed(1)}/s</b></div><div><span>移速</span><b>${e.speed}</b></div>
