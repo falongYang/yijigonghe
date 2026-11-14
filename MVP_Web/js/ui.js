@@ -1901,6 +1901,41 @@ export class UI {
       g.fillStyle = 'rgba(255,225,150,0.85)'; g.fill();
       g.strokeStyle = 'rgba(90,60,20,0.8)'; g.lineWidth = 1; g.stroke();
     }
+    // A 侧 minimapZones() 静态底图图层：边界 / 静态危害 / 大尺度地形地标。
+    // 只画一次并随底图缓存；动态单位、建筑、资源仍由 _drawMinimap 叠加，互不混淆。
+    let zones = null;
+    try {
+      zones = (this.sim && typeof this.sim.minimapZones === 'function') ? this.sim.minimapZones() : null;
+    } catch { zones = null; }
+    if (zones && typeof zones === 'object') {
+      if (zones.edge && Number.isFinite(zones.edge.w) && Number.isFinite(zones.edge.h)) {
+        const x0 = Math.max(0, toX(-zones.edge.w / 2)), x1 = Math.min(W, toX(zones.edge.w / 2));
+        const y0 = Math.max(0, toY(-zones.edge.h / 2)), y1 = Math.min(H, toY(zones.edge.h / 2));
+        g.strokeStyle = 'rgba(205,225,185,0.20)'; g.lineWidth = 1;
+        g.setLineDash([3, 3]);
+        g.strokeRect(x0 + 0.5, y0 + 0.5, Math.max(0, x1 - x0 - 1), Math.max(0, y1 - y0 - 1));
+        g.setLineDash([]);
+      }
+      for (const h of (Array.isArray(zones.hazards) ? zones.hazards : [])) {
+        if (!h || !Number.isFinite(h.x) || !Number.isFinite(h.z)) continue;
+        const rx = Math.max(1.5, (Number(h.r) || 3) / (2 * HW) * W);
+        const ry = Math.max(1.5, (Number(h.r) || 3) / (2 * HH) * H);
+        g.beginPath(); g.ellipse(toX(h.x), toY(h.z), rx, ry, 0, 0, 6.28);
+        g.fillStyle = 'rgba(255,90,60,0.10)'; g.fill();
+        g.strokeStyle = 'rgba(255,110,70,0.55)'; g.lineWidth = 1;
+        g.setLineDash([2, 2]); g.stroke(); g.setLineDash([]);
+      }
+      for (const f of (Array.isArray(zones.features) ? zones.features : [])) {
+        if (!f || !Number.isFinite(f.x) || !Number.isFinite(f.z)) continue;
+        const cx = toX(f.x), cy = toY(f.z);
+        const r = Math.max(1.4, Math.min(3.2, (Number(f.r) || 3) / (2 * HW) * W));
+        g.beginPath();
+        g.moveTo(cx, cy - r); g.lineTo(cx + r, cy); g.lineTo(cx, cy + r); g.lineTo(cx - r, cy); g.closePath();
+        g.fillStyle = 'rgba(226,214,180,0.55)'; g.fill();
+        g.strokeStyle = 'rgba(60,50,35,0.65)'; g.lineWidth = 0.7; g.stroke();
+      }
+      // zones.water 与 cfg.water 同源，浅滩 / 水体已在上面绘制，不重复叠色。
+    }
     this._mmBase = cv; this._mmBaseName = cfg.name || '';
   }
 

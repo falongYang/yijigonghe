@@ -130,7 +130,7 @@ function startGame(spId, sel = {}) {
   sim.reset(spId, { mode, chapter, archetype, difficulty });
   world.resetBattle();
   world.setSides(sim.sp.P, sim.sp.E);
-  world.loadMap(sim.map);
+  world.loadMap(sim.map, sim);   // 第二参数只读消费 A 侧细节八：水域视觉 / 地标 / 地表高程
   world.spawnNodes(sim);
   // 地图装饰点位：A 侧确定性布点（纯视觉，避开资源/水域/巢区/危害），每局重建一次
   world.buildDecor(typeof sim.decorPoints === 'function' ? sim.decorPoints() : null);

@@ -355,6 +355,13 @@ export class World {
     this.decorGroup = new THREE.Group();
     this.decorGroup.frustumCulled = false;
     this._decorGeo = null;          // 按 kind 缓存几何，跨地图复用，避免逐点分配
+    // 大尺度地形地标（读 A 侧 sim.terrainFeatures()）：与装饰点分层管理，换图独立释放
+    this.featureGroup = new THREE.Group();
+    this._featureGeo = null;
+    this._features = null;
+    // A 侧细节八的其余只读面（loadMap 时注入，缺省全部回落旧表现）
+    this._waterVisuals = null;      // waterVisuals()：逐水域波纹 / 潮汐 / 闪光 / 水体色
+    this._elevFn = null;            // elevationAt()：高斯核地表高程，仅用于明暗与贴地层次
     // 战术坐标网格：贴地细线 / 主线 / 中轴基准线，随镜头拉近渐清晰
     this.gridGroup = new THREE.Group();
     this._gridLayers = null;
@@ -379,6 +386,7 @@ export class World {
     this.scene.add(this.decalGroup);
     this.scene.add(this.landmarkGroup);
     this.scene.add(this.decorGroup);
+    this.scene.add(this.featureGroup);
     this.scene.add(this.gridGroup);
     this._buildScatter();
     this._buildCursor();
@@ -904,8 +912,11 @@ export class World {
     if (!this._decorGeo) this._decorGeo = this._makeDecorGeo();
     for (const d of decor) {
       const g = this._decorGeo[d.kind] || this._decorGeo.tuft;
+      // tint/shade 已含 A 侧生态分区（近水 / 边缘 / 资源点）微调；再叠一层高程明暗，
+      // 让装饰随丘陵起伏呈现自然的受光差异，纯色彩、不改贴地高度。
+      const shade = clamp((d.shade != null ? Number(d.shade) : 1) + this._elev(d.x, d.z) * 0.045, 0.5, 1.5);
       const mat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(d.tint != null ? d.tint : 0x9a8362).multiplyScalar(d.shade != null ? d.shade : 1),
+        color: new THREE.Color(d.tint != null ? d.tint : 0x9a8362).multiplyScalar(shade),
         roughness: 0.92, metalness: 0, flatShading: true,
         transparent: d.kind === 'puddle', opacity: d.kind === 'puddle' ? 0.6 : 1,
       });
@@ -928,6 +939,76 @@ export class World {
   /** 公开入口：传入 A 侧确定性装饰点位（sim.decorPoints()）。 */
   buildDecor(decor) { this._rebuildDecor(decor); }
 
+  /* ------------- A 侧细节八：地图地形细节（全部只读、纯视觉、缺接口自动回落） ------------- */
+  /** 从 sim 拉取水域视觉规格、大尺度地标与地表高程采样函数；任一接口缺失都不影响旧画面。 */
+  _applyMapDetails(sim) {
+    const read = name => {
+      if (!sim || typeof sim[name] !== 'function') return null;
+      try { return sim[name](); } catch { return null; }
+    };
+    const wv = read('waterVisuals');
+    const ft = read('terrainFeatures');
+    this._waterVisuals = Array.isArray(wv) ? wv : null;
+    this._features = Array.isArray(ft) ? ft : null;
+    this._elevFn = (sim && typeof sim.elevationAt === 'function')
+      ? (x, z) => {
+        try {
+          const v = sim.elevationAt(x, z);
+          return Number.isFinite(v) ? clamp(v, -4, 4) : 0;
+        } catch { return 0; }
+      }
+      : null;
+  }
+  /** 视觉高程：只用于颜色层次与静态大件明暗，不改地形网格 y（避免单位/贴片穿模）。 */
+  _elev(x, z) { return this._elevFn ? this._elevFn(x, z) : 0; }
+
+  /** 地标几何按 kind 缓存一次，跨地图复用；逐点材质在换图时释放。 */
+  _makeFeatureGeo() {
+    return {
+      rock: new THREE.IcosahedronGeometry(1, 0),
+      boulder: new THREE.DodecahedronGeometry(1, 0),
+      crystal: new THREE.ConeGeometry(0.8, 2.4, 6),
+      mast: new THREE.CylinderGeometry(0.22, 0.42, 3.6, 6),
+      pillar: new THREE.CylinderGeometry(0.75, 0.9, 3.0, 8),
+      rubble: new THREE.TetrahedronGeometry(1.2, 0),
+      salt: new THREE.ConeGeometry(0.55, 2.0, 5),
+      monolith: new THREE.BoxGeometry(1.2, 3.4, 0.8),
+    };
+  }
+  // 各类几何的半高（缩放后决定贴地 y），让大件稳稳落在地面上
+  static get FEATURE_LIFT() {
+    return { rock: 1, boulder: 1, crystal: 1.2, mast: 1.8, pillar: 1.5, rubble: 0.7, salt: 1, monolith: 1.7 };
+  }
+  _clearFeatures() {
+    if (!this.featureGroup) return;
+    for (const c of [...this.featureGroup.children]) {
+      this.featureGroup.remove(c);
+      if (c.material) c.material.dispose();
+    }
+  }
+  /** 渲染 sim.terrainFeatures() 的大尺度地标：确定性点位、按章节调色、按高程微调明暗。 */
+  _rebuildFeatures() {
+    this._clearFeatures();
+    const list = this._features;
+    if (!this.featureGroup || !Array.isArray(list) || !list.length) return;
+    if (!this._featureGeo) this._featureGeo = this._makeFeatureGeo();
+    const lift = World.FEATURE_LIFT;
+    for (const f of list) {
+      const kind = this._featureGeo[f.kind] ? f.kind : 'rock';
+      const geo = this._featureGeo[kind];
+      const scale = Math.max(0.6, Number(f.size) || 1.6) * 1.5;
+      const shade = clamp((Number(f.shade) || 1) + this._elev(f.x, f.z) * 0.055, 0.45, 1.45);
+      const col = new THREE.Color(f.tint != null ? f.tint : 0x9a8362).multiplyScalar(shade);
+      const mat = new THREE.MeshStandardMaterial({ color: col, roughness: 0.95, metalness: 0, flatShading: true });
+      const m = new THREE.Mesh(geo, mat);
+      const y = this._groundY(f.x, f.z) + (lift[kind] || 1) * scale - 0.15;
+      m.position.set(f.x, y, f.z);
+      m.rotation.y = Number(f.rot) || 0;
+      m.scale.setScalar(scale);
+      m.castShadow = !!f.solid; m.receiveShadow = false;
+      this.featureGroup.add(m);
+    }
+  }
 
   /** 战术坐标网格：贴地细线（每 20 单位）+ 每 5 格主线 + 中轴 / 巢区基准线 + 边缘刻度。
    *  分段采样地面高度函数，避免直线穿进起伏坡面；三层各用一个 LineSegments，开销极低。
@@ -1112,15 +1193,21 @@ export class World {
       const t = clamp((n + 1.4) / 2.8, 0, 1);
       const cc = cLow.clone().lerp(cMid, t).lerp(cHigh, Math.max(0, t - 0.5) * 2);
       if (n < -0.5 && Math.random() < 0.5) cc.lerp(cMoss, 0.5);
+      // A 侧 elevationAt()：只把平滑高程映射成丘陵明暗（不改顶点 y），
+      // 地形网格、单位贴地与拾取平面仍保持同一高度真源，零穿模风险。
+      cc.multiplyScalar(clamp(1 + this._elev(x, z) * 0.055, 0.88, 1.12));
       col.setXYZ(i, cc.r, cc.g, cc.b);
     }
     col.needsUpdate = true;
     geo.computeVertexNormals();
   }
 
-  /** 载入一套战场地图配置：配色 / 雾 / 散布 / 水域。 */
-  loadMap(cfg) {
+  /** 载入一套战场地图配置：配色 / 雾 / 散布 / 水域。
+   *  第二参数可传 sim（只读快照源），用于消费 A 侧细节八的水域视觉 / 地标 / 高程；
+   *  不传或老版本 sim 缺接口时全部自动回落原有表现。 */
+  loadMap(cfg, sim = null) {
     if (!cfg) return;
+    this._applyMapDetails(sim);
     this.mapCfg = cfg;
     this.baseBg = new THREE.Color(cfg.bg);
     this.scene.fog.near = cfg.fog[0];
@@ -1137,6 +1224,7 @@ export class World {
     this._rebuildGrid(cfg);
     this._rebuildPaths(cfg);
     this._rebuildWater(cfg);
+    this._rebuildFeatures();
     this._zones = mapZones(cfg); this._rebuildZones(this._zones);
     this._rebuildWells(mapWells(cfg));
     this._rebuildObstacles(mapObstacles(cfg));
@@ -1240,29 +1328,43 @@ export class World {
     this.waterRipples = [];
     const waterCol = new THREE.Color(0x2f6f8a).lerp(new THREE.Color(cfg.pal.moss), 0.18);
     const shoreCol = new THREE.Color(cfg.pal.high).lerp(new THREE.Color(0x8fb8c8), 0.55);
-    for (const w of (cfg.water || [])) {
+    for (const [wi, w] of (cfg.water || []).entries()) {
+      // A 侧 waterVisuals() 与 cfg.water 同序：逐水域的水体色 / 波纹频率 / 潮汐 / 闪光
+      const v = (this._waterVisuals && this._waterVisuals[wi]) || null;
+      const wCol = v && v.tint != null ? waterCol.clone().lerp(new THREE.Color(v.tint), 0.32) : waterCol.clone();
+      const sCol = v && v.tint != null ? shoreCol.clone().lerp(new THREE.Color(v.tint), 0.18) : shoreCol.clone();
+      const shimmer = v && Number.isFinite(v.shimmer) ? clamp(v.shimmer, 0, 1.5) : 0;
       // 浅滩：水域外缘一圈湿痕
       const shore = new THREE.Mesh(new THREE.RingGeometry(w.r * 0.98, w.r * 1.14, 48),
-        new THREE.MeshBasicMaterial({ color: shoreCol, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false }));
+        new THREE.MeshBasicMaterial({ color: sCol, transparent: true, opacity: 0.26, side: THREE.DoubleSide, depthWrite: false }));
       shore.rotation.x = -Math.PI / 2; shore.position.set(w.x, 0.28, w.z); shore.renderOrder = 1;
       this.waterGroup.add(shore);
       const disc = new THREE.Mesh(new THREE.CircleGeometry(w.r, 40),
-        new THREE.MeshStandardMaterial({ color: waterCol, roughness: 0.28, metalness: 0.12, transparent: true, opacity: 0.8,
-          emissive: new THREE.Color(0x123a4a), emissiveIntensity: 0.3 }));
+        new THREE.MeshStandardMaterial({ color: wCol, roughness: 0.28, metalness: 0.12, transparent: true, opacity: 0.8,
+          emissive: new THREE.Color(0x123a4a), emissiveIntensity: 0.3 + shimmer * 0.35 }));
       disc.rotation.x = -Math.PI / 2;
       const baseY = 0.36;
       disc.position.set(w.x, baseY, w.z);
       disc.receiveShadow = true;
       this.waterGroup.add(disc);
-      this.waterDiscs.push({ mesh: disc, baseY });
-      // 同心波纹：由内向外扩散并淡出
+      this.waterDiscs.push({
+        mesh: disc, baseY, shimmer,
+        tide: v && Number.isFinite(v.tide) ? v.tide : 0,
+        tideAmp: v && Number.isFinite(v.tideAmp) ? v.tideAmp : 0,
+      });
+      // 同心波纹：由内向外扩散并淡出；频率与相位逐水域不同，避免整图同步呼吸
       for (let j = 0; j < 2; j++) {
         const r0 = w.r * 0.62;
         const ripple = new THREE.Mesh(new THREE.RingGeometry(r0, r0 + 0.5, 48),
-          new THREE.MeshBasicMaterial({ color: 0xbfe6f0, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
+          new THREE.MeshBasicMaterial({ color: 0xbfe6f0, transparent: true, opacity: 0.3 + shimmer * 0.06,
+            side: THREE.DoubleSide, depthWrite: false }));
         ripple.rotation.x = -Math.PI / 2; ripple.position.set(w.x, 0.42, w.z); ripple.renderOrder = 2;
         this.waterGroup.add(ripple);
-        this.waterRipples.push({ mesh: ripple, phase: j * 0.5 + (w.x + w.z) * 0.01 });
+        this.waterRipples.push({
+          mesh: ripple,
+          phase: j * 0.5 + (v && Number.isFinite(v.ripplePhase) ? v.ripplePhase : (w.x + w.z) * 0.01),
+          speed: v && Number.isFinite(v.ripple) ? v.ripple : 1,
+        });
       }
     }
   }
@@ -1564,13 +1666,17 @@ export class World {
     }
     if (this.waterDiscs) for (let i = 0; i < this.waterDiscs.length; i++) {
       const d = this.waterDiscs[i];
-      d.mesh.material.opacity = 0.64 + 0.12 * Math.sin(t * 1.4 + i * 1.3);
-      d.mesh.position.y = d.baseY + 0.12 * Math.sin(t * 1.1 + i * 0.9);
-      const s = 1 + 0.012 * Math.sin(t * 0.9 + i);
+      // A 侧逐水域规格：有潮汐周期的水面叠加极缓慢的涨落，闪光强度抬一点底色亮度
+      const tideW = d.tide > 0 ? 2 * Math.PI / d.tide : 0;
+      const tideK = tideW ? Math.sin(t * tideW) : 0;
+      const amp = d.tideAmp || 0;
+      d.mesh.material.opacity = clamp(0.64 + 0.12 * Math.sin(t * 1.4 + i * 1.3) + (d.shimmer || 0) * 0.04, 0.4, 0.92);
+      d.mesh.position.y = d.baseY + 0.12 * Math.sin(t * 1.1 + i * 0.9) + (tideW ? 0.06 * amp * tideK : 0);
+      const s = 1 + 0.012 * Math.sin(t * 0.9 + i) + (tideW ? 0.01 * amp * tideK : 0);
       d.mesh.scale.set(s, s, s);
     }
     for (const w of this.waterRipples) {
-      const k = ((t * 0.22 + w.phase) % 1 + 1) % 1;
+      const k = ((t * 0.22 * (w.speed || 1) + w.phase) % 1 + 1) % 1;
       const s = 0.22 + k * 1.18;
       w.mesh.scale.set(s, s, s);
       w.mesh.material.opacity = 0.34 * (1 - k);
@@ -2876,6 +2982,8 @@ export class World {
     this._clearGroup(this.zoneGroup); this.zoneVisuals = [];
     this._clearGroup(this.wellGroup); this.wellVisuals = [];
     this._clearDecor();                 // 换局清掉上一章装饰点位（新图会由 buildDecor 重建）
+    this._clearFeatures();              // 大尺度地标同理，loadMap 会按新章节重建
+    this._features = null; this._waterVisuals = null; this._elevFn = null;
     this._sceneEvent = null; this._sceneEvtK = 0; this._sceneTint.set(0xffffff);
     this._daySpec = null;
     this.intro = null;
