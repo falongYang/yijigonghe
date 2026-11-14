@@ -815,6 +815,8 @@ export class UI {
     $('#pause-menu').onclick = () => this.hooks.onMenu();
     $('#btn-end-restart').onclick = () => this.hooks.onRestart();
     $('#btn-end-menu').onclick = () => { $('#end').classList.add('hidden'); this.showStart(); };
+    const endCopy = $('#btn-end-copy');
+    if (endCopy) endCopy.onclick = () => this._copyBattleReport();
     $('#speeds').onclick = e => {
       const b = e.target.closest('.tbtn'); if (!b) return;
       document.querySelectorAll('#speeds .tbtn').forEach(x => x.classList.remove('on'));
@@ -1196,9 +1198,10 @@ export class UI {
       <div><span>后勤维修 / 基地回防</span><b>${stE.repairs || 0} / ${stE.defenses || 0}</b></div>
       <div><span>敌方损失</span><b>${stE.losses || 0}</b></div>` : '') : '';
     // 战场叙事战报（读 A 侧 battleSummary() 只读聚合，缺接口时整段跳过）
+    // bs 提升到外层：可视化战报与复制文本都复用同一份快照，避免二次调用只读查询
+    const bs = (typeof s.battleSummary === 'function' && s.battleSummary()) || {};
     let battleHtml = '';
     if (typeof s.battleSummary === 'function') {
-      const bs = s.battleSummary() || {};
       const trade = bs.tradeRatio ? bs.tradeRatio.P : 0;
       battleHtml = `
       <div class="end-stat-sep">战场叙事 · 战报</div>
@@ -1209,6 +1212,10 @@ export class UI {
       <div><span>气象转变 / 场景异象</span><b>${bs.weatherShifts || 0} / ${bs.sceneEvents || 0}</b></div>
       <div><span>里程碑 / 累计采集</span><b>${bs.milestones || 0} / ${Math.round(bs.harvested || 0)}</b></div>`;
     }
+    // 可视化战报 + 可复制文本：缺 battleSummary / stats 时自动回落到基础统计，绝不阻断结算
+    this._battleReportText = this._buildBattleText(s, win, st0, bs);
+    const chartBox = document.getElementById('end-chart');
+    if (chartBox) this._setHTML(chartBox, this._battleChart(bs, st0, s));
     $('#end-stats').innerHTML = `
       <div><span>模式</span><b>${s.mode === 'campaign' ? '战役·第' + (s.chapter + 1) + '章' : '遭遇战'}</b></div>
       <div><span>我方纪元</span><b>${ERA_NAMES[s.era.P]}</b></div>
@@ -1235,6 +1242,87 @@ export class UI {
       }
     }
     $('#end').classList.remove('hidden');
+  }
+
+  /** 结算可视化战报：把 A 侧只读聚合数据画成 4 组对比条（内联 SVG、无外部依赖、无动画）。
+   *  所有数值经 Number / 有限性清洗，标签是固定文案，绝不把外部字符串拼进 HTML。 */
+  _battleChart(bs, st, s) {
+    const num = v => { const x = Number(v); return Number.isFinite(x) ? Math.max(0, x) : 0; };
+    const safe = (bs && typeof bs === 'object') ? bs : {};
+    const pop = (s && typeof s.pop === 'function') ? num(s.pop(SIDES.PLAYER)) : 0;
+    const total = num(safe.duration) || num(s && s.time);
+    const peak = num(safe.peakArmy) || num(s && s.peakPop && s.peakPop[SIDES.PLAYER]) || pop;
+    const rows = [
+      { label: '击杀 / 损失',     a: num(st && st.kills),     b: num(st && st.losses),    ca: '#7ef0a0', cb: '#ff7a6a', unit: '' },
+      { label: '输出 / 承受伤害', a: num(st && st.dmgDealt),  b: num(st && st.dmgTaken),  ca: '#ffd27f', cb: '#b9a0c8', unit: '' },
+      { label: '实战 / 总时长',   a: num(safe.battleTime),    b: total,                   ca: '#7fd0e0', cb: '#6f7a60', unit: 's' },
+      { label: '峰值 / 存活兵力', a: peak,                     b: pop,                     ca: '#9fe0a0', cb: '#8fa8c8', unit: '' },
+    ];
+    const X = 124, W = 250;
+    let bars = '';
+    rows.forEach((r, i) => {
+      const y = 30 + i * 36;
+      const max = Math.max(1, r.a, r.b);
+      const wa = Math.max(2, Math.round(W * r.a / max));
+      const wb = Math.max(2, Math.round(W * r.b / max));
+      const fa = Math.round(r.a) + r.unit, fb = Math.round(r.b) + r.unit;
+      bars += `<text x="8" y="${y + 13}" class="ec-label">${r.label}</text>`
+        + `<rect x="${X}" y="${y}" width="${W}" height="9" rx="4" class="ec-track"/>`
+        + `<rect x="${X}" y="${y + 14}" width="${W}" height="9" rx="4" class="ec-track"/>`
+        + `<rect x="${X}" y="${y}" width="${wa}" height="9" rx="4" fill="${r.ca}"/>`
+        + `<rect x="${X}" y="${y + 14}" width="${wb}" height="9" rx="4" fill="${r.cb}"/>`
+        + `<text x="436" y="${y + 8}" text-anchor="end" class="ec-val">${fa}</text>`
+        + `<text x="436" y="${y + 22}" text-anchor="end" class="ec-val">${fb}</text>`;
+    });
+    const meta = `交换比 ${num(safe.tradeRatio && safe.tradeRatio.P).toFixed(2)} · 精英击杀 ${Math.round(num(safe.eliteKills))} · 老兵晋升 ${Math.round(num(safe.veterans))}`;
+    return '<div class="end-chart"><div class="ec-h">战局对比 · 可视化战报</div>'
+      + `<svg viewBox="0 0 440 176" role="img" aria-label="结算战报对比图：${meta}">${bars}</svg>`
+      + `<div class="ec-meta">${meta}</div></div>`;
+  }
+
+  /** 复制战报用的纯文本（与结算页数字同口径，便于贴到群聊 / 复盘文档）。 */
+  _buildBattleText(s, win, st, bs) {
+    const num = v => { const x = Number(v); return Number.isFinite(x) ? Math.max(0, Math.round(x)) : 0; };
+    const safe = (bs && typeof bs === 'object') ? bs : {};
+    const era = ERA_NAMES[s.era && s.era.P] || '—';
+    return [
+      `【蚁纪·共时】战报 · ${win ? '胜利' : '战败'}`,
+      `模式：${s.mode === 'campaign' ? '战役 第' + (num(s.chapter) + 1) + '章' : '遭遇战'} · 我方纪元：${era} · 难度：${String((s.difficulty && s.difficulty.name) || '标准')}`,
+      `战场环境：${String((s.climate && s.climate.name) || '—')}`,
+      `总时长：${num(safe.duration || s.time)}s · 实战时长：${num(safe.battleTime)}s`,
+      `击杀 / 损失：${num(st && st.kills)} / ${num(st && st.losses)}`,
+      `造成伤害 / 承受伤害：${num(st && st.dmgDealt)} / ${num(st && st.dmgTaken)}`,
+      `累计采集 / 建造 / 进化：${num(st && st.harvested)} / ${num(st && st.built)} / ${num(st && st.evolved)}`,
+      `交换比：${(Number(safe.tradeRatio && safe.tradeRatio.P) || 0).toFixed(2)} · 峰值兵力：${num(safe.peakArmy)} · 累计出兵：${num(safe.born && safe.born.P)}`,
+      `精英击杀：${num(safe.eliteKills)} · 老兵晋升：${num(safe.veterans)} · 共振命中：${num(safe.resonanceHits)}`,
+      `气象转变：${num(safe.weatherShifts)} · 场景异象：${num(safe.sceneEvents)} · 里程碑：${num(safe.milestones)}`,
+    ].join('\n');
+  }
+
+  /** 一键复制战报：优先 Clipboard API，失败回落到 execCommand，再失败给出手动提示。 */
+  _copyBattleReport() {
+    const text = this._battleReportText;
+    if (!text) { this.toast('本局暂无可复制的战报'); return; }
+    const done = () => { this.toast('战报已复制到剪贴板'); Sound.play('select'); };
+    const fallback = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly', '');
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta); ta.select();
+        const copied = !!(document.execCommand && document.execCommand('copy'));
+        if (ta.remove) ta.remove();
+        if (copied) { done(); return; }
+      } catch { /* 隐私模式 / 无权限：走最终提示 */ }
+      this.toast('剪贴板不可用，请在结算页手动选取战报文本', { life: 4200 });
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        const p = navigator.clipboard.writeText(text);
+        if (p && p.then) { p.then(done).catch(fallback); return; }
+      }
+    } catch { /* 走降级 */ }
+    fallback();
   }
 
   // 作战目标 HUD：非「摧毁」类目标（存活 / 采集 / 占井）会在左上实时显示进度。

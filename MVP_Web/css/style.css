@@ -239,6 +239,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 #end-stats div { background: rgba(255,255,255,.05); border-radius: 8px; padding: 10px; }
 #end-stats span { display: block; color: #9aa489; font-size: 12px; }
 #end-stats b { font-size: 18px; color: #eaf2dc; }
+/* 结算可视化战报：4 组对比条为内联 SVG，无外部依赖 / 无动画，窄屏按容器等比缩放 */
+#end-chart { max-width: 560px; margin: 0 auto 16px; }
+.end-chart { padding: 10px 12px 8px; border: 1px solid rgba(126,240,160,.18);
+  border-radius: 10px; background: rgba(126,240,160,.04); text-align: left; }
+.ec-h { color: #7ef0a0; font-size: 11px; letter-spacing: 2px; margin-bottom: 4px; }
+.end-chart svg { display: block; width: 100%; height: auto; }
+.ec-label { fill: #9aa489; font-size: 10.5px; }
+.ec-val { fill: #dfe6d2; font-size: 10px; font-variant-numeric: tabular-nums; }
+.ec-track { fill: rgba(255,255,255,.07); }
+.ec-meta { color: #9aa489; font-size: 10.5px; text-align: right; margin-top: 2px; }
 
 /* 框选 */
 #boxsel { position: fixed; }
@@ -359,7 +369,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 @keyframes cs-in { from { opacity: 0; transform: translateX(-50%) translateY(6px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 
 
-.end-btns { display: flex; gap: 12px; justify-content: center; }
+.end-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 #btn-end-menu { margin: 0; }
 
 /* ---------------- 地图名徽标 + 静音按钮 ---------------- */
