@@ -1090,6 +1090,7 @@ export class UI {
     $('#mission-obj').textContent = '目标：' + (o.label || '');
     this._updateObjective(s);   // 立即渲染首帧进度，避免开局面板空白
     this._updateWeather(s);     // 立即渲染天气 HUD，避免开局面板空白
+    this._updateScene(s);       // 立即渲染场景事件横幅（无事件时隐藏）
   }
 
   /** 目标实时进度：读 A 侧 sim.objectiveProgress()（只读，不新增事件），按类型呈现倒计时 / 采集量 / 占井守时。 */
@@ -1156,6 +1157,28 @@ export class UI {
       `<div class="wh-row"><span class="wh-ic" style="color:${col}">${ic}</span><b>${w.name}</b></div>` +
       `<div class="wh-mods"><span class="${visCls}">视野 ${pct(vis)}</span><span class="${hitCls}">远程 ${pct(hit)}</span></div>` +
       fc;
+  }
+
+  /** 场景周期事件横幅：读 A 侧 sceneEvent()（战役专属，纯氛围播报；遭遇战恒空）。 */
+  _updateScene(s) {
+    const el = document.getElementById('scene-event');
+    if (!el) return;
+    let ev = null;
+    try {
+      if (typeof s.sceneEvent === 'function') ev = s.sceneEvent();
+      else if (typeof s.sceneInfo === 'function') { const info = s.sceneInfo(); ev = info && info.event; }
+    } catch (_) { ev = null; }
+    if (!ev) { el.classList.add('hidden'); return; }
+    const col = (typeof ev.color === 'number')
+      ? '#' + ev.color.toString(16).padStart(6, '0') : (ev.color || '#ffe14a');
+    const dur = ev.dur || 0, left = Math.max(0, Number(ev.remaining) || 0);
+    const pct = dur > 0 ? Math.max(0, Math.min(100, left / dur * 100)) : 0;
+    el.classList.remove('hidden');
+    el.style.setProperty('--se-color', col);
+    el.innerHTML =
+      `<div class="se-row"><span class="se-tag">场景异象</span><b>${ev.label || '异象'}</b><small>${left.toFixed(1)}s</small></div>` +
+      (ev.text ? `<div class="se-text">${ev.text}</div>` : '') +
+      `<div class="se-bar"><i style="width:${pct.toFixed(1)}%"></i></div>`;
   }
 
   // 战场地图名（六章差异化地图）：传入配置对象时附带主题 tooltip，点击可重看简报
@@ -1310,6 +1333,7 @@ export class UI {
     this._updateObjective(s);
     this._updateEconStatus(s);
     this._updateWeather(s);
+    this._updateScene(s);
 
     this._refreshSelection();
     this._drawMinimap();

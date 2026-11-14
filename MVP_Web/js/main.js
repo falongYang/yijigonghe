@@ -87,6 +87,8 @@ function startGame(spId, sel = {}) {
   world.setSides(sim.sp.P, sim.sp.E);
   world.loadMap(sim.map);
   world.spawnNodes(sim);
+  // 地图装饰点位：A 侧确定性布点（纯视觉，避开资源/水域/巢区/危害），每局重建一次
+  world.buildDecor(typeof sim.decorPoints === 'function' ? sim.decorPoints() : null);
   // loadMap 会重设背景/雾/天空，故纪元主题色必须在其后应用；开局直接到位
   world.setEra(0, true);
   ui.setMapName(sim.map);

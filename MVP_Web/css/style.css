@@ -313,6 +313,21 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 #weather-hud .wh-fc b { color: #d6e2f5; }
 #weather-hud .wh-fc.dim { color: #8a947f; }
 
+/* 场景周期事件横幅：战役专属纯氛围播报，顶部居中、不拦截鼠标，按事件色脉冲 */
+#scene-event { position: fixed; top: 104px; left: 50%; transform: translateX(-50%); z-index: 5;
+  width: min(400px, 62vw); padding: 7px 14px 9px; pointer-events: none; text-align: center;
+  background: rgba(14,20,10,.86); border: 1px solid var(--se-color, #ffe14a); border-radius: 10px;
+  box-shadow: 0 0 22px rgba(255,225,74,.18); animation: se-in .35s ease-out; }
+@keyframes se-in { from { opacity: 0; transform: translateX(-50%) translateY(-8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
+#scene-event .se-row { display: flex; align-items: center; justify-content: center; gap: 9px; font-size: 13px; color: #fff; }
+#scene-event .se-tag { font-size: 10px; letter-spacing: 2px; padding: 1px 7px; border-radius: 4px;
+  color: #0c1a08; background: var(--se-color, #ffe14a); font-weight: 700; }
+#scene-event .se-row b { letter-spacing: 1.5px; color: var(--se-color, #ffe14a); }
+#scene-event .se-row small { color: #a9b8d0; font-size: 11px; }
+#scene-event .se-text { margin-top: 4px; font-size: 11.5px; color: #cdd8b8; line-height: 1.5; }
+#scene-event .se-bar { height: 3px; margin-top: 6px; border-radius: 2px; background: rgba(255,255,255,.12); overflow: hidden; }
+#scene-event .se-bar i { display: block; height: 100%; background: var(--se-color, #ffe14a); transition: width .25s linear; }
+
 
 .end-btns { display: flex; gap: 12px; justify-content: center; }
 #btn-end-menu { margin: 0; }

@@ -261,6 +261,13 @@ export class World {
     this._fogBaseNear = 200; this._fogBaseFar = 460; // 地图基准雾远近（loadMap 写入）
     this.weatherDyn = null; this._weatherDynCfg = null; this._weatherDynVel = null;
 
+    // 场景氛围 / 周期事件（读 A 侧 sim.sceneInfo()，只读；不新增事件与特效类型）
+    this._ambience = null;            // {particle,density,wind,glow,sound,chapter}
+    this._sceneEvent = null;          // 当前活跃场景事件快照（含 remaining）
+    this._sceneTint = new THREE.Color(0xffffff);
+    this._sceneEvtK = 0;             // 事件色调混入强度（平滑）
+    this._scenePoll = 0;             // 降频轮询计数（避免每帧分配快照）
+
     this.unitMeshes = new Map();
     this.buildingMeshes = new Map();
     this.pickables = [];
@@ -324,6 +331,10 @@ export class World {
     // 地面斑块（按地图配色软化大面积地面的生物群系感）与每章大型地标
     this.decalGroup = new THREE.Group();
     this.landmarkGroup = new THREE.Group();
+    // 地图装饰点位（读 A 侧 sim.decorPoints()，确定性、纯视觉、避让资源/水域/巢区/危害）
+    this.decorGroup = new THREE.Group();
+    this.decorGroup.frustumCulled = false;
+    this._decorGeo = null;          // 按 kind 缓存几何，跨地图复用，避免逐点分配
     // 战术坐标网格：贴地细线 / 主线 / 中轴基准线，随镜头拉近渐清晰
     this.gridGroup = new THREE.Group();
     this._gridLayers = null;
@@ -347,6 +358,7 @@ export class World {
     this.scene.add(this.weatherGroup);
     this.scene.add(this.decalGroup);
     this.scene.add(this.landmarkGroup);
+    this.scene.add(this.decorGroup);
     this.scene.add(this.gridGroup);
     this._buildScatter();
     this._buildCursor();
@@ -557,12 +569,17 @@ export class World {
   _updateWeather(dt) {
     if (!this.weatherPts || !this._weatherCfg) return;
     const W = this._weatherCfg, p = this.weatherPts.geometry.attributes.position.array, vel = this._weatherVel, t = this.time;
+    // 章节氛围风向（A 侧 sceneInfo().ambience.wind，只读）：给静态粒子层一个稳定的横向漂移
+    const wnd = this._ambientWind || { x: 0, z: 0 };
+    const spanX = MAP.W * 1.1, spanZ = MAP.H * 1.1;
     for (let i = 0; i < vel.length; i++) {
       const v = vel[i];
-      p[i * 3] += v.x * dt + Math.sin(t * 0.5 + i) * 0.02;
+      p[i * 3] += (v.x + wnd.x * 5) * dt + Math.sin(t * 0.5 + i) * 0.02;
       p[i * 3 + 1] += v.y * dt;
-      p[i * 3 + 2] += v.z * dt;
-      if (p[i * 3 + 1] > W.y[1]) { p[i * 3 + 1] = W.y[0]; p[i * 3] = (Math.random() - 0.5) * MAP.W * 1.1; p[i * 3 + 2] = (Math.random() - 0.5) * MAP.H * 1.1; }
+      p[i * 3 + 2] += (v.z + wnd.z * 5) * dt;
+      if (p[i * 3] > spanX * 0.5) p[i * 3] -= spanX; else if (p[i * 3] < -spanX * 0.5) p[i * 3] += spanX;
+      if (p[i * 3 + 2] > spanZ * 0.5) p[i * 3 + 2] -= spanZ; else if (p[i * 3 + 2] < -spanZ * 0.5) p[i * 3 + 2] += spanZ;
+      if (p[i * 3 + 1] > W.y[1]) { p[i * 3 + 1] = W.y[0]; p[i * 3] = (Math.random() - 0.5) * spanX; p[i * 3 + 2] = (Math.random() - 0.5) * spanZ; }
     }
     this.weatherPts.geometry.attributes.position.needsUpdate = true;
     this.weatherPts.rotation.y = t * 0.01;
@@ -664,6 +681,40 @@ export class World {
       this.weatherDyn.geometry.attributes.position.needsUpdate = true;
       this.weatherDyn.rotation.y = t * 0.02;
     }
+    // 场景周期事件：在昼夜 / 天气色调之上再做一层轻微脉冲染色（纯画面，不改任何结算）
+    const ev = this._sceneEvent;
+    this._sceneEvtK += ((ev ? 0.18 : 0) - this._sceneEvtK) * (1 - Math.exp(-dt / 0.6));
+    if (ev && ev.color != null) this._sceneTint.lerp(new THREE.Color(ev.color), 1 - Math.exp(-dt / 0.5));
+    if (this.scene.fog && this._sceneEvtK > 0.001) {
+      const pulse = 0.75 + 0.25 * Math.sin(this.time * 2.2);
+      this.scene.fog.color.lerp(this._sceneTint, this._sceneEvtK * pulse);
+    }
+  }
+
+  /* --------------------- 场景氛围 / 周期事件（读 A 侧 sim.sceneInfo()，只读） --------------------- */
+  /** 降频拉取场景汇总（每 6 帧一次，避免逐帧分配快照）：氛围 → 静态粒子层，事件 → 雾色脉冲 + HUD。 */
+  _syncScene(sim) {
+    if (!sim || typeof sim.sceneInfo !== 'function') return;
+    this._scenePoll = (this._scenePoll + 1) % 6;
+    if (this._scenePoll !== 1) return;
+    let info;
+    try { info = sim.sceneInfo(); } catch (_) { return; }
+    if (!info) return;
+    const a = info.ambience;
+    if (a && (!this._ambience || this._ambience.chapter !== a.chapter || this._ambience.particle !== a.particle)) {
+      this._ambience = a;
+      this._applyAmbience();
+    }
+    this._sceneEvent = info.event || null;
+  }
+  /** 章节氛围叠加到静态天气粒子层：风向漂移、密度透明度、辉光色（不重建几何，零额外开销）。 */
+  _applyAmbience() {
+    const a = this._ambience, P = this.weatherPts, cfg = this._weatherCfg;
+    this._ambientWind = (a && a.wind) ? { x: a.wind.x, z: a.wind.z } : { x: 0, z: 0 };
+    if (!P || !P.material || !cfg) return;
+    const dens = (a && a.density != null) ? a.density : 0.6;
+    P.material.opacity = Math.min(0.85, cfg.op * (0.65 + 0.7 * dens));
+    if (a && a.glow != null) P.material.color.lerp(new THREE.Color(a.glow), 0.45);
   }
 
   /** 渲染 A 侧在飞弹道（只读 sim.activeTracers()，A 侧按 life 自动回收；不新增事件/特效类型）。
@@ -808,6 +859,53 @@ export class World {
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     this.landmarkGroup.add(g);
   }
+
+  /* --------------------- 地图装饰点位（读 A 侧 sim.decorPoints()，纯视觉） --------------------- */
+  /** 按 kind 缓存廉价几何，跨地图复用（仅在首次构建时分配一次）。 */
+  _makeDecorGeo() {
+    const cone = (r, h, s = 5) => new THREE.ConeGeometry(r, h, s);
+    return {
+      tuft: cone(0.5, 1.0, 4),          // 草簇：细锥
+      pebble: new THREE.SphereGeometry(0.6, 6, 5),   // 石砾：扁球
+      fungus: cone(0.5, 0.7, 6),        // 菌菇：小锥帽
+      twig: new THREE.BoxGeometry(0.16, 0.10, 1.1),  // 枯枝：细条
+      puddle: new THREE.CylinderGeometry(1.5, 1.5, 0.06, 12), // 水洼：扁盘
+      spore: new THREE.SphereGeometry(0.35, 6, 5),   // 孢子：小球
+      bone: new THREE.BoxGeometry(0.7, 0.2, 0.2),   // 残骸：小骨块
+      crystal: cone(0.4, 1.2, 4),       // 晶簇：尖锥
+    };
+  }
+  /** 重建装饰层：每个点位一个廉价网格，贴地、按章节 tint/shade 着色、无阴影（开销低）。 */
+  _rebuildDecor(decor) {
+    this._clearDecor();
+    if (!decor || !decor.length) return;
+    if (!this._decorGeo) this._decorGeo = this._makeDecorGeo();
+    for (const d of decor) {
+      const g = this._decorGeo[d.kind] || this._decorGeo.tuft;
+      const mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(d.tint != null ? d.tint : 0x9a8362).multiplyScalar(d.shade != null ? d.shade : 1),
+        roughness: 0.92, metalness: 0, flatShading: true,
+        transparent: d.kind === 'puddle', opacity: d.kind === 'puddle' ? 0.6 : 1,
+      });
+      const m = new THREE.Mesh(g, mat);
+      const y = this._groundY(d.x, d.z) + (d.kind === 'puddle' ? 0.04 : 0.0);
+      m.position.set(d.x, y, d.z);
+      m.rotation.y = d.rot || 0;
+      m.scale.setScalar(d.scale != null ? d.scale : 1);
+      m.castShadow = false; m.receiveShadow = false;
+      this.decorGroup.add(m);
+    }
+  }
+  /** 仅释放逐点材质（几何走缓存复用，不在此释放），并清空子节点。 */
+  _clearDecor() {
+    for (const c of [...this.decorGroup.children]) {
+      this.decorGroup.remove(c);
+      if (c.material) c.material.dispose();
+    }
+  }
+  /** 公开入口：传入 A 侧确定性装饰点位（sim.decorPoints()）。 */
+  buildDecor(decor) { this._rebuildDecor(decor); }
+
 
   /** 战术坐标网格：贴地细线（每 20 单位）+ 每 5 格主线 + 中轴 / 巢区基准线 + 边缘刻度。
    *  分段采样地面高度函数，避免直线穿进起伏坡面；三层各用一个 LineSegments，开销极低。
@@ -995,6 +1093,7 @@ export class World {
     this.scene.fog.far = cfg.fog[1];
     this._fogBaseNear = cfg.fog[0]; this._fogBaseFar = cfg.fog[1];
     this._weatherId = null; this._weatherCur = null; this._weatherVis = 0; this._weatherTint.set(0xffffff);
+    this._ambience = null; this._ambientWind = null; this._sceneEvent = null; this._sceneEvtK = 0;
     this._recolorTerrain(cfg);
     this._rebuildScatter(cfg);
     this._rebuildProps(cfg);
@@ -2204,6 +2303,7 @@ export class World {
    *  frozen=true 时（暂停）不生成新的扬尘，避免特效因时间冻结而无法回收。 */
   syncFrame(sim, frozen = false) {
     this._syncWeather(sim);          // 只读读取 A 侧当前天气（含动态时间线切换），不新增事件
+    this._syncScene(sim);            // 只读拉取章节氛围 / 周期场景事件（降频，不新增事件）
     this._syncTracers(sim);          // 只读渲染 A 侧在飞弹道（复合/近战命中当帧结算，此处仅画飞行物与拖尾）
     const uids = new Set(sim.units.map(u => u.id));
     for (const id of [...this.unitMeshes.keys()]) if (!uids.has(id)) this.removeUnit(id);
@@ -2575,6 +2675,8 @@ export class World {
     // 地形区与信息素井会在 loadMap 时按新章节重建，这里先释放上一局的几何与贴图
     this._clearGroup(this.zoneGroup); this.zoneVisuals = [];
     this._clearGroup(this.wellGroup); this.wellVisuals = [];
+    this._clearDecor();                 // 换局清掉上一章装饰点位（新图会由 buildDecor 重建）
+    this._sceneEvent = null; this._sceneEvtK = 0; this._sceneTint.set(0xffffff);
     this.intro = null;
     this._camFocusT = null;     // 换局清掉上一局未走完的聚焦缓动
     this.hideCursor();
