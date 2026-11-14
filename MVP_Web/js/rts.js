@@ -621,6 +621,34 @@ export const UNIT_INTENT = {
 /** 取战术机动意图规格（含兜底）。 */
 export function intentSpec(key) { return { ...(UNIT_INTENT[key] || UNIT_INTENT.hold), key }; }
 
+/** 战场时间线事件规格：A 侧在关键战斗 / 场景 / 成长 / 胜负时刻入队一条只读叙事，
+ *  B 侧据此做结算页时间轴、字幕高光、回放标记（weight 1..5 决定重要度，cat 供分类筛选）。
+ *  全部为纯叙事数据，不参与任何结算、不消耗随机流、不新增事件 / 特效类型。 */
+export const TIMELINE_EVENTS = {
+  firstBlood:   { label: '首杀',       weight: 3, color: 0xffd24a, cat: 'combat',    icon: 'skull' },
+  doubleKill:   { label: '连杀·双杀', weight: 2, color: 0xff9a4a, cat: 'combat',    icon: 'blade' },
+  tripleKill:   { label: '连杀·三杀', weight: 3, color: 0xff6b3a, cat: 'combat',    icon: 'blade' },
+  rampage:      { label: '横扫千军',   weight: 5, color: 0xff4a4a, cat: 'combat',    icon: 'flame' },
+  eliteDown:    { label: '精锐陨落',   weight: 3, color: 0xc07aff, cat: 'combat',    icon: 'crown' },
+  buildingDown: { label: '据点失守',   weight: 4, color: 0xff7a3a, cat: 'siege',     icon: 'rubble' },
+  hqThreat:     { label: '蚁后告急',   weight: 5, color: 0xff3a3a, cat: 'siege',     icon: 'alarm' },
+  resonance:    { label: '地脉共振',   weight: 2, color: 0x9a6cff, cat: 'field',     icon: 'pulse' },
+  milestone:    { label: '战场里程碑', weight: 3, color: 0x9fe0c8, cat: 'milestone', icon: 'flag' },
+  scene:        { label: '场景异象',   weight: 2, color: 0xffe14a, cat: 'field',     icon: 'spark' },
+  weather:      { label: '天气骤变',   weight: 2, color: 0x7fd0e0, cat: 'field',     icon: 'cloud' },
+  levelUp:      { label: '老兵诞生',   weight: 2, color: 0x8fe06a, cat: 'growth',    icon: 'star' },
+  eraUp:        { label: '纪元跃迁',   weight: 4, color: 0xb6e06a, cat: 'growth',    icon: 'tower' },
+  leadChange:   { label: '战局易主',   weight: 4, color: 0xffd24a, cat: 'momentum',  icon: 'swing' },
+  comeback:     { label: '绝地反击',   weight: 5, color: 0x6affc0, cat: 'momentum',  icon: 'phoenix' },
+  victory:      { label: '作战胜利',   weight: 5, color: 0x9fe0c8, cat: 'end',       icon: 'crown' },
+  defeat:       { label: '作战失利',   weight: 5, color: 0xff6b6b, cat: 'end',       icon: 'skull' },
+};
+/** 取时间线事件规格：传 key 返回单项（含兜底），不传返回整表逐项深拷贝。 */
+export function timelineSpec(key) {
+  if (key === undefined) return Object.fromEntries(Object.entries(TIMELINE_EVENTS).map(([k, v]) => [k, { ...v }]));
+  return { ...(TIMELINE_EVENTS[key] || TIMELINE_EVENTS.milestone), key };
+}
+
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };
 // 兵营/各域巢可产兵种（按纪元解锁）

@@ -17,6 +17,7 @@ import {
   BUILDING_STAGES, buildingStageOf, NODE_PHASES, nodePhaseOf,
   VETERAN_TIERS, veteranOf, CUE_TYPES, cueSpec, MINIMAP_BLIPS, minimapSpec,
   UNIT_POSTURE, postureSpec, derivePosture, UNIT_INTENT, intentSpec,
+  timelineSpec as tlSpec,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
 import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor,
@@ -103,6 +104,9 @@ export class Simulation {
     this.sceneEvents = [];            // 战役周期氛围事件调度（遭遇战恒空）
     this.sceneState = null;           // 当前活跃场景事件快照
     this._visualAcc = 0;              // 建筑 / 资源点表现状态刷新累加器
+    this.timeline = [];               // 战场时间线（关键叙事事件，只读，上限 80 条）
+    this._tlSeq = 0;                  // 时间线自增序号（不用 RNG）
+    this._tlState = null;             // 时间线去重 / 连杀 / 优势方状态（reset 时重建）
   }
 
   on(fn) { this.listeners.push(fn); }
@@ -133,6 +137,97 @@ export class Simulation {
     const popNorm = clamp((pop - 1) / 3, 0, 1);   // pop: 工蚁1 / 兵种2 / 重装4 → 0~1
     return +(1 + 0.35 * tier + 0.5 * popNorm).toFixed(3);
   }
+
+  /* ------------------- 战场时间线（纯只读叙事层） ------------------- */
+  /** 写入一条时间线事件。只推入 this.timeline，绝不回写任何模拟字段、不消费随机流。
+   *  B 侧用 battleTimeline() / timelineHighlights() 读取；上限 80 条防止长局无限增长。 */
+  _tl(key, x, z, opts = {}) {
+    if (!this.timeline) this.timeline = [];
+    if (this._tlSeq === undefined) this._tlSeq = 0;
+    const spec = tlSpec(key);
+    const px = Number(x) || 0, pz = Number(z) || 0;
+    this.timeline.push({
+      id: ++this._tlSeq, key, at: +this.time.toFixed(2),
+      x: +px.toFixed(2), z: +pz.toFixed(2),
+      side: opts.side || null,
+      label: spec.label, cat: spec.cat, icon: spec.icon,
+      color: spec.color, weight: spec.weight,
+      mag: +clamp(spec.weight / 5, 0, 1).toFixed(2),
+      text: opts.text || spec.label,
+    });
+    if (this.timeline.length > 80) this.timeline.splice(0, this.timeline.length - 80);
+  }
+  /** 击杀叙事：全局首杀（一次性）、同一攻击者 6s 连杀窗口、精锐单位陨落。
+   *  仅在 _dealDamage 已确认致死的分支调用，不新增任何伤害 / 随机流 / 计时器写入。 */
+  _tlKill(attacker, tgt) {
+    const s = this._tlState;
+    if (!s) return;
+    if (!s.firstBlood) {
+      s.firstBlood = true;
+      this._tl('firstBlood', tgt.x, tgt.z, { side: attacker.side,
+        text: `${attacker.side === SIDES.PLAYER ? '我方' : '敌方'}拿下首杀` });
+    }
+    const st = s.streak[attacker.side] || (s.streak[attacker.side] = { id: 0, n: 0, at: -99 });
+    if (st.id !== attacker.id || this.time - st.at > 6) { st.id = attacker.id; st.n = 0; }
+    st.n++; st.at = this.time;
+    if (st.n === 2) this._tl('doubleKill', tgt.x, tgt.z, { side: attacker.side });
+    else if (st.n === 3) this._tl('tripleKill', tgt.x, tgt.z, { side: attacker.side });
+    else if (st.n >= 4 && (st.n === 4 || st.n % 3 === 1)) this._tl('rampage', tgt.x, tgt.z,
+      { side: attacker.side, text: `连续击杀 ${st.n}，战线被撕开` });
+    if (tgt.vetTier && tgt.vetTier.tier >= 2) {
+      this._tl('eliteDown', tgt.x, tgt.z, { side: attacker.side,
+        text: `${attacker.side === SIDES.PLAYER ? '我方' : '敌方'}击毙敌方精锐` });
+    }
+  }
+  /** 态势转折（在 _tickVisuals 的 0.2s 节流内调用，纯读）：战局易主 / 绝地反击 / 蚁后告急。
+   *  战力按存活单位 pop×血量比 + 建筑（HQ 权重 30）加权，带 0.62 滞回避免边界抖动。 */
+  _tlMomentum() {
+    const s = this._tlState;
+    if (!s) return;
+    let p = 0, e = 0;
+    for (const u of this.units) {
+      if (u.hp <= 0) continue;
+      const w = ((UNITS[u.type] && UNITS[u.type].pop) || 1) * 2 * (u.maxHp ? clamp(u.hp / u.maxHp, 0, 1) : 1);
+      if (u.side === SIDES.PLAYER) p += w; else e += w;
+    }
+    for (const b of this.buildings) {
+      if (b.hp <= 0) continue;
+      const w = (b.type === 'hq' ? 30 : 4) * (b.maxHp ? clamp(b.hp / b.maxHp, 0, 1) : 1);
+      if (b.side === SIDES.PLAYER) p += w; else e += w;
+    }
+    const total = p + e;
+    if (total <= 0) return;
+    const pShare = p / total, eShare = e / total;
+    s.minShare.P = Math.min(s.minShare.P, pShare);
+    s.minShare.E = Math.min(s.minShare.E, eShare);
+    const lead = pShare > 0.62 ? 'P' : eShare > 0.62 ? 'E' : null;
+    if (lead && s.lead && lead !== s.lead) {
+      this._tl('leadChange', 0, 0, { side: lead,
+        text: `${lead === SIDES.PLAYER ? '我方' : '敌方'}夺回战场主动权` });
+    }
+    if (lead) s.lead = lead;
+    // 绝地反击：曾跌破 28% 战力占比，20s 后反超到 62% 以上（每方一次）。
+    if (this.time > 20) {
+      for (const side of ['P', 'E']) {
+        const share = side === 'P' ? pShare : eShare;
+        if (!s.comeback[side] && s.minShare[side] < 0.28 && share > 0.62) {
+          s.comeback[side] = true;
+          this._tl('comeback', 0, 0, { side,
+            text: `${side === 'P' ? '我方' : '敌方'}完成绝地反击` });
+        }
+      }
+    }
+    // 蚁后告急：HQ 血量比首次跌破 35%（每方一次）。
+    for (const b of this.buildings) {
+      if (b.type !== 'hq' || b.hp <= 0 || s.hqThreat[b.side]) continue;
+      if (b.maxHp && b.hp / b.maxHp < 0.35) {
+        s.hqThreat[b.side] = true;
+        this._tl('hqThreat', b.x, b.z, { side: b.side,
+          text: `${b.side === SIDES.PLAYER ? '我方' : '敌方'}蚁后巢濒临失守` });
+      }
+    }
+  }
+
   /** 当前环境规则；未 reset 的裸实例退化为基准环境，保证所有系数始终是有限数。 */
   _clim() { return this.climate || MAP_CLIMATES[0]; }
   /** 当前天气；裸实例退化为全 1.0 的晴空。 */
@@ -206,6 +301,17 @@ export class Simulation {
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
     this._levelFlags = {};   // 等级里程碑播报去重（每局重置）
+    // 战场时间线状态：全部为叙事去重 / 窗口计数器，不参与任何结算、不消耗随机流。
+    this.timeline = [];
+    this._tlSeq = 0;
+    this._tlState = {
+      firstBlood: false,
+      streak: { P: { id: 0, n: 0, at: -99 }, E: { id: 0, n: 0, at: -99 } },
+      lead: null,
+      minShare: { P: 1, E: 1 },
+      comeback: { P: false, E: false },
+      hqThreat: { P: false, E: false },
+    };
     this._fxRng = 1;         // 战斗掷骰确定性复位
     this.tradeDone = 0;
     this.refined = { P: false, E: false };
@@ -1112,6 +1218,7 @@ export class Simulation {
     this.weather = step.next;
     this._log(`【天气转变·${this.weather.name}】${step.text || this.weather.desc}`, 'key');
     this._fx('ring', 0, 1, 0, { color: step.color || 0x9fc8e0, r: 120 });
+    this._tl('weather', 0, 0, { text: `天气转为「${this.weather.name}」` });
     if (this.stats) { this.stats.P.weatherShifts++; this.stats.E.weatherShifts++; }
     this._updateVision();   // 视野半径立即跟随新天气，避免延迟一帧的隔墙透视
   }
@@ -1133,6 +1240,7 @@ export class Simulation {
     this._fx('ring', q.x, 1, q.z, { color: cfg.color, r: this.resonance.r });
     this._fx('resonance', q.x, 4, q.z, { color: cfg.color });
     this._cue('resonance', q.x, q.z, 1.2);
+    this._tl('resonance', q.x, q.z, { text: `地脉共振「${cfg.label}」被唤醒` });
   }
 
   /** 当前共振高台（只读快照，供 B 侧渲染光柱 / 小地图脉冲；无共振时返回 null）。 */
@@ -1149,6 +1257,8 @@ export class Simulation {
     this._fx('ring', mine ? PLAYER_BASE.x : ENEMY_BASE.x, 1, mine ? PLAYER_BASE.z : ENEMY_BASE.z,
       { color: mine ? 0x9fe0c8 : 0xff8a6a, r: 26 });
     this._cue('milestone', mine ? PLAYER_BASE.x : ENEMY_BASE.x, mine ? PLAYER_BASE.z : ENEMY_BASE.z, 1, side);
+    this._tl('milestone', mine ? PLAYER_BASE.x : ENEMY_BASE.x, mine ? PLAYER_BASE.z : ENEMY_BASE.z,
+      { side, text: `${mine ? '我方' : '敌方'}累计击杀 ${kills}` });
     if (this.stats) this.stats[side].milestones++;
   }
 
@@ -1265,6 +1375,7 @@ export class Simulation {
       this._log(`【场景·${e.label}】${e.text}`, 'info');
       this._fx(e.fx === 'resonance' ? 'resonance' : 'ring', 0, 1, 0, { color: e.color, r: 120 });
       this._cue('scene', 0, 0, 1);
+      this._tl('scene', 0, 0, { text: `场景异象「${e.label}」` });
       if (this.stats) { this.stats.P.sceneEvents++; this.stats.E.sceneEvents++; }
     }
   }
@@ -1315,6 +1426,8 @@ export class Simulation {
       u.lowMorale = u.hp > 0 && u.hpRatio < 0.28 && !u.engaged;
     }
     if (this.stats && pa > this.stats.P.peakArmy) this.stats.P.peakArmy = pa;
+    // 态势转折检测（战局易主 / 绝地反击 / 蚁后告急），纯只读、随 0.2s 节流低频执行。
+    this._tlMomentum();
   }
 
   /** 由逻辑 state + 移动窗口 + 朝向与目标方位夹角，纯派生单位战术机动意图（只读，零结算影响）。
@@ -1586,6 +1699,16 @@ export class Simulation {
     return out;
   }
 
+  /** 只读查询：完整战场时间线（逐项浅拷贝，防调用方污染内部数组）。 */
+  battleTimeline() { return (this.timeline || []).map(t => ({ ...t })); }
+  /** 只读查询：时间线事件规格（传 key 返回单项含兜底，不传返回整表深拷贝）。 */
+  timelineSpec(key) { return tlSpec(key); }
+  /** 只读查询：高光时刻（按 weight 降序、同权重取更晚的，默认前 5 条）。 */
+  timelineHighlights(k = 5) {
+    const out = (this.timeline || []).slice().sort((a, b) => (b.weight - a.weight) || (b.at - a.at));
+    return out.slice(0, Math.max(0, k)).map(t => ({ ...t }));
+  }
+
   /** 只读查询：结算页战报（纯聚合派生，不改任何模拟字段，不消耗随机流）。 */
   battleSummary() {
     const P = this.stats ? this.stats.P : null, E = this.stats ? this.stats.E : null;
@@ -1604,6 +1727,8 @@ export class Simulation {
       abilities: { P: P ? P.abilities : 0, E: E ? E.abilities : 0 },
       resonanceHits: P ? P.resonanceHits : 0, weatherShifts: P ? P.weatherShifts : 0,
       milestones: P ? P.milestones : 0, sceneEvents: P ? P.sceneEvents : 0,
+      // 战场叙事（只增字段契约，B 侧用 st.xxx || [] 容错读取）
+      timelineCount: (this.timeline || []).length, highlights: this.timelineHighlights(3),
     };
   }
 
@@ -1672,6 +1797,7 @@ export class Simulation {
   _applyEra(side, newEra) {
     this.era[side] = newEra;
     this._log(`${side === SIDES.PLAYER ? '我方' : '敌方'}推进至纪元 ${newEra + 1}（${ERA_NAMES[newEra]}）—— 全族群属性成长。`, side === SIDES.PLAYER ? 'key' : 'info');
+    this._tl('eraUp', 0, 0, { side, text: `推进至纪元 ${newEra + 1}「${ERA_NAMES[newEra]}」` });
     this._emit('era', { side, era: newEra });
     for (const u of this.units) {
       if (u.side !== side) continue;
@@ -2034,6 +2160,7 @@ export class Simulation {
       // eliteKills：本次击杀由「击杀前已为精锐(tier>=2)」的单位完成（用 ot 而非重算后的 tier）。
       if (ot >= 2 && this.stats) this.stats[attacker.side].eliteKills++;
       this._cue('kill', tgt.x, tgt.z, this._killIntensity(tgt), attacker.side);
+      this._tlKill(attacker, tgt);   // 时间线：首杀 / 连杀 / 精锐陨落（纯叙事）
     }
     // 吸血：按实际结算伤害回复攻击者（不超上限、尸体不回血）。
     if (unitAtk && attacker.lifesteal > 0 && attacker.hp > 0 && attacker.maxHp) {
@@ -2158,6 +2285,8 @@ export class Simulation {
     this._log(key === 'max'
       ? `老兵诞生：「${UNITS[u.type].name}」达到满级 Lv.${MAX_LEVEL}，成长已至上限。`
       : `老兵诞生：首只「${UNITS[u.type].name}」升至 Lv.3，满足进化等级门槛。`, 'good');
+    this._tl('levelUp', u.x, u.z, { side: u.side,
+      text: key === 'max' ? '首只单位达到满级' : '首只单位满足进化门槛' });
   }
 
   _reap() {
@@ -2213,6 +2342,8 @@ export class Simulation {
       }
       this._fx('death', b.x, b.size, b.z, { color: 0x8a7f56 });
       this._cue('buildingDown', b.x, b.z, 1, b.side);
+      this._tl('buildingDown', b.x, b.z, { side: b.side,
+        text: `${b.side === SIDES.PLAYER ? '我方' : '敌方'}「${BUILDINGS[b.type] ? BUILDINGS[b.type].name : '据点'}」失守` });
       this._emit('death', { side: b.side, kind: 'building', x: b.x, z: b.z });
       const cost = BUILDINGS[b.type].cost || {};
       const total = (cost.bio || 0) + (cost.min || 0);
@@ -2314,11 +2445,13 @@ export class Simulation {
       if (this.ended) return;
       this.ended = 'win';
       this._log(`作战目标达成：${reason}`, 'key');
+      this._tl('victory', 0, 0, { side: SIDES.PLAYER, text: reason });
       this._emit('end', { type: 'win', mode: this.mode, chapter: this.chapter, objective: this.objective ? this.objective.type : 'destroy', reason });
     };
     // 摧毁敌方蚁后巢永远是最高优先级胜利条件（所有目标共享）
     if (!eHQ) { win('敌方蚁后巢已被摧毁'); return; }
-    if (!pHQ) { this.ended = 'lose'; this._emit('end', { type: 'lose', mode: this.mode, chapter: this.chapter }); return; }
+    if (!pHQ) { this.ended = 'lose'; this._tl('defeat', 0, 0, { side: SIDES.PLAYER, text: '我方蚁后巢已被摧毁' });
+      this._emit('end', { type: 'lose', mode: this.mode, chapter: this.chapter }); return; }
     const o = this.objective;
     if (!o || o.type === 'destroy') return;   // 默认目标：逐字保持原判定
     if (o.type === 'survive') {
