@@ -11,6 +11,6 @@ const run = (label, args) => {
   if (!success) { failures++; console.error(result.error || result.stdout + result.stderr); }
 };
 for (const file of readdirSync(new URL('./MVP_Web/js/', import.meta.url)).filter(f => f.endsWith('.js'))) run(`syntax ${file}`, ['--check', `MVP_Web/js/${file}`]);
-for (const file of ['audit_imports.mjs', 'regression_test.mjs', 'test-navigation.mjs', 'test-combat.mjs', 'test-experience.mjs', ...readdirSync(cwd).filter(f => /^test-batch\d+\.mjs$/.test(f)).sort((a,b) => a.localeCompare(b, undefined, {numeric:true}))]) run(file, [file]);
+for (const file of ['audit_imports.mjs', 'regression_test.mjs', 'test-navigation.mjs', 'test-combat.mjs', 'test-experience.mjs', 'test-profile-integrity.mjs', 'test-input-state.mjs', ...readdirSync(cwd).filter(f => /^test-batch\d+\.mjs$/.test(f)).sort((a,b) => a.localeCompare(b, undefined, {numeric:true}))]) run(file, [file]);
 console.log(`\n${failures ? `${failures} checks failed` : 'All checks passed'}`);
 process.exitCode = failures ? 1 : 0;

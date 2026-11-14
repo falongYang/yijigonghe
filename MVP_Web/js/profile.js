@@ -71,8 +71,8 @@ function normalize(d) {
   if (!d || typeof d !== 'object' || Array.isArray(d)) return p;
   p.name = cleanName(d.name);
   p.createdAt = int(d.createdAt, 0, 4102444800000);   // 上限 2100 年，挡住离谱时间戳
-  p.games = int(d.games); p.wins = int(d.wins, 0, p.games || Number.MAX_SAFE_INTEGER);
-  p.losses = int(d.losses, 0, p.games || Number.MAX_SAFE_INTEGER);
+  p.games = int(d.games); p.wins = int(d.wins, 0, p.games);
+  p.losses = int(d.losses, 0, p.games - p.wins);
   p.kills = int(d.kills);
   p.bestWinSec = int(d.bestWinSec, 0, 86400 * 7);
   p.longestSec = int(d.longestSec, 0, 86400 * 7);
@@ -194,6 +194,10 @@ export const Profile = {
     try { d = JSON.parse(text); } catch { return { ok: false, error: '档案文件不是合法的 JSON' }; }
     if (!d || typeof d !== 'object' || Array.isArray(d)) return { ok: false, error: '档案格式不正确' };
     if (d.app != null && d.app !== 'yijigonghe') return { ok: false, error: '不是蚁纪·共时的档案文件' };
+    if (d.v != null && d.v !== 1) return { ok: false, error: '不支持此档案版本，请使用版本 1 的备份' };
+    if ('profile' in d && (!d.profile || typeof d.profile !== 'object' || Array.isArray(d.profile))) {
+      return { ok: false, error: '档案内容格式不正确' };
+    }
     const src = (d.profile && typeof d.profile === 'object' && !Array.isArray(d.profile)) ? d.profile : d;
     if (!('name' in src) && !('games' in src) && !('recent' in src)) {
       return { ok: false, error: '档案内容缺少必要字段' };

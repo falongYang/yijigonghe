@@ -1,3 +1,4 @@
+import { resetTransientInput } from './input-state.js';
 /* 主入口：装配 sim / world / ui，处理输入、相机、主循环，并把指令回灌给模拟层。 */
 import { Simulation } from './sim.js';
 import { World } from './world.js';
@@ -277,6 +278,15 @@ function bindInput() {
   // 中键仍保持原有旋转；Alt+左键标记、Shift 框选、建造/能力瞄准等立即分支不受影响。
   let pendingClick = null, dragging = false, lastX = 0, lastY = 0;
   const DRAG_THRESHOLD = 5;
+  const releaseInput = () => {
+    down = false; pendingClick = null; dragging = false;
+    resetTransientInput(game, world, canvas);
+    clearBox();
+  };
+  window.addEventListener('blur', releaseInput);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) releaseInput();
+  });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('mousedown', e => {
     if (isSyntheticMouse(e)) return;   // 触屏手势补发的兼容鼠标事件，不重复点选 / 下令

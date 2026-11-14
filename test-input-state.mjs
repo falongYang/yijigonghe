@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {resetTransientInput} from './MVP_Web/js/input-state.js';
+const orders={x:5,z:7};
+const game={shift:true,box:{x0:1},paused:true,pendingBuild:orders};
+const calls=[];
+const world={keys:{w:true,arrowleft:true},setEdge:(...a)=>calls.push(['edge',...a]),setDragPan:v=>calls.push(['drag',v])};
+const canvas={classList:{remove:v=>calls.push(['class',v])}};
+resetTransientInput(game,world,canvas);
+assert.deepEqual(world.keys,{w:false,arrowleft:false});
+assert.equal(game.shift,false);
+assert.equal(game.box,null);
+assert.equal(game.paused,true);
+assert.equal(game.pendingBuild,orders,'保留玩家未执行的建造意图');
+assert.deepEqual(calls,[['edge',0,0,false],['drag',false],['class','grabbing']]);
+resetTransientInput(game,world,canvas);
+resetTransientInput(game,null,null);
+console.log('Input reset checks passed');
