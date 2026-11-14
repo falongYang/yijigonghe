@@ -16,7 +16,7 @@ import {
   IMPACT_SPEC, impactFor, CORPSE_SPEC, corpseFor,
   BUILDING_STAGES, buildingStageOf, NODE_PHASES, nodePhaseOf,
   VETERAN_TIERS, veteranOf, CUE_TYPES, cueSpec, MINIMAP_BLIPS, minimapSpec,
-  UNIT_POSTURE, postureSpec, derivePosture,
+  UNIT_POSTURE, postureSpec, derivePosture, UNIT_INTENT, intentSpec,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
 import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor,
@@ -471,6 +471,9 @@ export class Simulation {
       kills: 0, vetTier: veteranOf(0), density: 0, densityBand: 0, cmdFlash: 0,
       // 姿态 / 交战态（只读表现层：由 state+moving 推导，供 B 侧挑选姿式与战斗光效）
       posture: 'idle', engaged: false,
+      // 受击反馈 / 战术机动意图（纯只读表现层，零结算影响；
+      // 由 _dealDamage 置位、_tickVisuals 衰减 / 派生，供 B 侧做受击高亮 / 侧翼辉光 / 拖尾 / 萎靡姿式）
+      underFire: 0, flankMark: 0, lowMorale: false, moveIntent: 'hold', hpRatio: 1,
       // 受击物理只读包络：方向单位向量 / 击退强度 / 顿帧 / 镜头震动 / 衰减。
       // 只由真实单位的直接命中写入，不改动坐标、速度、攻击计时器等任何结算字段。
       phys: { dx: 0, dz: 0, mag: 0, hitstop: 0, shake: 0, env: 0, t: 99,
@@ -1301,8 +1304,37 @@ export class Simulation {
       u.engaged = (u.state === 'attack' || u.state === 'attackmove') && !u.moving && u.hp > 0;
       if (u.side === SIDES.PLAYER && u.hp > 0) pa++;
       if (u.cmdFlash > 0) u.cmdFlash = Math.max(0, u.cmdFlash - 0.8);
+      // 受击反馈衰减 + 战术机动意图 + 实时血比 + 低士气（全只读，供 B 侧做受击高亮 / 侧翼辉光 / 拖尾 / 萎靡姿式）。
+      if (u.underFire > 0) u.underFire = Math.max(0, u.underFire - dt);
+      if (u.flankMark > 0) u.flankMark = Math.max(0, u.flankMark - dt);
+      u.hpRatio = u.maxHp ? clamp(u.hp / u.maxHp, 0, 1) : 1;
+      u.moveIntent = this._deriveMoveIntent(u);
+      u.lowMorale = u.hp > 0 && u.hpRatio < 0.28 && !u.engaged;
     }
     if (this.stats && pa > this.stats.P.peakArmy) this.stats.P.peakArmy = pa;
+  }
+
+  /** 由逻辑 state + 移动窗口 + 朝向与目标方位夹角，纯派生单位战术机动意图（只读，零结算影响）。
+   *  B 侧据此挑选拖尾 / 姿态 / 着色：hold 据守 / march 行军 / charge 正面突进 / flank 侧翼包抄 /
+   *  patrol 巡逻 / retreat 后撤 / work 作业 / dead 阵亡。 */
+  _deriveMoveIntent(u) {
+    if (u.hp <= 0) return 'dead';
+    if (u.state === 'retreat') return 'retreat';
+    if (u.state === 'patrol') return 'patrol';
+    if (u.state === 'defend' || (u.state === 'idle' && !u.moving)) return 'hold';
+    if (u.state === 'harvest' || u.state === 'repair' || u.state === 'build' || u.state === 'return') return 'work';
+    if (u.state === 'attack' || u.state === 'attackmove') {
+      if (!u.moving) return 'hold';          // 已接敌静止输出
+      // 侧翼包抄：移动方向与到目标的直线夹角大 → 绕侧；否则正面突进。
+      if (u.target && u.target.x !== undefined) {
+        const ang = Math.atan2(u.target.z - u.z, u.target.x - u.x);
+        let da = Math.abs(ang - (u.heading || 0));
+        if (da > Math.PI) da = Math.PI * 2 - da;
+        return da > 1.0 ? 'flank' : 'charge';
+      }
+      return 'charge';
+    }
+    return u.moving ? 'march' : 'hold';
   }
 
   /** 单位阵亡时留一份只读演出快照（倒地方向取自最后一次直接命中）。 */
@@ -1329,7 +1361,9 @@ export class Simulation {
     const u = this.getUnit(id);
     if (!u || !u.feel) return null;
     return { ...u.feel, spec: UNIT_FEEL[u.type] || null, heading: u.heading, moving: u.moving,
-      anim: u.anim ? { ...u.anim } : null, lastHit: u.lastHit ? { ...u.lastHit } : null };
+      anim: u.anim ? { ...u.anim } : null, lastHit: u.lastHit ? { ...u.lastHit } : null,
+      hpRatio: u.maxHp ? clamp(u.hp / u.maxHp, 0, 1) : 1, moveIntent: u.moveIntent,
+      underFire: !!(u.underFire > 0), flankMark: !!(u.flankMark > 0), lowMorale: !!u.lowMorale };
   }
   /** 只读查询：当前存活的弹道记录数组。调用方不得修改；按 life 自动回收。 */
   activeTracers() { return this.tracers; }
@@ -1420,6 +1454,43 @@ export class Simulation {
   engagedOf(id) {
     const u = this.getUnit(id);
     return u ? u.engaged : null;
+  }
+  /** 只读查询：单位实时血比（0..1）。无该单位返回 null。 */
+  hpRatioOf(id) {
+    const u = this.getUnit(id);
+    return u ? (u.maxHp ? clamp(u.hp / u.maxHp, 0, 1) : 1) : null;
+  }
+  /** 只读查询：单位战术机动意图（hold/march/charge/flank/patrol/retreat/work/dead）。无该单位返回 null。 */
+  moveIntentOf(id) {
+    const u = this.getUnit(id);
+    return u ? u.moveIntent : null;
+  }
+  /** 只读查询：单位是否正处于被火力覆盖（本帧附近被真实单位命中）。无该单位返回 null。 */
+  underFireOf(id) {
+    const u = this.getUnit(id);
+    return u ? !!(u.underFire > 0) : null;
+  }
+  /** 只读查询：单位是否正在施加侧翼包抄加成（刚从目标侧后方命中）。无该单位返回 null。 */
+  flankMarkOf(id) {
+    const u = this.getUnit(id);
+    return u ? !!(u.flankMark > 0) : null;
+  }
+  /** 只读查询：单位是否处于低士气（低血且未接敌）。无该单位返回 null。 */
+  lowMoraleOf(id) {
+    const u = this.getUnit(id);
+    return u ? !!u.lowMorale : null;
+  }
+  /** 只读查询：战术机动意图规格（标签 / 着色）。 */
+  intentSpec(key) { return intentSpec(key); }
+  /** 只读查询：单位受击反馈聚合包（B 侧单点取用）。无该单位返回 null。 */
+  feedbackOf(id) {
+    const u = this.getUnit(id);
+    if (!u) return null;
+    return {
+      hpRatio: u.maxHp ? clamp(u.hp / u.maxHp, 0, 1) : 1,
+      moveIntent: u.moveIntent, underFire: !!(u.underFire > 0),
+      flankMark: !!(u.flankMark > 0), lowMorale: !!u.lowMorale,
+    };
   }
   /** 只读查询：姿态规格表（逐项深拷贝）。 */
   postureSpec(key) { return postureSpec(key); }
@@ -1893,7 +1964,7 @@ export class Simulation {
       const ang = Math.atan2(fromZ - tgt.z, fromX - tgt.x);
       let diff = Math.abs(ang - (tgt.heading || 0));
       if (diff > Math.PI) diff = Math.PI * 2 - diff;
-      if (diff > 2.1) { d *= 1 + attacker.flankBonus; if (st) st.flankHits++; }
+      if (diff > 2.1) { d *= 1 + attacker.flankBonus; if (st) st.flankHits++; if (attacker.flankMark !== undefined) attacker.flankMark = 1; }
     }
     // 天气：只削弱真实单位的远程普攻命中，能力 / 危害 / 溅射 / 塔不受影响。
     if (unitAtk && ranged) d *= this._wea().hitMul;
@@ -1960,6 +2031,8 @@ export class Simulation {
       if (st) st.impacts++;
     }
     if (tgt.flash !== undefined) tgt.flash = 0.16;
+    // 被火力覆盖标记（纯视觉只读）：真实单位直接命中且目标存活时置位，_tickVisuals 衰减。
+    if (unitAtk && tgt.hp > 0 && tgt.underFire !== undefined) tgt.underFire = 1;
     if (tgt.lastAttacker !== undefined) tgt.lastAttacker = aSide;
     // 命中反馈：只有「真实单位的直接命中」写最近一次受击信息（飘字 / 受击方向 / 暴击描边）；
     // DoT、危害、溅射的代理攻击者不写，避免覆盖真正有方向的那一发。

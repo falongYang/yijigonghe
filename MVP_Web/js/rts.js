@@ -607,6 +607,20 @@ export function derivePosture(state, moving, hp) {
   }
 }
 
+/** 战术机动意图标签（纯视觉只读，供 B 侧挑选拖尾 / 姿态 / 着色；与 posture 正交）。 */
+export const UNIT_INTENT = {
+  hold:    { label: '据守', color: 0x9fb4c8 },
+  march:   { label: '行军', color: 0x8fe06a },
+  charge:  { label: '突进', color: 0xffd24a },
+  flank:   { label: '包抄', color: 0xff8a4a },
+  patrol:  { label: '巡逻', color: 0x7fd0e0 },
+  retreat: { label: '后撤', color: 0xff6b6b },
+  work:    { label: '作业', color: 0xb6e06a },
+  dead:    { label: '阵亡', color: 0x808080 },
+};
+/** 取战术机动意图规格（含兜底）。 */
+export function intentSpec(key) { return { ...(UNIT_INTENT[key] || UNIT_INTENT.hold), key }; }
+
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };
 // 兵营/各域巢可产兵种（按纪元解锁）
