@@ -1178,12 +1178,34 @@ export class UI {
     this._updateScene(s);       // 立即渲染场景事件横幅（无事件时隐藏）
   }
 
+  /**
+   * HUD 写入去重：refresh() 每帧调用，状态条的 html / 数字在多数帧里并不变化。
+   * 无条件写 innerHTML 会每帧销毁重建子树（丢失悬停/焦点态、触发额外布局），
+   * 这里用节点上的轻量缓存比对，只在内容真正变化时落盘。
+   * 缓存与 DOM 内容始终由同一方法维护，换局 / 隐藏后再显示也保持正确。
+   */
+  _setHTML(node, html) {
+    if (!node) return false;
+    const v = String(html);
+    if (node._yjHTML === v) return false;
+    node._yjHTML = v;
+    node.innerHTML = v;
+    return true;
+  }
+  _setText(node, text) {
+    if (!node) return false;
+    const v = String(text);
+    if (node.textContent === v) return false;
+    node.textContent = v;
+    return true;
+  }
+
   /** 目标实时进度：读 A 侧 sim.objectiveProgress()（只读，不新增事件），按类型呈现倒计时 / 采集量 / 占井守时。 */
   _updateObjective(s) {
     const el = document.getElementById('mission-prog');
     if (!el) return;
     const o = s.objective;
-    if (!o || o.type === 'destroy') { el.innerHTML = ''; return; }
+    if (!o || o.type === 'destroy') { this._setHTML(el, ''); return; }
     const pr = (typeof s.objectiveProgress === 'function') ? s.objectiveProgress() : { type: o.type, ratio: 0 };
     let txt = '', sub = '';
     if (o.type === 'survive') {
@@ -1198,8 +1220,8 @@ export class UI {
       sub = holding ? '守住中…' : '尚未占满全部井';
     }
     const pct = Math.max(0, Math.min(100, Math.round((pr.ratio || 0) * 100)));
-    el.innerHTML = `<div class="mp-row"><b>${txt}</b>${sub ? `<small>${sub}</small>` : ''}</div>
-      <div class="mp-bar"><i style="width:${pct}%"></i></div>`;
+    this._setHTML(el, `<div class="mp-row"><b>${txt}</b>${sub ? `<small>${sub}</small>` : ''}</div>
+      <div class="mp-bar"><i style="width:${pct}%"></i></div>`);
   }
 
   /** 经济/状态浮标：精炼巢室（全军 +8% 伤害）与资源贸易次数，战斗进行中常驻提示。 */
@@ -1209,7 +1231,7 @@ export class UI {
     const bits = [];
     if (s.refined && s.refined[SIDES.PLAYER]) bits.push('<span class="es-chip es-refine">✦ 精炼巢室 · 全军伤害 +8%</span>');
     if (s.tradeDone && s.tradeDone > 0) bits.push(`<span class="es-chip es-trade">⇄ 资源贸易 ×${s.tradeDone}</span>`);
-    if (bits.length) { el.innerHTML = bits.join(''); el.classList.remove('hidden'); }
+    if (bits.length) { this._setHTML(el, bits.join('')); el.classList.remove('hidden'); }
     else el.classList.add('hidden');
   }
 
@@ -1238,10 +1260,10 @@ export class UI {
     } else {
       fc = `<span class="wh-fc dim">气象稳定</span>`;
     }
-    el.innerHTML =
+    this._setHTML(el,
       `<div class="wh-row"><span class="wh-ic" style="color:${col}">${ic}</span><b>${w.name}</b></div>` +
       `<div class="wh-mods"><span class="${visCls}">视野 ${pct(vis)}</span><span class="${hitCls}">远程 ${pct(hit)}</span></div>` +
-      fc;
+      fc);
   }
 
   /** 场景周期事件横幅：读 A 侧 sceneEvent()（战役专属，纯氛围播报；遭遇战恒空）。 */
@@ -1260,10 +1282,10 @@ export class UI {
     const pct = dur > 0 ? Math.max(0, Math.min(100, left / dur * 100)) : 0;
     el.classList.remove('hidden');
     el.style.setProperty('--se-color', col);
-    el.innerHTML =
+    this._setHTML(el,
       `<div class="se-row"><span class="se-tag">场景异象</span><b>${ev.label || '异象'}</b><small>${left.toFixed(1)}s</small></div>` +
       (ev.text ? `<div class="se-text">${ev.text}</div>` : '') +
-      `<div class="se-bar"><i style="width:${pct.toFixed(1)}%"></i></div>`;
+      `<div class="se-bar"><i style="width:${pct.toFixed(1)}%"></i></div>`);
   }
 
   /** 战场叙事字幕：消费 A 侧 cue 的 tag / mag（只读），只播报重大事件并节流，避免混战刷屏。
@@ -1285,7 +1307,7 @@ export class UI {
     this._cueLastAt = now;
     const tag = String(best.tag || '战场动态');
     const col = bestMag >= 0.8 ? '#ff8a5a' : bestMag >= 0.55 ? '#ffd27f' : '#9fe0a0';
-    el.innerHTML = `<b style="color:${col}">${tag}</b><small>战场播报</small>`;
+    this._setHTML(el, `<b style="color:${col}">${tag}</b><small>战场播报</small>`);
     el.classList.remove('hidden');
     if (this._cueTimer) clearTimeout(this._cueTimer);
     this._cueTimer = setTimeout(() => { el.classList.add('hidden'); }, 1600);
@@ -1403,13 +1425,13 @@ export class UI {
   refresh() {
     const s = this.sim;
     if (!s.sp) return;
-    $('#res-bio').textContent = Math.floor(s.res.P.bio);
-    $('#res-min').textContent = Math.floor(s.res.P.min);
-    $('#res-ph').textContent = Math.floor(s.res.P.ph);
+    this._setText($('#res-bio'), Math.floor(s.res.P.bio));
+    this._setText($('#res-min'), Math.floor(s.res.P.min));
+    this._setText($('#res-ph'), Math.floor(s.res.P.ph));
     this._updateResRate(s);
-    $('#res-pop').textContent = `${s.pop(SIDES.PLAYER)}/110`;
-    $('#res-era').textContent = s.era.P + 1;
-    $('#res-era-name').textContent = ERAS[s.era.P].name;
+    this._setText($('#res-pop'), `${s.pop(SIDES.PLAYER)}/110`);
+    this._setText($('#res-era'), s.era.P + 1);
+    this._setText($('#res-era-name'), ERAS[s.era.P].name);
     this.setWellStatus(s.wells);
     const perf = $('#res-fps');
     if (perf && this.world) {
@@ -1848,11 +1870,21 @@ export class UI {
    *  敌方单位按 10×7 网格聚合成热区，危害 / 共振 / 场景事件按规格配色与重要度画点标。
    *  单位 / 建筑 / 资源仍由原有更精细的图层绘制，避免重复叠画。 */
   _drawIntelLayer(g, s, toX, toY, W, H) {
-    let blips = null, spec = null;
-    try {
-      if (typeof s.intelBlips === 'function') blips = s.intelBlips();
-      if (typeof s.minimapSpec === 'function') spec = s.minimapSpec();
-    } catch (_) { blips = null; }
+    // A 侧 intelBlips() 会遍历全场对象，每帧调用过于昂贵；180ms 窗口内复用快照，
+    // 小地图热区/点标仍足够跟手。换图或重新开局时按地图名强制失效。
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+    const mapName = (s.map && s.map.name) || '';
+    let cache = this._intelCache;
+    if (!cache || now - cache.at > 180 || cache.map !== mapName) {
+      let blips = null, spec = null;
+      try {
+        if (typeof s.intelBlips === 'function') blips = s.intelBlips();
+        if (typeof s.minimapSpec === 'function') spec = s.minimapSpec();
+      } catch (_) { blips = null; }
+      cache = { at: now, map: mapName, blips, spec };
+      this._intelCache = cache;
+    }
+    const blips = cache.blips, spec = cache.spec;
     if (!Array.isArray(blips)) return;
     const HW = 94, HH = 67, cols = 10, rows = 7, cw = W / cols, ch = H / rows;
     const heat = new Float32Array(cols * rows);
