@@ -104,12 +104,47 @@ export class UI {
       } catch (_) { /* 存储异常时保持当前档案，绝不打断游戏 */ }
     });
     if (fold && body) {
+      // 展开 / 收起状态持久化：刷新页面、换标签页都保留上次查看战绩的习惯
+      let folded = true;
+      try { folded = localStorage.getItem('ant_epoch_cc_fold_v1') !== '0'; } catch { /* 存储不可用 */ }
+      body.classList.toggle('hidden', folded);
+      fold.setAttribute('aria-expanded', String(!folded));
+      fold.textContent = folded ? '⌄' : '⌃';
       fold.onclick = () => {
         const on = body.classList.contains('hidden');
         body.classList.toggle('hidden', !on);
         fold.setAttribute('aria-expanded', String(on));
         fold.textContent = on ? '⌃' : '⌄';
+        try { localStorage.setItem('ant_epoch_cc_fold_v1', on ? '0' : '1'); } catch { /* ignore */ }
         Sound.play('select');
+      };
+    }
+    // 档案备份 / 迁移：导出为 JSON 文件（并尽量复制到剪贴板），导入时逐字段校验
+    const expBtn = document.getElementById('cc-export');
+    const impBtn = document.getElementById('cc-import');
+    const file = document.getElementById('cc-file');
+    if (expBtn) expBtn.onclick = () => this._exportProfile();
+    if (impBtn && file) {
+      impBtn.onclick = () => { try { file.click(); } catch { this.toast('当前浏览器不支持读取本地文件'); } };
+      file.onchange = () => {
+        const f = file.files && file.files[0];
+        if (!f) return;
+        let reader = null;
+        try { reader = new FileReader(); } catch { this.toast('当前浏览器不支持读取本地文件'); return; }
+        reader.onload = () => {
+          const r = Profile.importText(reader.result);
+          if (!r.ok) { this.toast('导入失败：' + r.error); return; }
+          this._profile = r.profile;
+          this._profileNew = false;
+          this._renderProfile();
+          const nameInput = document.getElementById('cc-name');
+          if (nameInput) nameInput.value = r.profile.name;
+          this.toast(`档案已导入：${r.profile.name} · ${r.profile.games} 局战绩`);
+          Sound.play('select');
+        };
+        reader.onerror = () => this.toast('档案文件读取失败');
+        try { reader.readAsText(f); } catch { this.toast('档案文件读取失败'); }
+        try { file.value = ''; } catch { /* 允许再次导入同一文件 */ }
       };
     }
     if (reset) {
@@ -170,12 +205,19 @@ export class UI {
       `<div><b>${s.bestWin}</b><span>最快取胜</span></div><div><b>${s.kills}</b><span>累计击杀</span></div>`;
     const recent = document.getElementById('cc-recent');
     if (recent) {
-      recent.innerHTML = p.recent.length
+      // 最近 8 局胜负迷你条：一眼看出连胜 / 连败走势，纯展示、不改任何档案字段
+      const spark = p.recent.length
+        ? '<div class="cc-spark" title="最近 8 局胜负（左旧右新）">' +
+          p.recent.slice(0, 8).reverse().map(r =>
+            `<i class="cc-sp ${r.win ? 'win' : 'lose'}" title="${r.win ? '胜' : '负'} · ${fmtTime(r.sec)}"></i>`).join('') +
+          '</div>'
+        : '';
+      recent.innerHTML = spark + (p.recent.length
         ? '<div class="cc-rh">最近对局</div>' + p.recent.slice(0, 3).map(r =>
           `<div class="cc-r"><i class="cc-dot ${r.win ? 'win' : 'lose'}"></i>` +
           `<span>${r.win ? '胜' : '负'} · ${r.mode === 'campaign' ? `第${r.chapter + 1}章` : '遭遇战'} · ${r.species || '—'}</span>` +
           `<b>${fmtTime(r.sec)}</b></div>`).join('')
-        : '<div class="cc-empty">暂无对局记录 · 打完一局自动写入</div>';
+        : '<div class="cc-empty">暂无对局记录 · 打完一局自动写入</div>');
     }
     const chip = document.getElementById('cmd-chip');
     if (chip) {
@@ -189,6 +231,33 @@ export class UI {
       pp.innerHTML = `<span class="pp-badge">${b.glyph}</span> 指挥官 <b>${p.name}</b>` +
         ` · ${b.label} · ${p.games} 局 / ${s.winRate}% 胜率 <small>（返回菜单可修改代号）</small>`;
     }
+  }
+
+  /** 导出本机指挥官档案为 JSON 备份文件；下载不可用时退化为剪贴板文本。 */
+  _exportProfile() {
+    let text = '';
+    try { text = Profile.exportText(); } catch { this.toast('档案导出失败'); return; }
+    const stamp = new Date().toISOString().slice(0, 10);
+    try {
+      const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `yijigonghe-profile-${stamp}.json`;
+      if (document.body && document.body.appendChild) document.body.appendChild(a);
+      a.click();
+      if (a.remove) a.remove();
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch { /* ignore */ } }, 2000);
+      this.toast('指挥官档案已导出为 JSON 备份');
+    } catch {
+      this.toast('文件下载不可用，已尝试复制档案文本到剪贴板');
+    }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        const p = navigator.clipboard.writeText(text);
+        if (p && p.catch) p.catch(() => {});
+      }
+    } catch { /* 剪贴板不可用不影响导出 */ }
+    Sound.play('select');
   }
 
   /** 结算写回档案：返回本局是否刷新纪录 / 晋升徽记，供结算页展示。 */

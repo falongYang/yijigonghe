@@ -26,6 +26,8 @@ function int(v, lo = 0, hi = Number.MAX_SAFE_INTEGER) {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo;
 }
 function str(v, max = 40) { return String(v == null ? '' : v).slice(0, max); }
+/** 会进入 innerHTML 的文本（导入档案的 recent 字段）额外去掉 HTML 注入字符。 */
+function safeStr(v, max = 40) { return str(v, max).replace(/[<>&"'`\\]/g, ''); }
 
 /** 代号清洗：去控制字符 / HTML 注入字符 / 首尾空白，限长。返回清洗结果（可能为空）。 */
 export function cleanName(raw) {
@@ -77,8 +79,8 @@ function normalize(d) {
   if (Array.isArray(d.recent)) {
     p.recent = d.recent.slice(0, MAX_RECENT).filter(r => r && typeof r === 'object').map(r => ({
       win: !!r.win, sec: int(r.sec, 0, 86400 * 7), kills: int(r.kills),
-      mode: str(r.mode, 16), chapter: int(r.chapter, 0, 99),
-      species: str(r.species, 24), difficulty: str(r.difficulty, 16),
+      mode: safeStr(r.mode, 16), chapter: int(r.chapter, 0, 99),
+      species: safeStr(r.species, 24), difficulty: safeStr(r.difficulty, 16),
       at: int(r.at, 0, 4102444800000),
     }));
   }
@@ -177,6 +179,30 @@ export const Profile = {
       newBestWin,
       summary: summary(p),
     };
+  },
+  /** 导出可迁移的档案文本（带版本标记；只写归一化字段，不含 isNew 等临时态）。 */
+  exportText() {
+    return JSON.stringify({ app: 'yijigonghe', v: 1, profile: normalize(state()) }, null, 2);
+  },
+  /** 导入档案：支持本工具导出的包装对象，也兼容裸 profile 对象。
+   *  长度、JSON、应用标记与必要字段四道校验；任何异常都不写盘、不吞掉提示。 */
+  importText(raw) {
+    const text = String(raw == null ? '' : raw);
+    if (!text.trim()) return { ok: false, error: '档案文件为空' };
+    if (text.length > 65536) return { ok: false, error: '档案文件过大（上限 64 KB）' };
+    let d = null;
+    try { d = JSON.parse(text); } catch { return { ok: false, error: '档案文件不是合法的 JSON' }; }
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return { ok: false, error: '档案格式不正确' };
+    if (d.app != null && d.app !== 'yijigonghe') return { ok: false, error: '不是蚁纪·共时的档案文件' };
+    const src = (d.profile && typeof d.profile === 'object' && !Array.isArray(d.profile)) ? d.profile : d;
+    if (!('name' in src) && !('games' in src) && !('recent' in src)) {
+      return { ok: false, error: '档案内容缺少必要字段' };
+    }
+    const p = normalize(src);               // 收敛所有字段，挡住被篡改 / 半写入的数据
+    if (!p.name) p.name = guestName();      // 代号被清空时补一个访客代号
+    if (!p.createdAt) p.createdAt = Date.now();
+    write(p);
+    return { ok: true, profile: { ...p, isNew: false } };
   },
   /** 重置档案（保留代号，清空战绩），返回新档案。 */
   reset() {

@@ -98,6 +98,16 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
   text-decoration: underline; cursor: pointer; padding: 2px 0; }
 .cc-reset:hover { color: #cdd8b8; }
 .cc-reset.armed { color: #ffb070; text-decoration: none; }
+/* 最近 8 局胜负走势 + 档案备份 / 迁移 */
+.cc-spark { display: flex; gap: 3px; align-items: flex-end; height: 12px; margin: 2px 0 6px; }
+.cc-sp { flex: 1 1 0; min-width: 5px; height: 8px; border-radius: 2px; opacity: .85; }
+.cc-sp.win { height: 12px; background: #7ef0a0; box-shadow: 0 0 4px rgba(126,240,160,.5); }
+.cc-sp.lose { height: 6px; background: #ff8a7a; opacity: .7; }
+.cc-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.cc-actions .cc-reset { margin-top: 0; }
+.cc-mini { font-size: 10px; color: #cdd8b8; background: rgba(126,240,160,.10);
+  border: 1px solid rgba(126,240,160,.30); border-radius: 5px; padding: 3px 7px; cursor: pointer; }
+.cc-mini:hover { background: rgba(126,240,160,.20); border-color: rgba(126,240,160,.55); }
 .cc-hint { color: #6f7a60; font-size: 9.5px; margin: 6px 0 0; transition: color .15s; }
 .cc-hint.cc-invalid { color: #ff9a5a; }
 @media (max-width: 980px) {
