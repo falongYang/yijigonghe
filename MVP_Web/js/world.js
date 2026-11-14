@@ -12,6 +12,9 @@ import { FX_BUILDERS } from './fx.js';
 import { buildAntGeometry, buildBuildingGeometry } from './ants.js';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+/* 纯环境粒子（移动扬尘 / 气泡 / 涟漪）：只由渲染层自发产生，不承载任何战斗语义。
+   画质降档或特效堆积时可安全抽稀；其余 FX_BUILDERS 一律完整保留。 */
+const AMBIENT_FX = new Set(['foot', 'bubble', 'ripple']);
 const UNIT_HEIGHT = { worker: 5.0, soldier: 6.2, soldier2: 6.0, soldier3: 7.6, queen: 9.0 };
 const RING_R = { worker: 2.6, soldier: 3.2, soldier2: 3.0, soldier3: 4.0, queen: 5.0 };
 // 昼夜循环：入夜时太阳偏冷蓝、背景趋近深蓝夜空
@@ -309,6 +312,11 @@ export class World {
     this._smokeAcc = 0;
     this._quality = 2; this._qualityAuto = true; this.fps = 60; this._fpsAcc = 0; this._fpsN = 0;
     this._goodFrames = 0; this._lastFrameT = null;
+    // 画质档统一状态：_dprCap 由 _setQuality 写入，resize 与跨屏 DPR 变化共用同一上限，
+    // 否则降档设置的像素比会被下一次 resize 按旧缓存覆盖回 1.8（画质档形同虚设）。
+    this._dprCap = 1.8;
+    this._scatterBudget = [];   // [InstancedMesh, 原始实例数]：按画质抽稀草/砾，可完全恢复
+    this._lodSig = '';          // 细节层级签名（画质 / 距离档 / 子对象数），避免每帧遍历上百个网格
     // 屏幕边缘滚屏（鼠标贴近视口边缘自动平移镜头）
     this.edge = { x: 0, y: 0, active: false };
     this.edgePan = true;
@@ -516,6 +524,9 @@ export class World {
       rock.castShadow = true; rock.receiveShadow = true;
       this.scatterGroup.add(rock);
     }
+    // 草 / 砾是 InstancedMesh：记录原始实例数，画质降档时只改 .count（不释放几何，随时可恢复）
+    this._scatterBudget = [[grass, sc.grass], [pebbles, sc.peb]];
+    if (typeof this._applyQualityDetail === 'function') this._applyQualityDetail(this._quality);
   }
 
   // 依据地图配置重建生物群系专属道具（不同章节地形各有植被 / 遗迹 / 晶石）
@@ -924,7 +935,10 @@ export class World {
       const y = this._groundY(d.x, d.z) + (d.kind === 'puddle' ? 0.04 : 0.0);
       m.position.set(d.x, y, d.z);
       m.rotation.y = d.rot || 0;
-      m.scale.setScalar(d.scale != null ? d.scale : 1);
+      const ds = d.scale != null ? Number(d.scale) : 1;
+      m.scale.setScalar(ds);
+      // 细节分级：较大的晶簇 / 放大点位属于远景地标感，低画质与远镜头下仍保留
+      m.userData.detail = (Number.isFinite(ds) && ds >= 1.25) || d.kind === 'crystal' ? 2 : 1;
       m.castShadow = false; m.receiveShadow = false;
       this.decorGroup.add(m);
     }
@@ -1005,6 +1019,7 @@ export class World {
       m.position.set(f.x, y, f.z);
       m.rotation.y = Number(f.rot) || 0;
       m.scale.setScalar(scale);
+      m.userData.solid = !!f.solid;   // 省电档只保留轮廓醒目的实体地标
       m.castShadow = !!f.solid; m.receiveShadow = false;
       this.featureGroup.add(m);
     }
@@ -2688,7 +2703,17 @@ export class World {
 
   addEffect(type, pos, opts = {}) {
     const make = FX_BUILDERS[type];
-    if (make) make(this, pos, opts, this.time);
+    if (!make) return;
+    // 大规模会战时特效对象可能持续堆积，先给纯环境粒子设上限再按画质抽稀；
+    // 战斗 / 指令 / 场景反馈一律完整保留，不改变任何事件或特效类型语义。
+    if (AMBIENT_FX.has(type)) {
+      const q = Number(this._quality) || 0;
+      const cap = q >= 2 ? 240 : (q === 1 ? 140 : 70);
+      if (this.fx.length >= cap) return;
+      const keep = q >= 2 ? 1 : (q === 1 ? 0.6 : 0.28);
+      if (keep < 1 && Math.random() > keep) return;
+    }
+    make(this, pos, opts, this.time);
   }
 
   /** 指令落点：四类地面标记，0.85s 弹出→淡出，移动箭头指向实际行军方向。 */
@@ -3264,6 +3289,50 @@ export class World {
     this._qualityAuto = !!auto;
     this._goodFrames = 0; this._fpsAcc = 0; this._fpsN = 0;
     if (!auto) this._setQuality(Math.max(0, Math.min(2, q | 0)));
+    else this._applyQualityDetail(this._quality);   // 切回自动档也立即同步当前细节层级
+  }
+
+  /** 画质档可还原的细节层：地面散布用 InstancedMesh.count 抽稀（不释放几何，随时可复原），
+   *  并强制重算逐网格可见性。换图重建散布后也会自动调用。 */
+  _applyQualityDetail(q) {
+    const lvl = Math.max(0, Math.min(2, Number(q) | 0));
+    this._quality = lvl;            // 任何入口都统一画质状态，避免 LOD 与像素比档位不一致
+    this._lodSig = '';
+    if (Array.isArray(this._scatterBudget)) {
+      const frac = lvl >= 2 ? 1 : (lvl === 1 ? 0.62 : 0.3);
+      for (const [mesh, full] of this._scatterBudget) {
+        if (!mesh || !Number.isFinite(full)) continue;
+        mesh.count = Math.max(1, Math.round(full * frac));
+      }
+    }
+    if (typeof this._updateDetailLod === 'function') this._updateDetailLod(true);
+  }
+
+  /** 画质 + 镜头距离双重 LOD：签名（画质 / 距离档 / 子对象数）不变就跳过遍历，
+   *  避免每帧扫描上百个装饰网格。只作用于纯视觉装饰层，单位 / 建筑 / 拾取物不受影响。 */
+  _updateDetailLod(force = false) {
+    const q = Math.max(0, Math.min(2, Number(this._quality) | 0));
+    const dist = Number(this.cam && this.cam.dist) || 150;
+    const band = Math.round(dist / 18);
+    const decor = this.decorGroup ? this.decorGroup.children.length : 0;
+    const feat = this.featureGroup ? this.featureGroup.children.length : 0;
+    const sig = `${q}|${band}|${decor}|${feat}`;
+    if (!force && sig === this._lodSig) return;
+    this._lodSig = sig;
+    const far = dist > 190;                 // 远观时细碎装饰本就不可辨
+    if (this.decorGroup) {
+      for (const m of this.decorGroup.children) {
+        const big = !!(m.userData && m.userData.detail === 2);
+        m.visible = big || (!far && q >= 1);
+      }
+    }
+    if (this.featureGroup) {
+      for (const m of this.featureGroup.children) {
+        m.visible = q >= 1 || !!(m.userData && m.userData.solid);
+      }
+    }
+    // 章节道具是随机散布的植被 / 遗迹：省电档与远景整体收起，大地标由 featureGroup 保留
+    if (this.propGroup) this.propGroup.visible = q >= 1 && dist < 215;
   }
 
   // ---------------------------------------------------------------- 拾取
@@ -3307,6 +3376,7 @@ export class World {
     this._frameDt = dt;
     this.updateCamera(camDt, dt);
     this._updateGridFade();         // 战术网格随镜头距离渐显 / 淡出
+    this._updateDetailLod();        // 装饰 / 地标按画质与镜头距离分级（签名不变时零遍历）
     this._updateZonePulses();       // 战术地形描边呼吸 / 高台更亮
     this._tickEraFade(dt);          // 纪元主题色平滑过渡
     this._tickDayNight(dt);         // 昼夜循环（叠加在纪元色之上）
@@ -3339,10 +3409,12 @@ export class World {
   get qualityLabel() { return ['省电', '均衡', '精细'][this._quality] || '均衡'; }
   _setQuality(q) {
     this._quality = q;
-    const cap = q >= 2 ? 1.8 : (q === 1 ? 1.25 : 1);
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, cap));
+    // 像素比上限交给 resize 统一裁决：此前这里直接 setPixelRatio 却没同步 _dpr，
+    // 下一次 resize / 跨屏 DPR 变化就会按旧缓存把低画质档覆盖回 1.8。
+    this._dprCap = q >= 2 ? 1.8 : (q === 1 ? 1.25 : 1);
     if (this.dust) this.dust.visible = q >= 1;
     if (this.sun) this.sun.castShadow = q >= 1;
+    if (typeof this._applyQualityDetail === 'function') this._applyQualityDetail(q);
     this.resize();
   }
 
@@ -3354,7 +3426,8 @@ export class World {
     const win = (typeof window !== 'undefined') ? window : {};
     const w = this.canvas.clientWidth || win.innerWidth || 1;
     const h = this.canvas.clientHeight || win.innerHeight || 1;
-    const dpr = Math.min(globalThis.devicePixelRatio || 1, 1.8);
+    const cap = Number.isFinite(this._dprCap) ? this._dprCap : 1.8;
+    const dpr = Math.min(globalThis.devicePixelRatio || 1, cap);
     if (dpr !== this._dpr) {
       this._dpr = dpr;
       this.renderer.setPixelRatio(dpr);
