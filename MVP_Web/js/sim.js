@@ -108,12 +108,24 @@ export class Simulation {
    *  intensity 允许调用方按情形缩放（如大招更重），上限保护防止数值爆炸。 */
   _cue(key, x, z, intensity = 1, side = null) {
     if (!this.cues) this.cues = [];
-    const spec = CUE_TYPES[key] || CUE_DEFAULT;
+    const spec = cueSpec(key);   // 含兜底（未知 key 回落默认规格），避免悬空引用
+    const it = clamp(intensity, 0, 3);
+    // mag：统一归一到 0..1 的事件强度（weight 决定基底，intensity 线性缩放），B 侧镜头 / 字幕优先级共用。
+    const mag = +clamp((spec.weight / 3) * it, 0, 1).toFixed(3);
     this.cues.push({ key, x, z, side,
-      intensity: +clamp(intensity, 0, 3).toFixed(3),
-      shake: +(spec.shake * clamp(intensity, 0, 3)).toFixed(3),
-      zoom: spec.zoom, vol: spec.vol, cat: spec.cat, at: +this.time.toFixed(2) });
+      intensity: +it.toFixed(3),
+      shake: +(spec.shake * it).toFixed(3),
+      zoom: spec.zoom, vol: spec.vol, cat: spec.cat, mag, tag: spec.tag,
+      at: +this.time.toFixed(2) });
     if (this.cues.length > 200) this.cues.splice(0, this.cues.length - 200);
+  }
+  /** 击杀提示分级：精英（vetTier 高）或大体型单位（pop 高）阵亡时镜头反馈更重。
+   *  仅影响 cue 的 intensity/shake，不写入任何结算字段、不消耗随机流。 */
+  _killIntensity(tgt) {
+    const tier = (tgt && tgt.vetTier) ? tgt.vetTier.tier : 0;
+    const pop = (tgt && UNITS[tgt.type] && UNITS[tgt.type].pop) ? UNITS[tgt.type].pop : 1;
+    const popNorm = clamp((pop - 1) / 3, 0, 1);   // pop: 工蚁1 / 兵种2 / 重装4 → 0~1
+    return +(1 + 0.35 * tier + 0.5 * popNorm).toFixed(3);
   }
   /** 当前环境规则；未 reset 的裸实例退化为基准环境，保证所有系数始终是有限数。 */
   _clim() { return this.climate || MAP_CLIMATES[0]; }
@@ -165,6 +177,8 @@ export class Simulation {
     this.nextId = 1;
     this.ended = null;
     this.time = 0;
+    this.battleTime = 0;        // 实战累计秒数（仅在有真实伤害发生的 tick 累加，纯结算叙事）
+    this._dmgFlag = false;      // 本 tick 是否发生真实伤害（驱动 battleTime 累计）
     this.peakPop = { P: 0, E: 0 };
     const blank = () => ({ kills: 0, losses: 0, built: 0, harvested: 0, abilities: 0, evolved: 0, raided: 0, repaired: 0, wellPh: 0,
       dmgDealt: 0, dmgTaken: 0, critHits: 0, smartCasts: 0, defenses: 0, nodeSwitches: 0,
@@ -179,7 +193,9 @@ export class Simulation {
       // 手感 / 弹道统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
       shots: 0,
       // 物理反馈 / 场景事件统计（只增字段契约，B 侧用 st.xxx || 0 容错读取）
-      impacts: 0, sceneEvents: 0, veterans: 0 });
+      impacts: 0, sceneEvents: 0, veterans: 0,
+      // 结算页叙事统计（只增字段契约，纯聚合只读，不改任何模拟逻辑）
+      born: 0, peakArmy: 0, eliteKills: 0 });
     this.stats = { P: blank(), E: blank() };
     this._lastRaidLogAt = -99;
     this._levelFlags = {};   // 等级里程碑播报去重（每局重置）
@@ -442,13 +458,14 @@ export class Simulation {
       // 最近一次直接命中的反馈（飘字 / 受击方向 / 暴击描边；DoT 与溅射不写）
       lastHit: null,
       // 表现成长 / 聚集 / 指令反馈（全部只读数据层，不参与任何结算）
-      kills: 0, vetTier: veteranOf(0), density: 0, cmdFlash: 0,
+      kills: 0, vetTier: veteranOf(0), density: 0, densityBand: 0, cmdFlash: 0,
       // 受击物理只读包络：方向单位向量 / 击退强度 / 顿帧 / 镜头震动 / 衰减。
       // 只由真实单位的直接命中写入，不改动坐标、速度、攻击计时器等任何结算字段。
       phys: { dx: 0, dz: 0, mag: 0, hitstop: 0, shake: 0, env: 0, t: 99,
         hitstopT: 0, shakeT: 0, seq: 0, color: 0xffffff, dtype: null },
     };
     this.units.push(u);
+    if (this.stats) this.stats[side].born++;     // 累计出兵（结算叙事，纯只读聚合）
     if (base.role === 'econ') this._assignHarvest(u);
     return u;
   }
@@ -1029,6 +1046,8 @@ export class Simulation {
     this._tickVisuals(dt);
     this._tickAI(dt);
     this._checkEnd();
+    // 实战累计秒数：仅在有真实伤害发生的 tick 累加（驱动结算 battleTime 叙事）。
+    if (this._dmgFlag) { this.battleTime += dt; this._dmgFlag = false; }
     // 能力冷却倒计时递减（此前只设置不递减，会导致技能永久处于冷却）
     for (const side of ['P', 'E']) for (const k in this.cd[side]) {
       if (this.cd[side][k] > 0) this.cd[side][k] = Math.max(0, this.cd[side][k] - dt);
@@ -1251,8 +1270,9 @@ export class Simulation {
       const ph = nodePhaseOf(n.max ? n.amount / n.max : 1);
       n.phase = ph.id; n.phaseGlow = ph.glow; n.phasePulse = ph.pulse;
     }
-    // 单位聚簇密度（只读，供 B 侧做挤压 / 堆叠表现）+ 指令反馈衰减。
+    // 单位聚簇密度（只读，供 B 侧做挤压 / 堆叠表现）+ 密度分级 + 指令反馈衰减。
     const us = this.units, R2 = 3.5 * 3.5;
+    let pa = 0;   // 玩家存活单位数（用于结算峰值兵力）
     for (let i = 0; i < us.length; i++) {
       const u = us[i];
       let d = 0;
@@ -1262,8 +1282,12 @@ export class Simulation {
         if (dx * dx + dz * dz <= R2) d++;
       }
       u.density = d;
+      // 密度分级：0 散兵(<1) / 1 小队(1~3) / 2 集群(4~7) / 3 蜂群(≥8)，纯视觉只读。
+      u.densityBand = d < 1 ? 0 : d < 4 ? 1 : d < 8 ? 2 : 3;
+      if (u.side === SIDES.PLAYER && u.hp > 0) pa++;
       if (u.cmdFlash > 0) u.cmdFlash = Math.max(0, u.cmdFlash - 0.8);
     }
+    if (this.stats && pa > this.stats.P.peakArmy) this.stats.P.peakArmy = pa;
   }
 
   /** 单位阵亡时留一份只读演出快照（倒地方向取自最后一次直接命中）。 */
@@ -1348,6 +1372,11 @@ export class Simulation {
     const u = this.getUnit(id);
     return u ? u.density : null;
   }
+  /** 只读查询：单位密度分级（0 散兵 / 1 小队 / 2 集群 / 3 蜂群）。无该单位返回 null。 */
+  densityBandOf(id) {
+    const u = this.getUnit(id);
+    return u ? u.densityBand : null;
+  }
   /** 只读查询：全部老兵阶梯规格（逐项深拷贝）。 */
   veteranSpec() { return VETERAN_TIERS.map(v => ({ ...v })); }
   /** 只读查询：镜头 / 音效提示规格表（逐项深拷贝）。 */
@@ -1365,8 +1394,30 @@ export class Simulation {
     for (const n of this.nodes) out.push({ kind: 'node', id: n.id, x: n.x, z: n.z, domain: n.domain, r: B.node.r });
     for (const h of this.terrainHazards) out.push({ kind: 'hazard', x: h.x, z: h.z, r: B.hazard.r });
     if (this.resonance) out.push({ kind: 'resonance', x: this.resonance.x, z: this.resonance.z, r: B.resonance.r });
-    const e = this.sceneEvent(); if (e && e.x !== undefined) out.push({ kind: 'event', x: e.x, z: e.z, r: B.event.r });
+    const e = this.sceneEvent(); if (e && e.x !== undefined) out.push({ kind: 'event', x: e.x, z: e.z, r: B.event.r, weight: B.event.weight });
+    for (const o of out) o.weight = (B[o.kind] && B[o.kind].weight) || 1;   // 情报点重要度（B 侧尺寸 / 描边）
     return out;
+  }
+
+  /** 只读查询：结算页战报（纯聚合派生，不改任何模拟字段，不消耗随机流）。 */
+  battleSummary() {
+    const P = this.stats ? this.stats.P : null, E = this.stats ? this.stats.E : null;
+    const win = this.ended ? (this.ended.winner === SIDES.PLAYER ? 'player' : this.ended.winner === SIDES.ENEMY ? 'enemy' : 'draw') : null;
+    const pk = P ? P.kills : 0, ek = E ? E.kills : 0;
+    const pl = P ? P.losses : 0, el = E ? E.losses : 0;
+    return {
+      winner: win, duration: +this.time.toFixed(1), battleTime: +this.battleTime.toFixed(1),
+      peakArmy: P ? P.peakArmy : 0,
+      kills: { P: pk, E: ek }, losses: { P: pl, E: el },
+      // 交换比（玩家击杀 / 玩家损失），0 损失按大值容错。
+      tradeRatio: { P: pl > 0 ? +(pk / pl).toFixed(2) : (pk > 0 ? 99 : 0), E: el > 0 ? +(ek / el).toFixed(2) : (ek > 0 ? 99 : 0) },
+      eliteKills: P ? P.eliteKills : 0, veterans: P ? P.veterans : 0,
+      born: { P: P ? P.born : 0, E: E ? E.born : 0 },
+      harvested: P ? P.harvested : 0,
+      abilities: { P: P ? P.abilities : 0, E: E ? E.abilities : 0 },
+      resonanceHits: P ? P.resonanceHits : 0, weatherShifts: P ? P.weatherShifts : 0,
+      milestones: P ? P.milestones : 0, sceneEvents: P ? P.sceneEvents : 0,
+    };
   }
 
   _tickAura(dt) {
@@ -1778,14 +1829,17 @@ export class Simulation {
     if (aSide && this.refined[aSide] && attacker && UNITS[attacker.type] && UNITS[attacker.type].role === 'combat') d *= 1.08;
     const _wasAlive = tgt.hp > 0;
     tgt.hp -= d;
+    if (d > 0) this._dmgFlag = true;          // 标记本 tick 发生实战，驱动 battleTime 累计
     // 击杀计功（仅真实单位击杀真实单位，且只在该次伤害造成致死时记一次）：
-    // 纯表现成长数据，不改任何属性 / 不消耗随机流 / 不影响节奏；同时写入 kill 提示。
+    // 纯表现成长数据，不改任何属性 / 不消耗随机流 / 不影响节奏；同时写入分级 kill 提示。
     if (_wasAlive && tgt.hp <= 0 && unitAtk && attacker && attacker.kills !== undefined) {
       const ot = attacker.vetTier ? attacker.vetTier.tier : 0;
       attacker.kills++;
       attacker.vetTier = veteranOf(attacker.kills);
       if (attacker.vetTier.tier >= 2 && ot < 2 && this.stats) this.stats[attacker.side].veterans++;
-      this._cue('kill', tgt.x, tgt.z, 1, attacker.side);
+      // eliteKills：本次击杀由「击杀前已为精锐(tier>=2)」的单位完成（用 ot 而非重算后的 tier）。
+      if (ot >= 2 && this.stats) this.stats[attacker.side].eliteKills++;
+      this._cue('kill', tgt.x, tgt.z, this._killIntensity(tgt), attacker.side);
     }
     // 吸血：按实际结算伤害回复攻击者（不超上限、尸体不回血）。
     if (unitAtk && attacker.lifesteal > 0 && attacker.hp > 0 && attacker.maxHp) {

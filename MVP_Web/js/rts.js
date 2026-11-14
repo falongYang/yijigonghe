@@ -541,29 +541,36 @@ export function veteranOf(kills = 0) {
 }
 
 /** 镜头 / 音效提示：A 侧在关键战斗时刻写入 cue，B 侧每帧 drainCues() 取走并映射。
- *  shake=镜头震动强度, zoom=镜头推拉（负=拉远）, vol=音量, cat=音色类别。 */
+ *  shake=镜头震动强度, zoom=镜头推拉（负=拉远）, vol=音量, cat=音色类别,
+ *  weight=事件内在权重（0..3，B 侧据此将 shake/zoom/vol 统一归一到 mag 0..1）,
+ *  tag=战场叙事短标签（B 侧可作字幕 / 播报，纯文本只读）。 */
 export const CUE_TYPES = {
-  kill:        { shake: 0.14, zoom: 0.00,  vol: 0.45, cat: 'hit' },
-  death:       { shake: 0.22, zoom: -0.02, vol: 0.55, cat: 'death' },
-  ability:     { shake: 0.32, zoom: 0.00,  vol: 0.65, cat: 'ability' },
-  ambush:      { shake: 0.55, zoom: 0.03,  vol: 0.85, cat: 'ambush' },
-  buildingDown:{ shake: 0.78, zoom: -0.05, vol: 1.00, cat: 'boom' },
-  milestone:   { shake: 0.10, zoom: 0.00,  vol: 0.40, cat: 'chime' },
-  scene:       { shake: 0.20, zoom: 0.00,  vol: 0.50, cat: 'ambient' },
-  resonance:   { shake: 0.30, zoom: 0.00,  vol: 0.60, cat: 'power' },
+  kill:        { shake: 0.14, zoom: 0.00,  vol: 0.45, cat: 'hit',     weight: 1.0, tag: '击杀' },
+  death:       { shake: 0.22, zoom: -0.02, vol: 0.55, cat: 'death',   weight: 1.2, tag: '阵亡' },
+  ability:     { shake: 0.32, zoom: 0.00,  vol: 0.65, cat: 'ability', weight: 1.5, tag: '技能' },
+  ambush:      { shake: 0.55, zoom: 0.03,  vol: 0.85, cat: 'ambush',  weight: 2.5, tag: '伏击' },
+  buildingDown:{ shake: 0.78, zoom: -0.05, vol: 1.00, cat: 'boom',    weight: 3.0, tag: '据点失守' },
+  milestone:   { shake: 0.10, zoom: 0.00,  vol: 0.40, cat: 'chime',   weight: 0.8, tag: '里程碑' },
+  scene:       { shake: 0.20, zoom: 0.00,  vol: 0.50, cat: 'ambient', weight: 1.0, tag: '场景事件' },
+  resonance:   { shake: 0.30, zoom: 0.00,  vol: 0.60, cat: 'power',   weight: 1.5, tag: '地脉共振' },
 };
-const CUE_DEFAULT = { shake: 0.15, zoom: 0, vol: 0.5, cat: 'hit' };
-/** 取某类提示的规格（含兜底）。 */
-export function cueSpec(key) { return { ...(CUE_TYPES[key] || CUE_DEFAULT), key }; }
+const CUE_DEFAULT = { shake: 0.15, zoom: 0, vol: 0.5, cat: 'hit', weight: 1.0, tag: '提示' };
+/** 取某类提示的规格（含兜底）。magNorm 为归一化权重参考（weight / 3，0..1）。 */
+export function cueSpec(key) {
+  const s = { ...(CUE_TYPES[key] || CUE_DEFAULT), key };
+  s.magNorm = +(Math.max(0, Math.min(1, s.weight / 3))).toFixed(3);
+  return s;
+}
 
-/** 小地图情报点规格：不同类别的半径与配色（bySide 时按阵营着色）。 */
+/** 小地图情报点规格：不同类别的半径与配色（bySide 时按阵营着色）。
+ *  weight=相对重要度（影响点标尺寸 / 描边），label=类别中文名（B 侧图例只读）。 */
 export const MINIMAP_BLIPS = {
-  unit:      { r: 2.0, bySide: true },
-  building:  { r: 3.2, bySide: true },
-  node:      { r: 2.6, color: 0x8fe06a },
-  hazard:    { r: 3.0, color: 0xff5a3a },
-  resonance: { r: 4.0, color: 0x9a6cff },
-  event:     { r: 5.0, color: 0xffe14a },
+  unit:      { r: 2.0, bySide: true,  weight: 1.0, label: '单位' },
+  building:  { r: 3.2, bySide: true,  weight: 1.6, label: '建筑' },
+  node:      { r: 2.6, color: 0x8fe06a, weight: 1.2, label: '资源' },
+  hazard:    { r: 3.0, color: 0xff5a3a, weight: 1.8, label: '危害' },
+  resonance: { r: 4.0, color: 0x9a6cff, weight: 2.0, label: '共振' },
+  event:     { r: 5.0, color: 0xffe14a, weight: 2.4, label: '事件' },
 };
 export function minimapSpec() { return Object.fromEntries(Object.entries(MINIMAP_BLIPS).map(([k, v]) => [k, { ...v }])); }
 
