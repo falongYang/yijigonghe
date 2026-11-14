@@ -707,6 +707,7 @@ export class World {
       this._applyAmbience();
     }
     this._sceneEvent = info.event || null;
+    this._daySpec = info.day || null;   // 逐章四相位光照快照（读 A 侧 dayPhase() 只读）
   }
   /** 章节氛围叠加到静态天气粒子层：风向漂移、密度透明度、辉光色（不重建几何，零额外开销）。 */
   _applyAmbience() {
@@ -1049,21 +1050,33 @@ export class World {
   /** 昼夜循环：整局以约 200s 为周期缓慢推移光环境与天色，叠加在纪元主题色之上。 */
   _tickDayNight(dt) {
     if (!this._eraBase) return;
-    if (dt > 0) this._dayT = (this._dayT + dt) % this._dayPeriod;
+    // A 侧 dayPhase()：逐章四相位 smoothstep 光照（周期 140~210s 各异）。
+    // 有快照时以其 intensity 驱动明暗、以章节相位色微调光源与天色；无快照时保持原有 200s 余弦。
+    const ds = this._daySpec;
+    if (dt > 0 && !ds) this._dayT = (this._dayT + dt) % this._dayPeriod;
     const theta = (this._dayT / this._dayPeriod) * Math.PI * 2;
-    const f = 0.5 - 0.5 * Math.cos(theta);          // 0 深夜 .. 1 正午
+    let f = 0.5 - 0.5 * Math.cos(theta);          // 0 深夜 .. 1 正午（回落路径）
+    if (ds && Number.isFinite(ds.intensity)) f = clamp((Number(ds.intensity) - 0.38) / 0.62, 0, 1);
     const b = this._eraBase;
     this.sun.color.copy(b.sun).lerp(NIGHT_SUN, (1 - f) * 0.6);
+    if (ds && Number.isFinite(ds.sun)) this.sun.color.lerp(new THREE.Color(ds.sun), 0.30);
     this.sun.intensity = 1.9 * (0.22 + 0.78 * f);
     this.hemi.color.copy(b.hemi);
+    if (ds && Number.isFinite(ds.ambient)) this.hemi.color.lerp(new THREE.Color(ds.ambient), 0.28);
     this.hemi.intensity = 0.95 * (0.42 + 0.58 * f);
     const bg = b.bg.clone().lerp(NIGHT_BG, (1 - f) * 0.82);
+    if (ds && Number.isFinite(ds.sky)) bg.lerp(new THREE.Color(ds.sky), 0.22);
     this.scene.background = bg;
     this.scene.fog.color.copy(bg);
     this._applySky(bg);
     this.dayFactor = 0.16 + 0.84 * f;
-    const ph = f < 0.12 ? ['🌑', '深夜'] : f < 0.30 ? ['🌅', '黎明'] : f < 0.66 ? ['☀', '白昼'] : f < 0.86 ? ['🌇', '黄昏'] : ['🌙', '夜晚'];
-    this.dayIcon = ph[0]; this.dayPhase = ph[1];
+    const ICON = { 拂晓: '🌅', 正昼: '☀', 黄昏: '🌇', 夜幕: '🌑' };
+    if (ds && ds.label && ICON[ds.label]) {
+      this.dayIcon = ICON[ds.label]; this.dayPhase = ds.label;
+    } else {
+      const ph = f < 0.12 ? ['🌑', '深夜'] : f < 0.30 ? ['🌅', '黎明'] : f < 0.66 ? ['☀', '白昼'] : f < 0.86 ? ['🌇', '黄昏'] : ['🌙', '夜晚'];
+      this.dayIcon = ph[0]; this.dayPhase = ph[1];
+    }
   }
 
   // ---------------------------------------------------------------- 地图（六章差异化战场）
@@ -1095,6 +1108,7 @@ export class World {
     this._fogBaseNear = cfg.fog[0]; this._fogBaseFar = cfg.fog[1];
     this._weatherId = null; this._weatherCur = null; this._weatherVis = 0; this._weatherTint.set(0xffffff);
     this._ambience = null; this._ambientWind = null; this._sceneEvent = null; this._sceneEvtK = 0;
+    this._daySpec = null;
     this._recolorTerrain(cfg);
     this._rebuildScatter(cfg);
     this._rebuildProps(cfg);
@@ -2069,6 +2083,8 @@ export class World {
   _syncUnit(u, force, sel) {
     const m = this.unitMeshes.get(u.id);
     if (!m) return;
+    // A 侧手感只读层（facing / step / windup / recoil），缺失时全部走既有硬编码表现
+    const feel = u.feel || null;
     m.group.position.x = u.x;
     m.group.position.z = u.z;
     // 四域高度：空域飞行悬空；地下潜行平滑「入土 / 破土」而非瞬间跳变
@@ -2110,8 +2126,11 @@ export class World {
     }
 
     // —— 朝向平滑插值（最短弧）+ 行进转弯 banking 侧倾 ——
+    // 优先用 A 侧 feel.facing（已按 UNIT_FEEL.turnRate 限速插值），让不同域/兵种转身快慢不同；
+    // 缺失时回落到 u.heading，旧行为完全等价。
     let target = m.heading;
-    if (u.heading !== undefined) target = Math.atan2(-Math.sin(u.heading), Math.cos(u.heading));
+    const hd = (feel && Number.isFinite(feel.facing)) ? feel.facing : u.heading;
+    if (hd !== undefined) target = Math.atan2(-Math.sin(hd), Math.cos(hd));
     let dh = target - m.heading;
     while (dh > Math.PI) dh -= Math.PI * 2;
     while (dh < -Math.PI) dh += Math.PI * 2;
@@ -2144,7 +2163,10 @@ export class World {
     // —— 呼吸 + 行走腿部起伏 + 攻击前冲（受击顿帧期间冻结姿态，产生「打中了一下」的停顿感） ——
     const animK = 1 - hitstopK;
     const breath = 1 + Math.sin(this.time * 2.2 + u.id) * 0.035 * animK;
-    const walk = u.moving ? Math.sin(this.time * 16 + u.id) * 0.07 * animK : 0;
+    // 步态优先用 A 侧 feel.step（按移速确定性累加相位、按域/兵种 bob 幅度），
+    // 比原本全体同频的硬编码正弦更有层次；缺失时回落到原公式。
+    const step = (feel && Number.isFinite(feel.step)) ? clamp(Number(feel.step), -0.25, 0.25) : null;
+    const walk = u.moving ? ((step != null ? step : Math.sin(this.time * 16 + u.id) * 0.07) * animK) : 0;
     m.body.scale.set(pop * (1 - Math.abs(walk) * 0.3), pop * breath, pop * (1 - Math.abs(walk) * 0.3));
     m.body.rotation.z = walk * 0.5;
     // 攻击前冲：刚发动攻击（atkTimer 接近满）时向头部(+X)小幅度突刺
@@ -2152,6 +2174,14 @@ export class World {
     if (u.state === 'attack' && u.atkcd && u.atkTimer > u.atkcd * 0.66) {
       const p = (u.atkTimer - u.atkcd * 0.66) / (u.atkcd * 0.34);
       lunge = Math.sin(p * Math.PI) * 1.1 * animK;
+    }
+    // 起手 / 后坐：A 侧 _strikeFeel 置位、_tickFeel 衰减，直接映射成后拉蓄力 → 前冲回弹，
+    // 让攻击「打出去」的节奏与兵种规格一致（远程后坐更明显）
+    if (feel) {
+      const wnd = clamp(Number(feel.windup) || 0, 0, 0.4);
+      const rec = clamp(Number(feel.recoil) || 0, 0, 1);
+      if (wnd > 0) lunge -= 0.42 * (wnd / 0.22) * animK;
+      if (rec > 0) lunge += 0.82 * rec * rec * animK;
     }
     m.body.position.x = lunge;
     // 攻击姿态差异：近战啃咬绕竖轴小幅摆头；远程/喷吐先微微后仰蓄力再弹回
@@ -2814,6 +2844,7 @@ export class World {
     this._clearGroup(this.wellGroup); this.wellVisuals = [];
     this._clearDecor();                 // 换局清掉上一章装饰点位（新图会由 buildDecor 重建）
     this._sceneEvent = null; this._sceneEvtK = 0; this._sceneTint.set(0xffffff);
+    this._daySpec = null;
     this.intro = null;
     this._camFocusT = null;     // 换局清掉上一局未走完的聚焦缓动
     this.hideCursor();
