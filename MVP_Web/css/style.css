@@ -562,6 +562,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 
 /* ---------------- 单体详情卡 ---------------- */
 .unit-tag { font-size: 11px; color: #9fd8e8; letter-spacing: 1px; margin-bottom: 6px; }
+/* 机动意图徽标：色点取 A 侧 UNIT_INTENT 规格色，与 3D 选中环一致 */
+.ui-intent { display: inline-flex; align-items: center; gap: 5px; color: var(--ic, #cdd8b8); }
+.ui-intent::before { content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ic, #cdd8b8); box-shadow: 0 0 6px var(--ic, #cdd8b8); }
 .xpbar { height: 4px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; margin: 4px 0 6px; }
 .xpbar i { display: block; height: 100%; background: linear-gradient(90deg,#ffd27f,#ffb04a); border-radius: 3px; }
 /* 老兵阶梯进度：按阶梯辉光色着色，与 3D 光晕环同口径 */

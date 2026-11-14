@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import {
-  MAP, HALF_W, HALF_H, BUILDINGS, SIDES, SKIRMISH_MAP, UNITS, RESOURCES,
+  MAP, HALF_W, HALF_H, BUILDINGS, SIDES, SKIRMISH_MAP, UNITS, RESOURCES, UNIT_INTENT,
   terrainNoise as noise2, terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt,
 } from './rts.js';
 import { ERAS } from './data.js';
@@ -35,6 +35,19 @@ const POSTURE_POSE = {
   hold:     { lean: 0.00, crouch: 0.15, sway: 0.00, scale: 0.95, bob: 0.60 },
   patrol:   { lean: 0.06, crouch: 0.02, sway: 0.28, scale: 1.00, bob: 1.08 },
   death:    { lean: 0.00, crouch: 0.00, sway: 0.00, scale: 1.00, bob: 0.00 },
+};
+
+/* B 侧机动意图环参数：读 A 侧 u.moveIntent（8 类），颜色直接取 UNIT_INTENT 的只读规格，
+   这里只决定选中环的脉冲节奏 / 不透明度 / 半径。缺字段时回落到原有的阵营色选中环。 */
+const INTENT_RING = {
+  hold:    { pulse: 0,   opacity: 0.85, r: 1.00 },
+  march:   { pulse: 2.2, opacity: 0.90, r: 1.00 },
+  charge:  { pulse: 5.5, opacity: 0.98, r: 1.06 },
+  flank:   { pulse: 6.5, opacity: 0.98, r: 1.08 },
+  patrol:  { pulse: 1.8, opacity: 0.86, r: 1.00 },
+  retreat: { pulse: 4.2, opacity: 0.94, r: 0.98 },
+  work:    { pulse: 1.2, opacity: 0.82, r: 0.98 },
+  dead:    { pulse: 0,   opacity: 0.80, r: 1.00 },
 };
 
 /* 生物群系专属道具：每套地图配置引用若干 type，world 据此散布装饰，强化地形辨识。*/
@@ -2068,11 +2081,24 @@ export class World {
     statusRing.raycast = () => {};
     group.add(statusRing);
 
+    // 受击 / 侧翼威胁环（读 A 侧细节九 u.underFire / u.flankMark）：外圈薄环，
+    // 被真实单位命中时亮红、成功侧翼包抄时转橙，随衰减淡出；不参与拾取。
+    const alertRing = new THREE.Mesh(new THREE.RingGeometry(1.02, 1.20, 24),
+      new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false }));
+    alertRing.rotation.x = -Math.PI / 2;
+    alertRing.position.y = 0.07;
+    alertRing.scale.setScalar((RING_R[u.caste] || 2.6) * 0.92);
+    alertRing.visible = false;
+    alertRing.raycast = () => {};
+    group.add(alertRing);
+
     group.position.set(u.x, 0, u.z);
     this.scene.add(group);
-    this.unitMeshes.set(u.id, { group, body, bar, fill, ring, eliteRing, statusRing, vetRing, cmdRing, pips: null, wings, cargo, mound, shadow,
+    this.unitMeshes.set(u.id, { group, body, bar, fill, ring, eliteRing, statusRing, vetRing, cmdRing, alertRing,
+      pips: null, wings, cargo, mound, shadow,
       burrowMix: u.burrowed ? 1 : 0, side: u.side, caste: u.caste, bodyIsClone: isClone, accent, spawnAt: this.time,
-      heading: u.heading || 0, bank: 0, knock: 0, hitEnv: 0, hitColor: 0xffffff, vetTier: 0, cmdSeq: 0 });
+      heading: u.heading || 0, bank: 0, knock: 0, hitEnv: 0, hitColor: 0xffffff, vetTier: 0, cmdSeq: 0,
+      moraleK: 1, intentKey: 'hold' });
     this.pickables.push(body);
     this._syncUnit(u, true, false);
   }
@@ -2093,6 +2119,7 @@ export class World {
     if (m.statusRing) m.statusRing.visible = false;
     if (m.vetRing) m.vetRing.visible = false;
     if (m.cmdRing) m.cmdRing.visible = false;
+    if (m.alertRing) m.alertRing.visible = false;
     if (m.pips) m.pips.visible = false;
     if (m.cargo) m.cargo.visible = false;
     if (m.shadow) m.shadow.visible = false;
@@ -2154,6 +2181,7 @@ export class World {
     if (m.statusRing) { m.statusRing.geometry.dispose(); m.statusRing.material.dispose(); }
     if (m.vetRing) { m.vetRing.geometry.dispose(); m.vetRing.material.dispose(); }
     if (m.cmdRing) { m.cmdRing.geometry.dispose(); m.cmdRing.material.dispose(); }
+    if (m.alertRing) { m.alertRing.geometry.dispose(); m.alertRing.material.dispose(); }
     if (m.shadow) m.shadow.material.dispose();
     if (m.fill) m.fill.material.dispose();
     if (m.ring) m.ring.material.dispose();
@@ -2221,6 +2249,35 @@ export class World {
   }
 
   // ---------------------------------------------------------------- 每帧同步
+  /** A 侧细节九只读表现层：u.underFire / u.flankMark / u.lowMorale / u.moveIntent / u.hpRatio。
+   *  只写渲染网格与 B 侧缓存，绝不回写 sim；字段缺失、类型异常时逐项回落到旧表现。 */
+  _syncFeedback(m, u) {
+    if (!m || !u) return 1;
+    // 机动意图：颜色直接取 A 侧 UNIT_INTENT 规格（选中环在后面读取同一个 key）
+    m.intentKey = (typeof u.moveIntent === 'string' && UNIT_INTENT[u.moveIntent]) ? u.moveIntent : 'hold';
+    // 受击 / 侧翼威胁环：两者都是 0..1 的衰减量，侧翼包抄命中时优先显示橙色
+    const fire = clamp(Number(u.underFire) || 0, 0, 1);
+    const flank = clamp(Number(u.flankMark) || 0, 0, 1);
+    const heat = Math.max(fire, flank);
+    if (m.alertRing) {
+      const ar = m.alertRing;
+      ar.visible = heat > 0.02 && u.hp > 0;
+      if (ar.visible) {
+        const flanking = flank > fire;
+        ar.material.color.setHex(flanking ? 0xff8a4a : 0xff5a4a);
+        ar.material.opacity = (0.18 + 0.52 * heat) * (0.82 + 0.18 * Math.sin(this.time * 14 + u.id));
+        const base = (RING_R[u.caste] || 2.6) * 0.92;
+        ar.scale.setScalar(base * (1 + (1 - heat) * 0.22 + (flanking ? 0.06 : 0)));
+      }
+    }
+    // 低士气：轻微缩肩，指数阻尼避免布尔切换时体型跳变；与姿态 / 老兵 / 密度缩放相乘
+    const cur = Number.isFinite(m.moraleK) ? m.moraleK : 1;
+    const k = 1 - Math.pow(0.04, clamp(this._frameDt || 0.016, 0, 0.1));
+    m.moraleK = cur + ((u.lowMorale ? 0.92 : 1) - cur) * k;
+    if (m.body && m.body.scale) m.body.scale.multiplyScalar(m.moraleK);
+    return m.moraleK;
+  }
+
   _syncUnit(u, force, sel) {
     const m = this.unitMeshes.get(u.id);
     if (!m) return;
@@ -2437,8 +2494,12 @@ export class World {
       : (Number(u.density) || 0) >= 4 ? 2 : (Number(u.density) || 0) >= 1 ? 1 : 0);
     if (band > 0) m.body.scale.multiplyScalar(1 - 0.018 * band);
 
+    // —— A 侧细节九只读面：受击 / 侧翼 / 低士气 / 机动意图（全部纯视觉） ——
+    this._syncFeedback(m, u);
+
     // 血条 / 等级星点 / 选择环 / 精英辉光（按需显示，降低画面杂乱与渲染开销）
-    const ratio = clamp(u.hp / u.maxHp, 0, 1);
+    const rawRatio = Number.isFinite(u.hpRatio) ? u.hpRatio : (u.maxHp ? u.hp / u.maxHp : 1);
+    const ratio = clamp(rawRatio, 0, 1);
     const showBar = sel || ratio < 0.999;
     m.bar.visible = showBar;
     if (showBar) {
@@ -2451,8 +2512,18 @@ export class World {
     } else if (m.pips) {
       m.pips.visible = false;
     }
+    // 选中环按 A 侧 u.moveIntent 着色：行军绿 / 突进金 / 包抄橙 / 后撤红…，
+    // 突进与包抄带更快的脉冲；缺字段时逐字回落到原来的阵营青 / 橙。
     m.ring.visible = sel;
-    if (sel) m.ring.material.color.set(m.side === SIDES.PLAYER ? 0x7ef0ff : 0xffb070);
+    if (sel) {
+      const spec = typeof u.moveIntent === 'string' ? INTENT_RING[u.moveIntent] : null;
+      const col = typeof u.moveIntent === 'string' ? UNIT_INTENT[u.moveIntent] : null;
+      m.ring.material.color.set(col ? col.color : (m.side === SIDES.PLAYER ? 0x7ef0ff : 0xffb070));
+      m.ring.material.opacity = spec
+        ? spec.opacity * (spec.pulse ? 0.88 + 0.12 * Math.sin(this.time * spec.pulse * 2 + u.id) : 1)
+        : 0.9;
+      m.ring.scale.setScalar((RING_R[u.caste] || 2.6) / 2.7 * (spec ? spec.r : 1));
+    }
     // 精英/进化单位：常显金色脉冲辉光环
     const elite = !!u.elite;
     m.eliteRing.visible = elite;

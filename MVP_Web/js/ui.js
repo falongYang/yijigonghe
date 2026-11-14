@@ -9,7 +9,7 @@ import {
   ENEMY_ARCHETYPES, DIFFICULTY, CAMPAIGN, DIFFICULTY_ORDER, CAMPAIGN_SAVE_KEY,
   TERRAIN, mapZones, mapWells, terrainNoise,
 } from './rts.js';
-import { SIDES } from './rts.js';
+import { SIDES, UNIT_INTENT } from './rts.js';
 import { Sound } from './audio.js';
 import { Profile, cleanName, fmtTime, summary } from './profile.js';
 
@@ -1831,6 +1831,18 @@ export class UI {
     if ((u.slowT || 0) > 0) stTags.push(`<b style="color:#8fa8c8">减速 ${u.slowT.toFixed(1)}s</b>`);
     if ((u.stunT || 0) > 0) stTags.push(`<b style="color:#e8eef6">眩晕 ${u.stunT.toFixed(1)}s</b>`);
     const statusHtml = stTags.length ? `<div class="kv"><span>状态效果</span><b>${stTags.join(' · ')}</b></div>` : '';
+    // 战术机动意图与受击反馈（A 侧细节九只读面）：与 3D 选中环 / 威胁环同口径，
+    // 颜色与标签全部取自常量规格表，单位字段只用于查表，不直接拼进 HTML。
+    const intent = typeof u.moveIntent === 'string' ? UNIT_INTENT[u.moveIntent] : null;
+    const intentCol = intent ? '#' + intent.color.toString(16).padStart(6, '0') : '';
+    const intentHtml = intent
+      ? `<div class="kv"><span>机动意图</span><b class="ui-intent" style="--ic:${intentCol}">${intent.label}</b></div>` : '';
+    const fbTags = [];
+    if ((Number(u.underFire) || 0) > 0) fbTags.push('<b style="color:#ff7a6a">被火力压制</b>');
+    if ((Number(u.flankMark) || 0) > 0) fbTags.push('<b style="color:#ff8a4a">侧翼包抄中</b>');
+    if (u.lowMorale) fbTags.push('<b style="color:#b9a0c8">低士气</b>');
+    const feedbackHtml = fbTags.length
+      ? `<div class="kv"><span>战场反馈</span><b>${fbTags.join(' · ')}</b></div>` : '';
     // 老兵阶梯（读 A 侧 u.vetTier / u.kills，纯外观成长）：击杀数 + 称号 + 下一阶进度
     const vt = u.vetTier;
     const kills = Math.max(0, Number(u.kills) || 0);
@@ -1863,6 +1875,7 @@ export class UI {
       <div class="kv"><span>状态</span><b>${stateCN[u.state] || u.state || '待命'}${u.burrowed ? ' · 潜行' : ''}</b></div>
       ${buffHtml}
       ${statusHtml}
+      ${intentHtml}${feedbackHtml}
       <div class="kv"><span>能力</span><b>${def.ability ? ABILITIES[def.ability].name : '—'}</b></div>
       ${u.waypoints && u.waypoints.length ? `<div class="muted sm">已排队 ${u.waypoints.length} 段路径点 · 按 S 清空</div>` : ''}
       <div class="muted sm">右键移动/攻击 · A 攻击移动 · S 停止 · H 驻守 · Q 能力 · T 进化</div>`;
