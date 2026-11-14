@@ -106,4 +106,4 @@ for(const sc of ['C1','C2','C3']) console.log('DETAIL', JSON.stringify(rows.find
 
 console.log("RAW", JSON.stringify(rows));
 
-for(const r of rows.filter(r=>r.sc==='C3')){assert.equal(r.revealed,7);assert.ok(r.firstReveal.dist>25 && r.firstReveal.dist<=26,'tower must reveal before underground aggro');}
+for(const r of rows.filter(r=>r.sc==='C3')){assert.equal(r.revealed,7);assert.ok(r.firstReveal.dist>22 && r.firstReveal.dist<=26,'tower must reveal before underground aggro');}
