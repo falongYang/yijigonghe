@@ -188,6 +188,10 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
   color: #a9b8d0; background: rgba(255,255,255,.06); border: 1px solid rgba(180,205,255,.25); letter-spacing: .5px; }
 .mm-intel-btn:hover { color: #dfeaff; border-color: rgba(180,205,255,.55); }
 .mm-intel-btn.on { color: #0c1a08; background: #9fe0a0; border-color: #9fe0a0; font-weight: 700; }
+/* 小地图下令按钮：琥珀色区别于情报图层的绿色，开启态一眼可辨 */
+.mm-order-btn { color: #ffe0a8; border-color: rgba(255,205,120,.42); }
+.mm-order-btn:hover { color: #fff0cf; border-color: rgba(255,205,120,.75); }
+.mm-order-btn.on { color: #241703; background: #ffd27f; border-color: #ffd27f; font-weight: 700; }
 #mm-intel-legend { display: flex; flex-wrap: wrap; gap: 3px 8px; justify-content: center; margin-top: 4px;
   padding-top: 4px; border-top: 1px solid rgba(255,255,255,.10); font-size: 10px; color: #cdd8b8; }
 #mm-intel-legend span { display: flex; align-items: center; gap: 3px; }

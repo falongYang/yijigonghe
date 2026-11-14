@@ -39,6 +39,7 @@ function boot() {
       onAbility: key => beginAbility(key),
       onEvolve: uid => sim.evolve(uid),
       onMinimap: (x, z) => world.focus(x, z, true),   // 小地图拖动需严格跟手，不做缓动
+      onMinimapOrder: (x, z, opts) => orderFromMinimap(x, z, opts),
       onRestart: () => location.reload(),
       onSpeed: n => { if (game.paused) togglePause(); game.speed = n; },
       onPause: () => togglePause(),
@@ -519,6 +520,30 @@ function commandAt(x, y) {
     if (game.shift) ui.toast('已追加路径点（单位将依次经过）');
   }
 }
+/** 小地图战术指令：右键 / 一次性「下令」态共用。
+ *  与镜头跳转刻意分离——下令后镜头留在原处，便于边看主战场边调度远处部队。
+ *  坐标钳制到战场范围，非法输入直接忽略，绝不把指令写到地图外。 */
+function orderFromMinimap(x, z, opts = {}) {
+  const wx = Number(x), wz = Number(z);
+  if (!Number.isFinite(wx) || !Number.isFinite(wz)) return;
+  const tx = Math.max(-HALF_W, Math.min(HALF_W, wx));
+  const tz = Math.max(-HALF_H, Math.min(HALF_H, wz));
+  if (!game.running || game.paused || game.tutOpen) { ui.toast('战局未进行，无法从地图下令'); return; }
+  const ids = playerSel();
+  if (!ids.length) { ui.toast('先选中单位，再从小地图下令'); return; }
+  if (opts && opts.attackMove) {
+    sim.commandAttackMove(ids, tx, tz);
+    orderFx(tx, tz, 0xffb070);
+    Sound.play('move');
+    ui.toast('攻击移动指令已下达');
+    return;
+  }
+  const append = !!(opts && opts.append);
+  sim.commandMove(ids, tx, tz, { append });
+  orderFx(tx, tz, append ? 0xffd27f : 0x7ef0c8, 'move');
+  Sound.play('move');
+  ui.toast(append ? '已追加路径点（单位将依次经过）' : `已下令前往 (${Math.round(tx)}, ${Math.round(tz)})`);
+}
 function placeBuild(x, y) {
   const g = world.screenToGround(x, y);
   if (!g) return;
@@ -561,6 +586,7 @@ function onKey(e) {
   if (k === 'escape') {
     // 先收起最上层浮层（帮助 / 纪元谱），避免暂停中开着帮助时按 Esc 直接恢复战局
     if (closeTopOverlay()) return;
+    if (ui && typeof ui.disarmMinimapOrder === 'function' && ui.disarmMinimapOrder()) return;
     if (game.pendingPatrol) { cancelPatrol(); return; }
     if (game.paused) { togglePause(); return; }
     game.pendingBuild = null; game.pendingAbility = null; world.hideCursor();
@@ -677,7 +703,7 @@ function focusGroup(d) {
 
 /* ---------------------------------------------------------------- 首次引导 */
 const TUT_STEPS = [
-  { t: '镜头操作', d: '按住左键或右键在地图上拖动即可跟手平移视角（单击仍是点选 / 下令，拖动超过 5px 自动切换为平移，不会误发指令）；中键拖动旋转视角，滚轮缩放远近，方向键 / W·D 平移镜头，鼠标贴近屏幕边缘也会自动平移（可在暂停菜单设置中关闭）。点击或拖动右下角小地图可快速跳转，空格回到己方巢区，F 跟随选中单位（手动平移即退出），Shift + 空格循环切换标准 / 俯瞰 / 低角视角预设。地面贴有战术坐标网格、中轴基准线与边缘刻度，拉近镜头更清晰；小地图带主次网格、坐标刻度、地形、水域与白框视野，交战处会亮起短寿红橙热点。开局会弹出战场简报（点资源栏地图名可重看），Alt + 左键可在地面放战术标记。地面高台 / 泥沼 / 浅滩有发光描边与标签，鼠标所指地形显示在图例条；金色信息素井可驻兵占领、持续产信息素。A / S 专用于战场指令。' },
+  { t: '镜头操作', d: '按住左键或右键在地图上拖动即可跟手平移视角（单击仍是点选 / 下令，拖动超过 5px 自动切换为平移，不会误发指令）；中键拖动旋转视角，滚轮缩放远近，方向键 / W·D 平移镜头，鼠标贴近屏幕边缘也会自动平移（可在暂停菜单设置中关闭）。点击或拖动右下角小地图可快速跳转；在小地图上右键可给选中单位直接下令（Shift 追加路径点、Alt 攻击移动），触屏则点「下令」后再轻点地图，下令时镜头不会跟着跳走。空格回到己方巢区，F 跟随选中单位（手动平移即退出），Shift + 空格循环切换标准 / 俯瞰 / 低角视角预设。地面贴有战术坐标网格、中轴基准线与边缘刻度，拉近镜头更清晰；小地图带主次网格、坐标刻度、地形、水域与白框视野，交战处会亮起短寿红橙热点。开局会弹出战场简报（点资源栏地图名可重看），Alt + 左键可在地面放战术标记。地面高台 / 泥沼 / 浅滩有发光描边与标签，鼠标所指地形显示在图例条；金色信息素井可驻兵占领、持续产信息素。A / S 专用于战场指令。' },
   { t: '选择单位', d: '左键点选单个单位（左侧显示完整属性、经验、武器克制与所处地形，敌方也可查看）；双击己方单位全选同兵种；按住 Shift 拖拽可框选多个。右键命令移动或攻击（多选自动按阵型散开）；Shift + 右键追加路径点。A 攻击移动、S 停止、H 驻守。I 可选中闲置工蚁，C 让选中工蚁就近续采；选中受损巢室点「派工蚁维修」或选中工蚁右键该建筑，工蚁会耗矿修复。' },
   { t: '建造', d: '点击下方「建造」按钮，移动鼠标会实时显示占地预览与可建原因（绿色可建 / 红色不可建；深水与陡坡不可建），在己方巢区附近左键放置（Esc 取消）。蚁后巢会自动缓慢补充工蚁；生产队列可点 × 取消并退还资源。' },
   { t: '出兵与纪元', d: '选中蚁后巢 / 巢室，在右侧点兵种生产。研究史官堂推进纪元，解锁更强兵种并全族群属性成长。选中生产建筑后右键地面可设集结点。' },

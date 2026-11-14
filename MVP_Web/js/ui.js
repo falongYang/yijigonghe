@@ -900,13 +900,21 @@ export class UI {
     this._mmBase = null; this._mmBaseName = '';   // 地形底图缓存（换地图时重建）
     // 点击 / 拖拽小地图跳转镜头（与 _drawMinimap 的 HW/HH 映射对应）
     const HW = 94, HH = 67;
-    const jump = e => {
+    // 屏幕像素 → 战术坐标：钳制到 0..1，避免指针滑出画布时算出图外坐标
+    const mapPoint = e => {
       const rect = this.mm.getBoundingClientRect();
-      const px = (e.clientX - rect.left) / rect.width;
-      const py = (e.clientY - rect.top) / rect.height;
-      const wx = px * 2 * HW - HW;
-      const wz = py * 2 * HH - HH;
-      if (this.hooks.onMinimap) this.hooks.onMinimap(wx, wz);
+      const px = Math.max(0, Math.min(1, (e.clientX - rect.left) / (rect.width || 1)));
+      const py = Math.max(0, Math.min(1, (e.clientY - rect.top) / (rect.height || 1)));
+      return { x: px * 2 * HW - HW, z: py * 2 * HH - HH };
+    };
+    const jump = e => {
+      const p = mapPoint(e);
+      if (this.hooks.onMinimap) this.hooks.onMinimap(p.x, p.z);
+    };
+    /** 战术指令：与镜头跳转分开，右键 / 下令按钮共用，镜头保持原地。 */
+    const issue = (e, opts) => {
+      const p = mapPoint(e);
+      if (this.hooks.onMinimapOrder) this.hooks.onMinimapOrder(p.x, p.z, opts || {});
     };
     // 统一走 Pointer Events：鼠标点击 / 拖动照旧，触屏点按与拖动小地图同样能跳转镜头。
     // pointerdown 上 preventDefault 可抑制浏览器补发的兼容鼠标事件，避免一次点击跳两次。
@@ -914,6 +922,12 @@ export class UI {
     this.mm.addEventListener('pointerdown', e => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+      // 下令态：一次点按 = 给选中单位下达移动指令，用完即收，避免后续拖图被误判为指令
+      if (this._mmOrderArmed) {
+        this.setMinimapOrderArmed(false);
+        issue(e, { append: !!e.shiftKey, attackMove: !!e.altKey });
+        return;
+      }
       this._mmDrag = true; this._mmPid = e.pointerId;
       try { this.mm.setPointerCapture(e.pointerId); } catch { /* 老浏览器忽略 */ }
       jump(e);
@@ -926,15 +940,50 @@ export class UI {
     const endDrag = () => { this._mmDrag = false; this._mmPid = null; };
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
+    // 桌面右键 = 小地图下令（Shift 追加路径点 / Alt 攻击移动）。
+    // pointerdown 已忽略非左键，因此右键不会顺带把镜头跳走。
+    this.mm.addEventListener('contextmenu', e => {
+      if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+      issue(e, { append: !!e.shiftKey, attackMove: !!e.altKey });
+    });
     this.mm.style.cursor = 'crosshair';
     const tip = $('#mm-tip');
-    if (tip) tip.textContent = '白框 视野 · 红晕 交战 · 黄圈 标记 · 金圈 井';
+    if (tip) tip.textContent = '白框 视野 · 红晕 交战 · 黄圈 标记 · 金圈 井 · 右键 下令';
     // 情报图层开关（读 A 侧 intelBlips()/minimapSpec() 只读汇总）
     this.intelLayer = false;
     const intelBtn = document.getElementById('mm-intel');
     if (intelBtn) intelBtn.onclick = () => this.toggleIntelLayer();
+    // 触屏 / 平板没有右键：点「下令」进入一次性下令态，再轻点小地图即可下达指令
+    const orderBtn = document.getElementById('mm-order');
+    if (orderBtn) orderBtn.onclick = () => {
+      const on = this.setMinimapOrderArmed(!this._mmOrderArmed);
+      this.toast(on ? '小地图下令已开启：点一下地图给选中单位下令（Esc 取消）' : '已退出小地图下令模式');
+    };
+    this.setMinimapOrderArmed(false);
     // 偏好「默认开启情报图层」在构造时即生效（不依赖设置面板被打开过）
     this._setIntelLayer(!!(this.settings && this.settings.intelDefault));
+  }
+
+  /** 小地图下令态开关：按钮高亮、aria-pressed 与指针样式同步。 */
+  setMinimapOrderArmed(on) {
+    this._mmOrderArmed = !!on;
+    const btn = document.getElementById('mm-order');
+    if (btn) {
+      if (btn.classList && typeof btn.classList.toggle === 'function') btn.classList.toggle('on', this._mmOrderArmed);
+      if (typeof btn.setAttribute === 'function') btn.setAttribute('aria-pressed', String(this._mmOrderArmed));
+      btn.title = this._mmOrderArmed
+        ? '小地图下令已开启：点击/轻点小地图下达移动指令（Esc 取消）'
+        : '小地图下令：开启后点击小地图给选中单位下令（桌面也可直接右键）';
+    }
+    if (this.mm && this.mm.style) this.mm.style.cursor = this._mmOrderArmed ? 'cell' : 'crosshair';
+    return this._mmOrderArmed;
+  }
+  /** Esc 逐层收起时优先退出下令态；返回是否确实取消了待下指令。 */
+  disarmMinimapOrder() {
+    if (!this._mmOrderArmed) return false;
+    this.setMinimapOrderArmed(false);
+    this.toast('已退出小地图下令模式');
+    return true;
   }
 
   /** 直接设定情报图层状态（供快捷键、按钮与设置项共用）。 */
