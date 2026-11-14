@@ -97,7 +97,8 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
   text-decoration: underline; cursor: pointer; padding: 2px 0; }
 .cc-reset:hover { color: #cdd8b8; }
 .cc-reset.armed { color: #ffb070; text-decoration: none; }
-.cc-hint { color: #6f7a60; font-size: 9.5px; margin: 6px 0 0; }
+.cc-hint { color: #6f7a60; font-size: 9.5px; margin: 6px 0 0; transition: color .15s; }
+.cc-hint.cc-invalid { color: #ff9a5a; }
 @media (max-width: 980px) {
   #commander-card { width: 190px; top: 8px; right: 8px; padding: 7px 9px; }
   .cc-stats { grid-template-columns: repeat(2, 1fr); }
@@ -171,6 +172,15 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 #minimap { display: block; border-radius: 6px; cursor: crosshair; }
 #domain-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; justify-content: center; margin-top: 4px; font-size: 11px; color: #cdd8b8; }
 #domain-legend .mm-tip { color: #8a9678; font-size: 10px; white-space: nowrap; }
+/* 情报图层开关与类别图例（读 A 侧 minimapSpec() 的 label / color） */
+.mm-intel-btn { font-size: 10px; line-height: 1; padding: 2px 6px; border-radius: 4px; cursor: pointer;
+  color: #a9b8d0; background: rgba(255,255,255,.06); border: 1px solid rgba(180,205,255,.25); letter-spacing: .5px; }
+.mm-intel-btn:hover { color: #dfeaff; border-color: rgba(180,205,255,.55); }
+.mm-intel-btn.on { color: #0c1a08; background: #9fe0a0; border-color: #9fe0a0; font-weight: 700; }
+#mm-intel-legend { display: flex; flex-wrap: wrap; gap: 3px 8px; justify-content: center; margin-top: 4px;
+  padding-top: 4px; border-top: 1px solid rgba(255,255,255,.10); font-size: 10px; color: #cdd8b8; }
+#mm-intel-legend span { display: flex; align-items: center; gap: 3px; }
+#mm-intel-legend i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 #domain-legend span { display: flex; align-items: center; gap: 3px; }
 .dom { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 .dom.land { background: #9fa86a; } .dom.sea { background: #4fa6c8; } .dom.air { background: #b9c7e0; } .dom.ug { background: #6b5742; }

@@ -83,9 +83,26 @@ export class UI {
       input.addEventListener('input', () => {
         if (!hint) return;
         const v = cleanName(input.value);
-        hint.textContent = v.length < 2 ? '代号至少 2 个字符 · 仅保存在本机' : '按 Enter 或点击别处保存 · 仅保存在本机';
+        const filtered = v !== input.value.trim();
+        const valid = v.length >= 2 && !filtered;
+        hint.textContent = v.length < 2
+          ? `代号至少 2 个字符 · ${v.length}/12 · 仅保存在本机`
+          : filtered ? `已过滤特殊字符 · ${v.length}/12 · 按 Enter 保存`
+            : `按 Enter 或点击别处保存 · ${v.length}/12 · 仅保存在本机`;
+        hint.classList.toggle('cc-invalid', !valid);
       });
     }
+    // 多标签页同步：另一标签页改了代号或打完一局，本页档案卡 / HUD 徽记即时刷新
+    window.addEventListener('storage', e => {
+      if (!e || (e.key && e.key !== 'ant_epoch_profile_v1')) return;
+      try {
+        this._profile = Profile.get();
+        this._profileNew = false;
+        this._renderProfile();
+        if (input) input.value = this._profile.name;
+        if (hint) hint.classList.remove('cc-invalid');
+      } catch (_) { /* 存储异常时保持当前档案，绝不打断游戏 */ }
+    });
     if (fold && body) {
       fold.onclick = () => {
         const on = body.classList.contains('hidden');
@@ -206,7 +223,8 @@ export class UI {
 
   // ----------------------------------------------------------- 设置（暂停菜单内）
   _loadSettings() {
-    const def = { volume: 0.5, edgePan: true, floats: true, fps: true, qAuto: true, quality: 2 };
+    const def = { volume: 0.5, edgePan: true, floats: true, fps: true, qAuto: true, quality: 2,
+      cues: true, intelDefault: false };
     try {
       const v = JSON.parse(localStorage.getItem('ant_epoch_settings') || 'null');
       return v && typeof v === 'object' ? { ...def, ...v } : def;
@@ -229,11 +247,16 @@ export class UI {
         this._saveSettings();
       };
     }
-    for (const [id, key] of [['set-edgepan', 'edgePan'], ['set-floats', 'floats'], ['set-fps', 'fps'], ['set-qauto', 'qAuto']]) {
+    for (const [id, key] of [['set-edgepan', 'edgePan'], ['set-floats', 'floats'], ['set-fps', 'fps'],
+      ['set-qauto', 'qAuto'], ['set-cues', 'cues'], ['set-intel', 'intelDefault']]) {
       const c = pick(id);
       if (!c) continue;
       c.checked = !!S[key];
-      c.onchange = () => { S[key] = c.checked; this._applySettings(); this._saveSettings(); };
+      c.onchange = () => {
+        S[key] = c.checked; this._applySettings(); this._saveSettings();
+        // 「默认开启情报图层」即时生效（取消勾选时也立刻收起，避免设置与实际画面不一致）
+        if (key === 'intelDefault' && typeof this._setIntelLayer === 'function') this._setIntelLayer(c.checked);
+      };
     }
     const q = pick('set-quality');
     if (q) {
@@ -808,6 +831,54 @@ export class UI {
     this.mm.style.cursor = 'crosshair';
     const tip = $('#mm-tip');
     if (tip) tip.textContent = '白框 视野 · 红晕 交战 · 黄圈 标记 · 金圈 井';
+    // 情报图层开关（读 A 侧 intelBlips()/minimapSpec() 只读汇总）
+    this.intelLayer = false;
+    const intelBtn = document.getElementById('mm-intel');
+    if (intelBtn) intelBtn.onclick = () => this.toggleIntelLayer();
+    // 偏好「默认开启情报图层」在构造时即生效（不依赖设置面板被打开过）
+    this._setIntelLayer(!!(this.settings && this.settings.intelDefault));
+  }
+
+  /** 直接设定情报图层状态（供快捷键、按钮与设置项共用）。 */
+  _setIntelLayer(on) {
+    this.intelLayer = !!on;
+    const btn = document.getElementById('mm-intel');
+    if (btn) btn.classList.toggle('on', this.intelLayer);
+    const lg = document.getElementById('mm-intel-legend');
+    if (lg) {
+      lg.classList.toggle('hidden', !this.intelLayer);
+      if (this.intelLayer) this._renderIntelLegend();
+    }
+    const tip = document.getElementById('mm-tip');
+    if (tip) tip.textContent = this.intelLayer
+      ? '情报层：敌方聚簇热区 · 危害 / 共振 / 事件点标'
+      : '白框 视野 · 红晕 交战 · 黄圈 标记 · 金圈 井';
+    return this.intelLayer;
+  }
+
+  /** 切换小地图情报图层：敌方聚簇热区 + 危害/共振/事件点标 + 类别图例。 */
+  toggleIntelLayer() {
+    const on = this._setIntelLayer(!this.intelLayer);
+    // 同步「默认开启」偏好，让下一次开局保持当前选择
+    if (this.settings) { this.settings.intelDefault = on; this._saveSettings(); }
+    const box = document.getElementById('set-intel');
+    if (box) box.checked = on;
+    return on;
+  }
+
+  /** 图例按 A 侧 minimapSpec() 的中文 label / 配色生成，不硬编码类别名。 */
+  _renderIntelLegend() {
+    const el = document.getElementById('mm-intel-legend');
+    if (!el) return;
+    let spec = null;
+    try { if (this.sim && typeof this.sim.minimapSpec === 'function') spec = this.sim.minimapSpec(); } catch (_) { spec = null; }
+    if (!spec) { el.innerHTML = ''; return; }
+    const order = ['unit', 'building', 'node', 'hazard', 'resonance', 'event'];
+    el.innerHTML = order.map(k => {
+      const sp = spec[k] || {};
+      const col = sp.bySide ? 0x9fe8ff : (Number(sp.color) || 0xffffff);
+      return `<span><i style="background:#${col.toString(16).padStart(6, '0')}"></i>${sp.label || k}</span>`;
+    }).join('');
   }
 
   // ----------------------------------------------------------- 启动页飘浮孢子
@@ -1040,6 +1111,20 @@ export class UI {
       <div><span>进攻波次 / 智能能力</span><b>${stE.waves || 0} / ${stE.smartCasts || 0}</b></div>
       <div><span>后勤维修 / 基地回防</span><b>${stE.repairs || 0} / ${stE.defenses || 0}</b></div>
       <div><span>敌方损失</span><b>${stE.losses || 0}</b></div>` : '') : '';
+    // 战场叙事战报（读 A 侧 battleSummary() 只读聚合，缺接口时整段跳过）
+    let battleHtml = '';
+    if (typeof s.battleSummary === 'function') {
+      const bs = s.battleSummary() || {};
+      const trade = bs.tradeRatio ? bs.tradeRatio.P : 0;
+      battleHtml = `
+      <div class="end-stat-sep">战场叙事 · 战报</div>
+      <div><span>总时长 / 实战时长</span><b>${Math.floor(bs.duration || s.time || 0)}s / ${Math.floor(bs.battleTime || 0)}s</b></div>
+      <div><span>交换比 / 峰值兵力</span><b>${trade} / ${bs.peakArmy || 0}</b></div>
+      <div><span>累计出兵 / 老兵晋升</span><b>${(bs.born && bs.born.P) || 0} / ${bs.veterans || 0}</b></div>
+      <div><span>精英击杀 / 共振命中</span><b>${bs.eliteKills || 0} / ${bs.resonanceHits || 0}</b></div>
+      <div><span>气象转变 / 场景异象</span><b>${bs.weatherShifts || 0} / ${bs.sceneEvents || 0}</b></div>
+      <div><span>里程碑 / 累计采集</span><b>${bs.milestones || 0} / ${Math.round(bs.harvested || 0)}</b></div>`;
+    }
     $('#end-stats').innerHTML = `
       <div><span>模式</span><b>${s.mode === 'campaign' ? '战役·第' + (s.chapter + 1) + '章' : '遭遇战'}</b></div>
       <div><span>我方纪元</span><b>${ERA_NAMES[s.era.P]}</b></div>
@@ -1050,7 +1135,7 @@ export class UI {
       <div><span>敌方峰值兵力</span><b>${s.peakPop[SIDES.ENEMY]}</b></div>
       <div><span>存活时长</span><b>${Math.floor(s.time)}s</b></div>
       <div><span>难度</span><b>${s.difficulty?.name || '标准'}</b></div>
-      <div title="${climDesc}"><span>战场环境</span><b>${climName}</b></div>${statRows}`;
+      <div title="${climDesc}"><span>战场环境</span><b>${climName}</b></div>${statRows}${battleHtml}`;
     // 本机指挥官档案：本局战绩写回 + 新纪录 / 徽记晋升提示
     // 容错：极简上下文（无原型方法）或存储异常时不阻断结算面板，并清掉上一局回执
     const rec = typeof this._recordMatch === 'function' ? this._recordMatch(s, win, st0) : null;
@@ -1759,6 +1844,47 @@ export class UI {
     this._mmBase = cv; this._mmBaseName = cfg.name || '';
   }
 
+  /** 情报图层（读 A 侧 intelBlips() / minimapSpec()，只读）：
+   *  敌方单位按 10×7 网格聚合成热区，危害 / 共振 / 场景事件按规格配色与重要度画点标。
+   *  单位 / 建筑 / 资源仍由原有更精细的图层绘制，避免重复叠画。 */
+  _drawIntelLayer(g, s, toX, toY, W, H) {
+    let blips = null, spec = null;
+    try {
+      if (typeof s.intelBlips === 'function') blips = s.intelBlips();
+      if (typeof s.minimapSpec === 'function') spec = s.minimapSpec();
+    } catch (_) { blips = null; }
+    if (!Array.isArray(blips)) return;
+    const HW = 94, HH = 67, cols = 10, rows = 7, cw = W / cols, ch = H / rows;
+    const heat = new Float32Array(cols * rows);
+    for (const b of blips) {
+      if (!b || b.kind !== 'unit' || b.side !== SIDES.ENEMY) continue;
+      const i = Math.min(cols - 1, Math.max(0, Math.floor((b.x + HW) / (2 * HW) * cols)));
+      const j = Math.min(rows - 1, Math.max(0, Math.floor((b.z + HH) / (2 * HH) * rows)));
+      heat[j * cols + i] += 1;
+    }
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+      const v = heat[j * cols + i];
+      if (v < 2) continue;
+      g.fillStyle = `rgba(255,90,60,${Math.min(0.34, 0.07 + v * 0.045).toFixed(2)})`;
+      g.fillRect(i * cw, j * ch, cw, ch);
+    }
+    for (const b of blips) {
+      if (!b || (b.kind !== 'hazard' && b.kind !== 'resonance' && b.kind !== 'event')) continue;
+      const sp = spec && spec[b.kind] ? spec[b.kind] : null;
+      const col = sp && sp.color != null ? Number(sp.color)
+        : (b.kind === 'hazard' ? 0xff5a3a : b.kind === 'resonance' ? 0x9a6cff : 0xffe14a);
+      const hex = '#' + col.toString(16).padStart(6, '0');
+      const wgt = sp && Number.isFinite(sp.weight) ? sp.weight : 1;
+      const cx = toX(b.x), cy = toY(b.z);
+      const r = Math.max(2.5, (Number(b.r) || 3) * 0.9 + wgt * 1.4);
+      g.strokeStyle = hex; g.globalAlpha = 0.78; g.lineWidth = 1 + wgt * 0.35;
+      g.beginPath(); g.arc(cx, cy, r, 0, 6.28); g.stroke();
+      g.globalAlpha = 0.35; g.fillStyle = hex;
+      g.beginPath(); g.arc(cx, cy, r * 0.45, 0, 6.28); g.fill();
+      g.globalAlpha = 1;
+    }
+  }
+
   _drawMinimap() {
     const s = this.sim, g = this.mmx, W = this.mm.width, H = this.mm.height;
     if (!s.sp) return;
@@ -1944,6 +2070,8 @@ export class UI {
       g.lineWidth = m.building ? 1.6 : 1;
       g.beginPath(); g.arc(toX(m.x), toY(m.z), 2 + k * (m.building ? 9 : 5), 0, 6.28); g.stroke();
     }
+    // 情报图层（可选开关）：敌方聚簇热区 + 危害/共振/事件点标
+    if (this.intelLayer) this._drawIntelLayer(g, s, toX, toY, W, H);
     // 相机视野矩形（比原来的圆更贴近实际可视范围）
     const c = this.world.cam;
     const vw = Math.min(W * 0.96, (c.dist * 0.9) / (2 * HW) * W);

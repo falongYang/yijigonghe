@@ -446,6 +446,8 @@ function onKey(e) {
   if (k === 'enter' && game.pendingPatrol) { commitPatrol(); return; }
   if (k === 'p') { e.preventDefault(); togglePause(); return; }
   if (k === 'y') { ui.toggleEraPanel(); return; }
+  // M：切换小地图情报图层（暂停时也可用，方便复盘查看敌方聚簇）
+  if (k === 'm') { ui.toggleIntelLayer(); Sound.play('select'); return; }
   if (game.paused) return;   // 暂停时屏蔽战场指令，仅 P / Esc / Y / 回车(确认巡逻) 可恢复
   // G：进入巡逻布点；V：循环切换阵型
   if (k === 'g') { e.preventDefault(); beginPatrol(); return; }
@@ -638,7 +640,7 @@ function loop(now) {
   // 放在主循环单点消费，避免多处 drain 丢提示；无该接口时整段静默跳过（向后兼容）。
   if (game.running && typeof sim.drainCues === 'function') {
     const cues = sim.drainCues();
-    if (cues && cues.length) {
+    if (cues && cues.length && !(ui.settings && ui.settings.cues === false)) {
       world.applyCues(cues);
       ui.pushCueSubtitles(cues);
       Sound.applyCues(cues);
