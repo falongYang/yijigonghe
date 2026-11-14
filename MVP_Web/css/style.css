@@ -801,3 +801,20 @@ button, .sp-nav, .ch-nav, .bbtn, .abtn, .tbtn, .mtab, .dtab, .atab, .mm-intel-bt
   /* 触屏没有 hover：把按钮说明留在 title / 帮助页，不让提示气泡挡住手指 */
   .hud-tip { display: none; }
 }
+
+/* Keep resources and controls in separate rows when their combined width cannot fit. */
+@media (max-width: 1600px) {
+  #topright { max-width: calc(100vw - 24px); overflow-x: auto; }
+  #topright > * { flex-shrink: 0; }
+  #res { top: 56px; max-width: calc(100vw - 24px); }
+  #weather-hud { top: 108px; }
+  #sel { top: 108px; }
+}
+@media (max-width: 880px) {
+  #topright { left: 8px; right: 8px; max-width: none; }
+  #res { top: 48px; left: 8px; right: 8px; max-width: none; flex-wrap: nowrap; overflow-x: auto; }
+  #res > * { flex-shrink: 0; }
+  #weather-hud { top: 88px; }
+  #sel { top: 154px; max-height: calc(100vh - 320px); }
+  #econ-status { top: 88px; }
+}

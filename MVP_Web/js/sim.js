@@ -3,6 +3,7 @@
  * 经验升级与进化·敌方 AI·资源掠夺·胜负判定。纯逻辑 + 事件，渲染由 world.js 镜像。
  */
 import { SPECIES_BY_ID } from './data.js';
+import { Navigation } from './navigation.js';
 import {
   MAP, HALF_W, HALF_H, SIDES, START_BIO, START_MIN, START_PH, POP_CAP,
   RESOURCES, RES_ORDER, DOMAINS, DOMAIN_ORDER, WEAPONS, DMG_TYPES, ARMOR_TYPES,
@@ -57,6 +58,7 @@ const AI_OFFENSIVE_ABILITIES = new Set(['a_acidpool', 'a_whirl', 'a_venom', 'a_d
 
 export class Simulation {
   constructor() {
+    this.navigation = new Navigation(HALF_W, HALF_H);
     this.listeners = [];
     this.selected = new Set();
     this.selectedBuilding = null;
@@ -1993,38 +1995,65 @@ export class Simulation {
   }
 
   _moveTo(u, tx, tz, dt, onArrive) {
-    const dx = tx - u.x, dz = tz - u.z;
-    const d = Math.hypot(dx, dz);
-    const stopR = (u.state === 'attack' || u.state === 'harvest') ? 0.2 : 0.6;
-    if (d <= stopR) { u.moving = false; if (onArrive) onArrive(); return; }
-    let vx = dx / d, vz = dz / d;
-    let sx = 0, sz = 0;
-    for (const o of this.units) {
-      if (o === u || o.side !== u.side) continue;
-      const od = dist(u.x, u.z, o.x, o.z);
-      if (od < 2.6 && od > 1e-3) { sx += (u.x - o.x) / od; sz += (u.z - o.z) / od; }
+    if (!Number.isFinite(tx) || !Number.isFinite(tz) || !Number.isFinite(dt) || dt <= 0) return;
+    const nav = this.navigation;
+    const bypass = u.domain === 'air' || (u.domain === 'underground' && u.burrowed);
+    const requested = nav.clamp({ x: tx, z: tz });
+    let goal = requested, route = null;
+    if (!bypass) {
+      nav.sync(this.obstacles, this.buildings);
+      const old = u.navigation;
+      if (!old || old.version !== nav.version || dist(old.tx, old.tz, requested.x, requested.z) > 0.5) {
+        goal = nav.goal(u, requested);
+        route = goal ? nav.path(u, goal) : [];
+        u.navigation = { version: nav.version, tx: requested.x, tz: requested.z, goal, route, index: 0 };
+      }
+      const plan = u.navigation;
+      goal = plan.goal; route = plan.route;
+      if (!goal || !route.length) { u.moving = false; return; }
     }
-    vx += sx * 0.35; vz += sz * 0.35;
-    // 战术掩体软碰撞：把单位推离障碍，并叠加切向分量避免正对障碍来回抖动
-    for (const ob of this.obstacles) {
-      const od = dist(u.x, u.z, ob.x, ob.z);
-      const minD = ob.r + 0.8;
-      if (od < minD && od > 1e-3) {
-        const push = (minD - od) / minD;
-        const nx = (u.x - ob.x) / od, nz = (u.z - ob.z) / od;
-        vx += nx * push * 1.5 - nz * push * 0.9;
-        vz += nz * push * 1.5 + nx * push * 0.9;
+    const stopR = (u.state === 'attack' || u.state === 'harvest') ? 0.2 : 0.6;
+    if (dist(u.x, u.z, goal.x, goal.z) <= stopR) {
+      u.moving = false;
+      if (onArrive) onArrive();
+      return;
+    }
+    let point = goal;
+    if (!bypass) {
+      const plan = u.navigation;
+      while (plan.index < route.length - 1 && dist(u.x, u.z, route[plan.index].x, route[plan.index].z) < 0.15) plan.index++;
+      // Skip intermediate corners whenever the remaining route is visible.
+      for (let i = route.length - 1; i > plan.index; i--) {
+        if (nav.clear(u, route[i])) { plan.index = i; break; }
+      }
+      point = route[plan.index];
+    }
+    const dx = point.x - u.x, dz = point.z - u.z, d = Math.hypot(dx, dz);
+    if (d < 1e-6) { u.moving = false; return; }
+    let vx = dx / d, vz = dz / d, sx = 0, sz = 0;
+    for (const o of this.units) {
+      if (o === u || o.side !== u.side || o.domain !== u.domain) continue;
+      const od = dist(u.x, u.z, o.x, o.z);
+      if (od < 2.6 && od > 1e-3) {
+        const weight = (2.6 - od) / 2.6;
+        sx += (u.x - o.x) / od * weight; sz += (u.z - o.z) / od * weight;
       }
     }
-    const vl = Math.hypot(vx, vz) || 1; vx /= vl; vz /= vl;
-    // 命中减速（slowMul）与地形减速叠乘；眩晕由 _tickStatuses 直接挡住整帧行动。
-    let sp = u.speed * u.buff.spd * (u.slowT > 0 ? (u.slowMul || 1) : 1)
+    // Bounded lateral avoidance cannot reverse a unit or push it past its goal.
+    const lateral = clamp((sx * -vz + sz * vx) * 0.35, -0.45, 0.45) * Math.min(1, d / 3);
+    const px = vx; vx -= vz * lateral; vz += px * lateral;
+    const vl = Math.hypot(vx, vz); vx /= vl; vz /= vl;
+    const speed = u.speed * u.buff.spd * (u.slowT > 0 ? (u.slowMul || 1) : 1)
       * (u.burrowed ? BURROW_IDLE_SPEED : 1) * this._terrainSpeedMul(u);
-    const step = sp * dt;
-    u.x = clamp(u.x + vx * step, -HALF_W + 2, HALF_W - 2);
-    u.z = clamp(u.z + vz * step, -HALF_H + 2, HALF_H - 2);
-    u.heading = Math.atan2(vz, vx);
-    u.moving = true;
+    const step = Math.min(speed * dt, d);
+    let next = nav.clamp({ x: u.x + vx * step, z: u.z + vz * step });
+    if (!bypass && !nav.clear(u, next)) {
+      next = nav.clamp({ x: u.x + dx / d * step, z: u.z + dz / d * step });
+      if (!nav.clear(u, next)) { u.navigation = null; u.moving = false; return; }
+    }
+    u.heading = Math.atan2(next.z - u.z, next.x - u.x);
+    u.moving = dist(u.x, u.z, next.x, next.z) > 1e-6;
+    u.x = next.x; u.z = next.z;
   }
 
   _nearestEnemyEntity(side, x, z, radius, opts = {}) {

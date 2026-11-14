@@ -13,7 +13,7 @@
 yijigonghe/                     # git 仓库根
 ├── MVP_Web/                    # 站点源码（部署打包的就是这个目录）
 │   ├── index.html
-│   ├── js/                     # 15 个 ES 模块（见下）
+│   ├── js/                     # 19 个 ES 模块
 │   ├── css/style.css
 │   └── vendor/three.module.js
 ├── MVP_Web_部署/
@@ -34,7 +34,9 @@ python3 -m http.server 8000
 # 浏览器打开 http://localhost:8000/
 ```
 
-也可以用 `npm run serve`（等价于上面的命令）。语法自检：`npm run check`。
+也可以用 `npm run serve`（等价于上面的命令）。语法自检：`npm run check`；完整回归：`npm test`。
+
+当前开发路线、寻路规则与验收记录见 [开发路线与验收](docs/开发路线与验收.md)。
 
 ## 部署
 
@@ -55,7 +57,7 @@ bash MVP_Web_部署/push_github.sh "本轮改动说明"
 
 不带参数时自动生成带时间戳的提交信息。凭据已配置在 `/Users/loganyang/.git-credentials`（权限 600，由仓库本地 `credential.helper=store` 读取，`origin` 保持干净 URL 不含 token）。仓库级 helper 链以空值开头，屏蔽系统级 `osxkeychain` 在沙箱内的 `-60006` 写入告警。
 
-**状态**：2026-11-13 首次推送成功，远端 `main` 与本地一致（含 5 个基线 / 解耦 / 改名提交）。
+**历史记录**：2026-11-13 首次推送成功。当前同步状态以每轮 `git push` 结果为准。
 
 > **PAT 权限要求**：必须是可写 token —— classic PAT 勾 `repo` scope，或 fine-grained PAT 设置 `Contents: Read and write` 并在 Repository access 中勾选本仓库。只读 token 会通过 API 鉴权，但 `git push` 会返回 `403 Permission ... denied`（`/repos` 里的 `permissions.push=true` 只反映账户权限，不能用来判断 token scope）。
 

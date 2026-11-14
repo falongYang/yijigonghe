@@ -1636,15 +1636,19 @@ export class World {
   }
   _buildHills() {
     this.hillsGroup = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x39472b, roughness: 1, metalness: 0 });
+    const mat = new THREE.MeshStandardMaterial({ color: 0x39472b, roughness: 1, metalness: 0, depthWrite: false });
     const N = 9;
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2 + 0.35;
-      const rX = HALF_W + 26 + Math.random() * 40;
-      const rZ = HALF_H + 18 + Math.random() * 36;
       const rad = 64 + Math.random() * 56;
+      // Keep the entire hill beyond the battlefield, not merely its centre.
+      const rX = HALF_W + rad + 100 + Math.random() * 40;
+      const rZ = HALF_H + rad + 100 + Math.random() * 36;
       const h = 24 + Math.random() * 30;
       const hill = new THREE.Mesh(new THREE.SphereGeometry(rad, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+      // Background scenery renders after the sky and before playable geometry.
+      // Even a low/zoomed-out camera cannot let a foreground hill hide units.
+      hill.renderOrder = -9;
       hill.scale.y = h / rad;
       hill.position.set(Math.cos(a) * rX, -1, Math.sin(a) * rZ);
       this.hillsGroup.add(hill);

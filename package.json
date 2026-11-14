@@ -5,6 +5,9 @@
   "description": "《蚁纪·共时》四域战争 RTS Web MVP — 原生 ES Modules + Three.js，无构建步骤",
   "scripts": {
     "serve": "python3 -m http.server 8000 --directory MVP_Web",
-    "check": "for f in MVP_Web/js/*.js; do node --check \"$f\" || exit 1; done; echo ALL_JS_OK"
-  }
+    "check": "for f in MVP_Web/js/*.js; do node --check \"$f\" || exit 1; done; echo ALL_JS_OK",
+    "test": "node run-tests.mjs",
+    "test:browser": "node browser-smoke.mjs"
+  },
+  "type": "module"
 }
