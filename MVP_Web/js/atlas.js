@@ -2,6 +2,7 @@ import { MAP, SIDES, UNITS, DOMAINS, BUILDINGS, RESOURCES, TERRAIN } from './rts
 import { drawScouting } from './scouting.js';
 import { timelineHTML, timeLabel } from './battle-report.js';
 const COLORS = { land:'#b8ca83', sea:'#64c8e0', air:'#d0baff', underground:'#d4a66e' };
+export function atlasVisible(entity) { return entity.side === SIDES.PLAYER || entity.type === 'hq' || entity.visible === true; }
 export function atlasPoint(clientX, clientY, rect) {
   if (!(rect.width > 0) || !(rect.height > 0)) return {x:0,z:0};
   const x = Math.max(0,Math.min(1,(clientX-rect.left)/rect.width));
@@ -64,8 +65,8 @@ export class BattlefieldAtlas {
     for(const h of [...(s.terrainHazards||[]),...(s.hazards||[])])circle(h,(h.r||3)/MAP.W*W,'rgba(235,105,74,.28)');
     if(this.layers.orders){g.strokeStyle='#9ce8d4';g.lineWidth=1.5;g.setLineDash([5,4]);for(const u of s.units){if(u.side!=='P'||!s.selected.has(u.id))continue;const target=u.advanceGoal||u.target;if(!target||!Number.isFinite(target.x))continue;g.beginPath();g.moveTo(x(u.x),z(u.z));for(const point of [...(u.navigation?.route?.slice(u.navigation.index)||[]),target,...(u.waypoints||[])])g.lineTo(x(point.x),z(point.z));g.stroke();}g.setLineDash([]);}
     for(const b of scouting?.buildings||[]){if(s.buildings.some(live=>live.id===b.id&&live.visible))continue;g.strokeStyle='#ab9684';g.setLineDash([3,2]);g.strokeRect(x(b.x)-5,z(b.z)-5,10,10);g.setLineDash([]);}
-    for(const b of s.buildings){if(b.side!=='P'&&b.visible===false)continue;g.fillStyle=b.side==='P'?'#9feaaf':'#ff9c78';const size=b.type==='hq'?12:7;g.fillRect(x(b.x)-size/2,z(b.z)-size/2,size,size);if(b.type==='hq'){g.font='bold 12px sans-serif';g.fillText(b.side==='P'?'我方蚁后巢':'敌方蚁后巢',x(b.x)+9,z(b.z)+4);}}
-    for(const u of s.units){if(u.hp<=0||(u.side!=='P'&&u.visible===false))continue;circle(u,UNITS[u.type]?.role==='econ'?2.3:3.5,u.side==='P'?COLORS[u.domain]:'#ff856b');if(s.selected.has(u.id)){g.strokeStyle='#fff';g.beginPath();g.arc(x(u.x),z(u.z),6,0,Math.PI*2);g.stroke();}}
+    for(const b of s.buildings){if(!atlasVisible(b))continue;g.fillStyle=b.side==='P'?'#9feaaf':'#ff9c78';const size=b.type==='hq'?12:7;g.fillRect(x(b.x)-size/2,z(b.z)-size/2,size,size);if(b.type==='hq'){g.font='bold 12px sans-serif';g.fillText(b.side==='P'?'我方蚁后巢':'敌方蚁后巢',x(b.x)+9,z(b.z)+4);}}
+    for(const u of s.units){if(u.hp<=0||!atlasVisible(u))continue;circle(u,UNITS[u.type]?.role==='econ'?2.3:3.5,u.side==='P'?COLORS[u.domain]:'#ff856b');if(s.selected.has(u.id)){g.strokeStyle='#fff';g.beginPath();g.arc(x(u.x),z(u.z),6,0,Math.PI*2);g.stroke();}}
     const cam=this.ui.world?.cam;if(cam){g.strokeStyle='#fff';g.lineWidth=1.5;g.beginPath();g.arc(x(cam.tx),z(cam.tz),13,0,Math.PI*2);g.moveTo(x(cam.tx)-18,z(cam.tz));g.lineTo(x(cam.tx)+18,z(cam.tz));g.moveTo(x(cam.tx),z(cam.tz)-18);g.lineTo(x(cam.tx),z(cam.tz)+18);g.stroke();}
     document.getElementById('atlas-title').textContent=`${s.map.name} · ${timeLabel(s.time)}`;
     this.hint();

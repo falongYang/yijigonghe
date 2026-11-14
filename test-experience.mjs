@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import {ScoutingMemory} from './MVP_Web/js/scouting.js';
-import {atlasPoint,BattlefieldAtlas} from './MVP_Web/js/atlas.js';
+import {atlasPoint,atlasVisible,BattlefieldAtlas} from './MVP_Web/js/atlas.js';
 import {timelineHTML,timeLabel,victoryReason} from './MVP_Web/js/battle-report.js';
 import {installLocomotion,updateLocomotion} from './MVP_Web/js/locomotion.js';
 let count=0;const ok=(c,m)=>{assert.ok(c,m);count++;};
+ok(!atlasVisible({side:'E',type:'s1'}),'unknown visibility cannot reveal enemy units');
+ok(atlasVisible({side:'E',type:'hq'}),'enemy HQ remains a known strategic target');
+ok(atlasVisible({side:'P',type:'s1'}),'own units remain visible');
 const rect={left:10,top:20,width:752,height:536};
 assert.deepEqual(atlasPoint(386,288,rect),{x:0,z:0});count++;
 assert.deepEqual(atlasPoint(-100,999,rect),{x:-94,z:67});count++;
