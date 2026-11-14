@@ -6,7 +6,7 @@ import { SPECIES_BY_ID } from './data.js';
 import { ScoutingMemory } from './scouting.js';
 import { Navigation } from './navigation.js';
 import {
-  MAP, HALF_W, HALF_H, SIDES, START_BIO, START_MIN, START_PH, POP_CAP,
+  DETECTION, weaponCanTarget, MAP, HALF_W, HALF_H, SIDES, START_BIO, START_MIN, START_PH, POP_CAP,
   RESOURCES, RES_ORDER, DOMAINS, DOMAIN_ORDER, WEAPONS, DMG_TYPES, ARMOR_TYPES,
   ARMOR_MULT, ABILITIES, BUILDINGS, BUILD_ORDER, UNITS, UNIT_ORDER,
   XP_PER_LEVEL, MAX_LEVEL, LEVEL_HP, LEVEL_DMG, ELITE_HP, ELITE_DMG,
@@ -458,7 +458,7 @@ export class Simulation {
     };
     for (const u of this.units) {
       if (u.side === SIDES.PLAYER) { u.visible = true; continue; }
-      u.visible = seen(u.x, u.z);
+      u.visible = seen(u.x, u.z) && this.isTargetable(u);
     }
     for (const b of this.buildings) {
       if (b.side === SIDES.PLAYER || b.type === 'hq') { b.visible = true; continue; }
@@ -574,7 +574,7 @@ export class Simulation {
       level: opts.level || 1, elite: !!opts.elite, xp: 0, accent, sig,
       state: 'idle', target: null, waypoints: [], nodeId: null, homeId: null,
       heading: h0, moving: false, atkTimer: 0,
-      order: 'auto', lastAttacker: null, burrowed: false, phase: Math.random() * 6.28, defendUntil: 0,
+      order: 'auto', lastAttacker: null, burrowed: false, revealed: false, revealT: 0, phase: Math.random() * 6.28, defendUntil: 0,
       // 行动细节：阵型 / 巡逻路径 / 驻守锚点
       formation: 'auto', patrol: null, patrolIdx: 0, holdX: null, holdZ: null,
       buff: { dmg: 1, tank: 1, spd: 1, t: 0 },
@@ -639,7 +639,31 @@ export class Simulation {
   pop(side) { return this.units.filter(u => u.side === side).length; }
   res_(side, r) { return this.res[side][r] || 0; }
   depots(side) { return this.buildings.filter(b => b.side === side && BUILDINGS[b.type].depot && b.state === 'idle'); }
-  isTargetable(u) { return !(u.domain === 'underground' && u.burrowed); }
+  isTargetable(u) { return !(u.domain === 'underground' && u.burrowed) || !!u.revealed; }
+  canAttack(attacker, target) {
+    return !!target && target.hp > 0 && attacker.side !== target.side
+      && this.isTargetable(target) && weaponCanTarget(attacker, target);
+  }
+  _updateDetection(dt) {
+    for (const u of this.units) {
+      if (u.hp <= 0 || u.domain !== 'underground' || !u.burrowed) {
+        u.revealed = false; u.revealT = 0; continue;
+      }
+      const detected = this.buildings.some(b => b.side !== u.side && b.hp > 0 && b.state === 'idle'
+        && BUILDINGS[b.type].detectRadius && dist(u.x,u.z,b.x,b.z) <= BUILDINGS[b.type].detectRadius)
+        || this.units.some(v => v.side !== u.side && v.hp > 0 && !v.burrowed
+          && dist(u.x,u.z,v.x,v.z) <= DETECTION.contact);
+      u.revealT = detected ? DETECTION.linger : Math.max(0, (u.revealT || 0) - dt);
+      u.revealed = detected || u.revealT > 1e-6;
+    }
+  }
+  _sideSees(side, target) {
+    const vm = this._wea().visionMul;
+    return this.units.some(u => u.side === side && u.hp > 0 && !u.burrowed
+      && dist(u.x,u.z,target.x,target.z) <= (u.domain === 'air' ? 42 : 30) * vm)
+      || this.buildings.some(b => b.side === side && b.hp > 0 && b.state === 'idle'
+        && dist(b.x,b.z,target.x,target.z) <= (b.type === 'hq' ? 50 : 44) * vm);
+  }
 
   nearestNode(x, z, domain, minAmount = 1, opts = {}) {
     // 默认路径保持「最近距离」原语义；只有显式 balance 时启用负载均衡调度。
@@ -927,7 +951,7 @@ export class Simulation {
   commandAttack(ids, targetId) {
     const tgt = this.getUnit(targetId) || this.getBuilding(targetId) || this.getObstacle(targetId);
     if (!tgt) return;
-    for (const id of ids) { const u = this.getUnit(id); if (!u) continue; u.repairId = null; u.strike = null; u.advanceGoal = null; u.cmdFlash = 1; u.waypoints = []; u.state = 'attack'; u.order = 'manual'; u.target = { id: targetId, x: tgt.x, z: tgt.z }; if (u.domain === 'underground') u.burrowed = false; }
+    for (const id of ids) { const u = this.getUnit(id); if (!u || !this.canAttack(u, tgt)) continue; u.repairId = null; u.strike = null; u.advanceGoal = null; u.cmdFlash = 1; u.waypoints = []; u.state = 'attack'; u.order = 'manual'; u.target = { id: targetId, x: tgt.x, z: tgt.z }; if (u.domain === 'underground') u.burrowed = false; }
   }
   commandAttackMove(ids, x, z, opts = {}) {
     const n = ids.length;
@@ -1155,6 +1179,7 @@ export class Simulation {
   tick(dt) {
     if (this.ended) return;
     this.time += dt;
+    this._updateDetection(dt);
     for (const b of this.buildings) this._tickBuilding(b, dt);
     this._tickNodes(dt);
     this._tickWells(dt);
@@ -1185,6 +1210,7 @@ export class Simulation {
     for (const side of ['P', 'E']) for (const k in this.cd[side]) {
       if (this.cd[side][k] > 0) this.cd[side][k] = Math.max(0, this.cd[side][k] - dt);
     }
+    this._updateDetection(0);
     this._updateVision();
     // 峰值兵力统计（用于结算页）
     for (const side of ['P', 'E']) {
@@ -1797,7 +1823,7 @@ export class Simulation {
     if (b.attack) {
       b.cooldown = Math.max(0, b.cooldown - dt);   // 长期无目标时不让冷却累积成巨大负数
       if (b.cooldown <= 0) {
-        const tgt = this._nearestEnemyEntity(b.side, b.x, b.z, b.attack.range + b.size * 0.5);
+        const tgt = this._nearestEnemyEntity(b.side, b.x, b.z, b.attack.range + b.size * 0.5, { attacker: b });
         if (tgt) { this._launchStrike(b, tgt, b.attack.dmg, b.attack.dtype, true); b.cooldown = b.attack.atkcd; }
       }
     }
@@ -1901,8 +1927,8 @@ export class Simulation {
   /** 战术索敌开关：只有敌方 AI 且难度 targeting>0 时启用，玩家单位与手动指令保持原行为。 */
   _targetOpts(u) {
     const w = (u.side === SIDES.ENEMY && this._ai) ? (this._ai.diff.targeting || 0) : 0;
-    if (w <= 0) return undefined;
-    const o = { tactical: u, tacticalWeight: w };
+    if (w <= 0) return { attacker: u };
+    const o = { attacker: u, tactical: u, tacticalWeight: w };
     // 只有「新增原型」声明了 targetPolicy 才附带偏好；原三档返回对象逐字不变。
     // 战役沿用原三档，故此分支不会影响任何既有进度曲线。
     const pol = this.archetype && TARGET_POLICIES[this.archetype.targetPolicy];
@@ -1951,8 +1977,8 @@ export class Simulation {
     const tgt = u.target && (this.getUnit(u.target.id) || this.getBuilding(u.target.id) || this.getObstacle(u.target.id));
     // 目标已在同帧被友军击杀（_reap 在帧末才清理）：立刻释放锁定，避免后续单位对着尸体空放一轮。
     // 原实现会置 state='auto'，但状态机并无该分支，单位将永久静止 —— 统一回到 idle 由 _autoUnit 重新索敌。
-    if (!tgt || tgt.hp <= 0) {
-      if (tgt && this.stats && this.stats[u.side]) this.stats[u.side].overkillSaved++;
+    if (!tgt || !this.canAttack(u, tgt)) {
+      if (tgt && tgt.hp <= 0 && this.stats && this.stats[u.side]) this.stats[u.side].overkillSaved++;
       // 巡逻单位交战结束后回到巡逻路线（不丢命令）；其余单位照旧回 idle 重新索敌。
       if (u.retPatrol && u.patrol && u.patrol.length) { u.state = 'patrol'; u.order = 'manual'; u.retPatrol = false; }
       else u.state = 'idle';
@@ -1976,7 +2002,8 @@ export class Simulation {
 
   /** Actual attack timing, independent of render frames and cosmetic UNIT_FEEL. */
   _beginStrike(u, target) {
-    if (u.strike) return;
+    if (u.strike || !this.canAttack(u, target)) return;
+    if (u.domain === 'underground') u.burrowed = false;
     const windup = u.melee ? 0.16 : 0.2;
     u.strike = { targetId: target.id, remaining: windup, state: u.state };
     u.atkTimer = u.atkcd;
@@ -1991,13 +2018,14 @@ export class Simulation {
     if (strike.remaining > 1e-6) return;
     u.strike = null;
     const target = this.getUnit(strike.targetId) || this.getBuilding(strike.targetId) || this.getObstacle(strike.targetId);
-    if (!target || target.hp <= 0 || (target.domain && !this.isTargetable(target))) return;
+    if (!this.canAttack(u, target)) return;
     const reach = u.range * this._terrainRangeMul(u) + (target.r || (target.size || 0) * 0.5);
     if (dist(u.x, u.z, target.x, target.z) > reach + 0.25) return;
     if (u.feel) { u.feel.windup = 0; u.feel.recoil = 1; }
     this._launchStrike(u, target, u.dmg, u.dtype, !u.melee);
   }
   _launchStrike(attacker, target, damage, dtype, ranged) {
+    if (!this.canAttack(attacker, target)) return;
     if (!ranged) {
       this._dealDamage(attacker, target, damage, attacker.x, attacker.z, false, dtype);
       if (attacker.splash > 0) this._applySplash(attacker, target, damage);
@@ -2022,7 +2050,7 @@ export class Simulation {
       shot.remaining -= dt;
       if (shot.remaining > 1e-6) continue;
       this.projectiles.splice(i, 1);
-      if (!target || target.hp <= 0 || (target.domain && !this.isTargetable(target))) continue;
+      if (!target || target.hp <= 0 || !this.isTargetable(target) || !weaponCanTarget(shot.source, target)) continue;
       const live = this.getUnit(shot.attackerId) || this.getBuilding(shot.attackerId);
       const attacker = live && live.hp > 0 ? live : { ...shot.source, hp: 0 };
       this._dealDamage(attacker, target, shot.damage, shot.fromX, shot.fromZ, true, shot.dtype, { impact: true, buffDamage: shot.buffDamage });
@@ -2041,7 +2069,7 @@ export class Simulation {
     const enemy = u.side === SIDES.PLAYER ? SIDES.ENEMY : SIDES.PLAYER;
     const candidates = [];
     for (const o of this.units) {
-      if (o === tgt || o.side !== enemy || o.hp <= 0 || !this.isTargetable(o)) continue;
+      if (o === tgt || o.side !== enemy || !this.canAttack(u, o)) continue;
       const d = dist(o.x, o.z, tgt.x, tgt.z);
       if (d <= r) candidates.push({ o, d });
     }
@@ -2133,7 +2161,7 @@ export class Simulation {
     let best = null, bd = radius;
     for (const u of this.units) {
       if (u.side !== enemy || u.hp <= 0) continue;   // 帧内已阵亡、尚未回收的单位不再被锁定
-      if (!this.isTargetable(u)) continue;
+      if (!this.isTargetable(u) || (opts.attacker && !this.canAttack(opts.attacker, u))) continue;
       if (opts.combatOnly && u.type === 'worker') continue;
       const d = dist(x, z, u.x, u.z);
       if (d < bd) { bd = d; best = u; }
@@ -2186,7 +2214,7 @@ export class Simulation {
       if (score < bestScore) { bestScore = score; best = t; }
     };
     for (const u of this.units) {
-      if (u.side !== enemy || !this.isTargetable(u)) continue;
+      if (u.side !== enemy || !this.canAttack(atk, u)) continue;
       consider(u, dist(x, z, u.x, u.z), false);
     }
     for (const b of this.buildings) {
@@ -2662,6 +2690,16 @@ export class Simulation {
         if (b.type === 'barracks' && sig && this.era[E] >= UNITS[sig].tech) {
           const sigTarget = 5 + Math.floor(this.era[E] * 1.5);
           if (ai.sigCount < sigTarget || Math.random() < 0.45) ut = sig;
+        }
+        const airThreat = this.units.some(u => u.side === SIDES.PLAYER && u.hp > 0
+          && u.domain === 'air' && this._sideSees(E, u));
+        if (airThreat) {
+          const aa = avail.find(t => WEAPONS[UNITS[t].weapon]?.air);
+          if (aa) {
+            const count = soldiers.filter(u => WEAPONS[UNITS[u.type].weapon]?.air).length
+              + eb.reduce((n,b) => n + b.queue.filter(q => WEAPONS[UNITS[q.type].weapon]?.air).length, 0);
+            if (count < Math.max(3, Math.ceil(soldiers.length / 3))) ut = aa;
+          }
         }
         const cost = effectiveCost(ut, this.sp[E]);
         if (this.canAfford(E, cost) && bio > resBio + 30 && this.pop(E) < 100 && Math.random() < diff.armyMul) {

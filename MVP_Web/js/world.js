@@ -2556,6 +2556,7 @@ export class World {
       const poison = (u.poison && u.poison.stacks) || 0;
       const corrode = u.corrodeT || 0, slow = u.slowT || 0;
       if (stun > 0) { sc = 0xe8eef6; op = 0.88; pulseRate = 11; }        // 眩晕：灰白高频闪烁
+      else if (u.burrowed && u.revealed) { sc = 0x7ef0ff; op = 0.85; pulseRate = 9; }
       else if (poison > 0) { sc = 0x9fe06a; op = 0.58 + 0.16 * poison; pulseRate = 7; } // 中毒：叠层越厚越亮
       else if (corrode > 0) { sc = 0xffb070; op = 0.8; pulseRate = 6; }   // 腐蚀破甲：琥珀
       else if (slow > 0) { sc = 0x8fa8c8; op = 0.7; }                    // 减速：冰蓝
@@ -2564,7 +2565,7 @@ export class World {
       else if ((b.spd || 1) > 1.1) { sc = 0x7ef0ff; op = 0.7; }          // 加速
       else if ((b.spd || 1) < 0.9 || u.terrain === 'mire' || u.terrain === 'water') { sc = 0x8fa8c8; op = 0.55; }
       else if (u.terrain === 'ridge') { sc = 0x9fe06a; op = 0.5; }       // 高台射程加成
-      if (u.domain === 'underground' && m.burrowMix > 0.5) sc = 0;
+      if (u.domain === 'underground' && m.burrowMix > 0.5 && !u.revealed) sc = 0;
       m.statusRing.visible = !!sc;
       if (sc) {
         m.statusRing.material.color.setHex(sc);
@@ -2621,6 +2622,25 @@ export class World {
     for (let i = 0; i < 5; i++) m.pips.children[i].visible = i < lvl;
     m.pips.quaternion.copy(this.camera.quaternion);
     m.pips.quaternion.premultiply(m.group.quaternion.clone().invert());
+  }
+
+  _syncDetectionRing(sim) {
+    const b = sim.getBuilding(sim.selectedBuilding);
+    const radius = b && b.side === SIDES.PLAYER && b.hp > 0 && b.state === 'idle' ? BUILDINGS[b.type].detectRadius : 0;
+    if (!radius) { if (this.detectionRing) this.detectionRing.visible = false; return; }
+    if (!this.detectionRing) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(64 * 3), 3));
+      this.detectionRing = new THREE.LineLoop(geo, new THREE.LineBasicMaterial({color:0x7ef0ff,transparent:true,opacity:0.7,depthTest:false}));
+      this.detectionRing.renderOrder = 990;
+      this.scene.add(this.detectionRing);
+    }
+    const ring = this.detectionRing, points = ring.geometry.getAttribute('position');
+    for (let i=0;i<64;i++) {
+      const a=i*Math.PI*2/64, x=b.x+Math.cos(a)*radius, z=b.z+Math.sin(a)*radius;
+      points.setXYZ(i,x,this._groundY(x,z)+0.18,z);
+    }
+    points.needsUpdate = true; ring.geometry.computeBoundingSphere(); ring.visible = true;
   }
 
   _syncBuilding(b, selected) {
@@ -2722,6 +2742,7 @@ export class World {
       if (bh) bh.mesh.visible = b.visible !== false;   // 敌方蚁后巢始终可见，其余按视野
     }
     this.updateNodes(sim);
+    this._syncDetectionRing(sim);
     this._syncWells(sim);
     this._syncHazards(sim);
     this._syncObstacles(sim);
@@ -3077,6 +3098,7 @@ export class World {
 
   /** 新开一局：清理上一局残留的动态可视对象（旗标/危险区/特效），避免多局累积。 */
   resetBattle() {
+    if (this.detectionRing) this.detectionRing.visible = false;
     this.setFollow(false);
     for (const l of this.orderLines) l.visible = false;
     for (const m of this.orderMarks) m.visible = false;
@@ -3513,6 +3535,9 @@ export class World {
     this._setNdc(x, y);
     const hits = this.raycaster.intersectObjects(this.pickables, false);
     for (const h of hits) {
+      let visible = true;
+      for (let o = h.object; o; o = o.parent) if (!o.visible) { visible = false; break; }
+      if (!visible) continue;
       if (h.object.userData && h.object.userData.kind) return { kind: h.object.userData.kind, id: h.object.userData.id };
     }
     return null;

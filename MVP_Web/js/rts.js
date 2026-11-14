@@ -186,17 +186,30 @@ export const ARMOR_MULT = {
 };
 export const WEAPONS = {
   w_bite:   { name: '大颚撕咬', dtype: 'bite',   range: 2.2, atkcd: 0.85, melee: true,  proj: 'melee', splash: 0 },
-  w_acid:   { name: '酸液喷射', dtype: 'acid',   range: 11,  atkcd: 1.1,  melee: false, proj: 'acid',  splash: 0 },
+  w_acid:   { air: true, name: '酸液喷射', dtype: 'acid',   range: 11,  atkcd: 1.1,  melee: false, proj: 'acid',  splash: 0 },
   w_major:  { name: '巨颚重击', dtype: 'pierce', range: 2.7, atkcd: 1.15, melee: true,  proj: 'melee', splash: 0 },
-  w_tower:  { name: '警戒酸弹', dtype: 'acid',   range: 22,  atkcd: 0.7,  melee: false, proj: 'bolt',  splash: 0 },
+  w_tower:  { air: true, name: '警戒酸弹', dtype: 'acid',   range: 22,  atkcd: 0.7,  melee: false, proj: 'bolt',  splash: 0 },
   w_rower:  { name: '桨击',     dtype: 'bite',   range: 2.3, atkcd: 0.9,  melee: true,  proj: 'melee', splash: 0 },
-  w_diver:  { name: '毒针',     dtype: 'sting',  range: 9,   atkcd: 1.0,  melee: false, proj: 'sting', splash: 0 },
-  w_flyer:  { name: '俯冲撕咬', dtype: 'bite',   range: 2.5, atkcd: 0.8,  melee: true,  proj: 'dive',  splash: 0 },
-  w_glider: { name: '落籽轰炸', dtype: 'bomb',   range: 13,  atkcd: 1.3,  melee: false, proj: 'bomb',  splash: 4.5 },
+  w_diver:  { air: true, name: '毒针',     dtype: 'sting',  range: 9,   atkcd: 1.0,  melee: false, proj: 'sting', splash: 0 },
+  w_flyer:  { air: true, name: '俯冲撕咬', dtype: 'bite',   range: 2.5, atkcd: 0.8,  melee: true,  proj: 'dive',  splash: 0 },
+  w_glider: { air: true, name: '落籽轰炸', dtype: 'bomb',   range: 13,  atkcd: 1.3,  melee: false, proj: 'bomb',  splash: 4.5 },
   w_tunnel: { name: '掘颚穿刺', dtype: 'pierce', range: 2.6, atkcd: 1.0,  melee: true,  proj: 'melee', splash: 0 },
   w_burrow: { name: '钻地突刺', dtype: 'pierce', range: 2.4, atkcd: 0.9,  melee: true,  proj: 'ambush', splash: 0 },
   w_hq:     { name: '巢卫撕咬', dtype: 'bite',   range: 2.4, atkcd: 1.0,  melee: true,  proj: 'melee', splash: 0 },
 };
+
+// 只读规则：显示层和模拟层共用武器真值，不按射程猜测对空能力。
+export const DETECTION = { contact: 4, linger: 1.5 };
+export function weaponCanTarget(attacker, target) {
+  const def = UNITS[attacker.type];
+  const key = attacker.attack?.weapon || def?.weapon || attacker.weapon;
+  return target.domain !== 'air' || WEAPONS[key]?.air === true;
+}
+export function combatTags(def) {
+  const w = WEAPONS[def.weapon || def.attack?.weapon];
+  return [ ...(w ? ['对地', ...(w.air ? ['对空'] : [])] : []),
+    ...(def.detectRadius ? [`侦测 ${def.detectRadius}`] : def.weapon ? [`侦测 ${DETECTION.contact}（非潜行）`] : []) ];
+}
 
 /* ----------------------------- 能力系统 ----------------------------- */
 // 主动技能：消耗信息素 + 冷却；效果在 sim._castAbility 内结算。
@@ -208,7 +221,7 @@ export const ABILITIES = {
   a_venom:      { name: '毒雾',   cost: 16, cd: 18, desc: '喷出毒雾，对范围内敌人造成剧毒伤害。' },
   a_dive:       { name: '俯冲轰炸', cost: 14, cd: 16, desc: '升空后俯冲，对落点范围造成轰炸伤害。' },
   a_bomb:       { name: '滑翔轰炸', cost: 16, cd: 18, desc: '投下种荚炸弹，范围爆破伤害。' },
-  a_burrow:     { name: '钻地突袭', cost: 14, cd: 20, desc: '潜入地下无法被锁定，3 秒后破土造成突袭伤害。' },
+  a_burrow:     { name: '钻地突袭', cost: 14, cd: 20, desc: '3 秒后落点破土造成突袭伤害；地下单位自主潜行可被侦测。' },
   a_rally:      { name: '信息素号令', cost: 20, cd: 30, desc: '集结附近友军，8 秒内伤害 +20%。' },
   a_resonance:  { name: '纪元共鸣', cost: 24, cd: 40, desc: '全族群 10 秒伤害 +10%（纪元科技爆发）。' },
 };
@@ -231,7 +244,7 @@ export const ABILITY_VISUAL = {
 /* ----------------------------- 建筑类型 ----------------------------- */
 export const BUILDINGS = {
   hq: {
-    id: 'hq', name: '蚁后巢', hp: 1800, size: 7.2, cost: { bio: 0 }, build: 0,
+    detectRadius: 20, id: 'hq', name: '蚁后巢', hp: 1800, size: 7.2, cost: { bio: 0 }, build: 0,
     role: '核心 · 产工蚁 · 生信息素', depot: true, produces: ['worker'], phGen: 1.6, ability: 'a_rally',
     color: 0x6b5742, desc: '巢群核心，被摧毁即告失败；自动缓慢生产工蚁，并作为卸货点与信息素源。',
   },
@@ -246,7 +259,7 @@ export const BUILDINGS = {
     color: 0x7a5a3e, desc: '生产陆面兵种（兵蚁/酸蚁/巨颚卫），随纪元解锁更高级。',
   },
   tower: {
-    id: 'tower', name: '警戒塔', hp: 560, size: 3.4, cost: { bio: 150, min: 40 }, build: 6,
+    detectRadius: 22, id: 'tower', name: '警戒塔', hp: 560, size: 3.4, cost: { bio: 150, min: 40 }, build: 6,
     role: '防御 · 远程', attack: { dmg: 26, range: 22, atkcd: 0.7, ranged: true, weapon: 'w_tower' },
     color: 0x5e4a34, desc: '自动攻击射程内敌方单位/建筑，并可锁定空中目标，是防线支点。',
   },
@@ -785,8 +798,7 @@ export function researchCost(sp, era) {
 export const ERA_NAMES = ERAS.map(e => `${e.no} ${e.name}`);
 export const MAX_ERA = 5;
 
-// 跨域交战规则：所有域之间均可交火（开放环境），环境差异通过
-// 「地下掘蚁潜行不可被锁定」「飞行蚁悬空越障」等机制体现，而非硬性克制。
+// 历史兼容接口只表示域间可以接敌；实际普攻权限以 weaponCanTarget 和模拟侦测为准。
 export function canEngage(aDomain, tDomain) { return true; }
 
 // 敌方在玩家选定后分配一个不同品种，并尽量不同专长域，制造对抗差异

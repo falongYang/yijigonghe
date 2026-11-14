@@ -13,6 +13,21 @@ await page.goto((process.env.GAME_URL || 'http://127.0.0.1:8000/') + '#auto?sp=S
 await page.waitForFunction(()=>window.__ANT_EPOCH__?.game.running);
 await page.evaluate(()=>{const {world:w}=window.__ANT_EPOCH__.game;w.intro=null;w.cam.dist=120;w.cam.pitch=.92;w.cam.tx=0;w.cam.tz=15;w._camT.dist=120;w._camT.pitch=.92;document.querySelector('#map-brief')?.classList.add('hidden');});
 await page.waitForTimeout(1800);
+await page.evaluate(()=>{
+ const g=window.__ANT_EPOCH__.game;g.world.keys.w=true;g.shift=true;
+ window.dispatchEvent(new Event('blur'));
+});
+assert.ok(await page.evaluate(()=>{const g=window.__ANT_EPOCH__.game;return !g.world.keys.w&&!g.shift&&!g.world.dragPan&&!g.world.edge.active;}),'blur releases camera and modifier input');
+assert.ok((await page.locator('#domain-rules').textContent()).includes('侦测'),'help derives domain rules');
+await page.evaluate(()=>{const g=window.__ANT_EPOCH__.game;g.sim.selectedBuilding=g.sim.buildings.find(b=>b.side==='P'&&b.type==='hq').id;});
+await page.waitForTimeout(100);
+assert.ok(await page.evaluate(()=>window.__ANT_EPOCH__.game.world.detectionRing?.visible),'selected HQ displays detection radius');
+await page.evaluate(()=>{window.__ANT_EPOCH__.game.sim.selectedBuilding=null;});
+await page.evaluate(()=>{const s=window.__ANT_EPOCH__.game.sim,u=s._makeUnit('P','s2',0,0);s.selected=new Set([u.id]);});
+await page.waitForTimeout(150);
+assert.ok((await page.locator('#sel-body').textContent()).includes('对空'),'selected acid unit card derives anti-air label');
+
+
 await page.screenshot({path:join(tmpdir(),'yijigonghe-navigation-desktop.png')});
 const result=await page.evaluate(()=>{
  const {sim:s,world:w}=window.__ANT_EPOCH__.game;

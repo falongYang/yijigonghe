@@ -5,7 +5,7 @@ import { SPECIES, ERAS } from './data.js';
 import {
   BUILDINGS, BUILD_ORDER, UNITS, ERA_NAMES, MAX_ERA, ABILITIES,
   effectiveUnit, effectiveCost, effectiveBuildingCost, researchCost, RESOURCES, RES_ORDER, specialtyOf, DOMAINS,
-  WEAPONS, ARMOR_MULT, XP_PER_LEVEL, MAX_LEVEL,
+  DETECTION, combatTags, WEAPONS, ARMOR_MULT, XP_PER_LEVEL, MAX_LEVEL,
   ENEMY_ARCHETYPES, DIFFICULTY, CAMPAIGN, DIFFICULTY_ORDER, CAMPAIGN_SAVE_KEY,
   TERRAIN, mapZones, mapWells, terrainNoise,
 } from './rts.js';
@@ -57,6 +57,7 @@ export class UI {
     this._buildArchTabs();
     this._buildButtons();
     this._wire();
+    this._buildDomainHelp();
     this._initMinimap();
     this._initSettings();
     this.atlas = new BattlefieldAtlas(this);
@@ -1700,6 +1701,14 @@ export class UI {
       : `尚无可进化的单位——让单位作战升级、推进纪元或积累矿物后即可进化（按 <b>T</b>）。`;
   }
 
+  _buildDomainHelp() {
+    const target = document.getElementById('domain-rules');
+    if (!target) return;
+    const antiAir = [...Object.values(UNITS), ...Object.values(BUILDINGS)].filter(u => combatTags(u).includes('对空')).map(u => u.name);
+    const detectors = Object.values(BUILDINGS).filter(b => b.detectRadius).map(b => `${b.name} ${b.detectRadius}`);
+    target.textContent = `对空：${antiAir.join('、')}；其他武器只能对地。侦测：${detectors.join('、')}；非潜行单位贴身 ${DETECTION.contact} 距离嗅探。离开侦测后 ${DETECTION.linger} 秒撤销揭示；出手解除潜行。`;
+  }
+
   // ----------------------------------------------------------- 每帧刷新
   refresh() {
     const s = this.sim;
@@ -1815,7 +1824,7 @@ export class UI {
       const wp = ids.reduce((a, id) => { const u = s.getUnit(id); return a + (u && u.waypoints ? u.waypoints.length : 0); }, 0);
       // 单体详情卡需要随血量/经验/状态变化刷新（量化以减少重绘）
       const one = ids.length === 1 ? s.getUnit(ids[0]) : null;
-      const detail = one ? `:${Math.ceil(one.hp / 8)}:${Math.floor((one.xp || 0) / 10)}:${one.level}:${one.state}:${one.elite ? 1 : 0}:${one.burrowed ? 1 : 0}:${(s.zoneAt(one.x, one.z) || {}).id || '-'}` : '';
+      const detail = one ? `:${Math.ceil(one.hp / 8)}:${Math.floor((one.xp || 0) / 10)}:${one.level}:${one.state}:${one.elite ? 1 : 0}:${one.burrowed ? 1 : 0}:${one.revealed ? 1 : 0}:${(s.zoneAt(one.x, one.z) || {}).id || '-'}` : '';
       // 多选汇总（整队耐久 / 等级 / 精英 / 编队归属）也需随战斗变化刷新，量化后并入签名，
       // 否则整队血条会一直停在选中那一刻。
       let squad = '';
@@ -1860,7 +1869,7 @@ export class UI {
         <div class="kv"><span>耐久</span><b>${Math.ceil(b.hp)}/${b.maxHp}</b></div>
         <div class="kv"><span>状态</span><b>${b.state === 'constructing' ? '施工中 ' + Math.round(b.buildProg * 100) + '%' : (b.research ? '研究中' : '就绪')}</b></div>
         <div class="kv"><span>维修</span><b>${repairers ? `${repairers} 只工蚁维修中` : (damaged ? '受损 · 可派工蚁维修' : '完好')}</b></div>
-        ${BUILDINGS[b.type].produces ? `<div class="rally-info">集结点：<b>${b.rally ? `(${Math.round(b.rally.x)}, ${Math.round(b.rally.z)})` : '未设置'}</b><br>选中建筑后右键地面设置，新出作战单位自动前往。</div>` : ''}${queueHtml}`;
+        ${BUILDINGS[b.type].produces ? `<div class="rally-info">集结点：<b>${b.rally ? `(${Math.round(b.rally.x)}, ${Math.round(b.rally.z)})` : '未设置'}</b><br>选中建筑后右键地面设置，新出作战单位自动前往。</div>` : ''}${queueHtml}<div class="unit-weapon">${combatTags(BUILDINGS[b.type]).join(" / ")}</div>`;
       const role = BUILDINGS[b.type];
       if (damaged) this._addCtx(ctx, '派工蚁维修 (耗矿)', () => { if (this.hooks.onRepair) this.hooks.onRepair(b.id); }, s.res.P.min < 1);
       if (role.produces) {
@@ -2058,11 +2067,11 @@ export class UI {
         <div><span>攻速</span><b>${(1 / (e.atkcd || 1)).toFixed(1)}/s</b></div><div><span>移速</span><b>${e.speed}</b></div>
         <div><span>护甲</span><b>${armorCN[e.armor] || e.armor}</b></div><div><span>携带</span><b>${e.carry || '—'}</b></div>
       </div>
-      <div class="unit-weapon">${w.name || '—'} · ${dtypeCN[e.dtype] || e.dtype}${e.splash ? ` · 溅射 ${e.splash}` : ''}</div>
+      <div class="unit-weapon">${combatTags(def).join(' / ')} · ${w.name || '—'} · ${dtypeCN[e.dtype] || e.dtype}${e.splash ? ` · 溅射 ${e.splash}` : ''}</div>
       ${counter}
       ${traitsHtml}
       ${terrainHtml}
-      <div class="kv"><span>状态</span><b>${stateCN[u.state] || u.state || '待命'}${u.burrowed ? ' · 潜行' : ''}</b></div>
+      <div class="kv"><span>状态</span><b>${stateCN[u.state] || u.state || '待命'}${u.burrowed ? (u.revealed ? ' · 潜行已揭示' : ' · 潜行') : ''}</b></div>
       ${buffHtml}
       ${statusHtml}
       ${intentHtml}${feedbackHtml}

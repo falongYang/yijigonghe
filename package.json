@@ -8,7 +8,8 @@
     "check": "for f in MVP_Web/js/*.js; do node --check \"$f\" || exit 1; done; echo ALL_JS_OK",
     "test": "node run-tests.mjs",
     "test:browser": "node browser-smoke.mjs",
-    "test:soak": "node test-soak.mjs"
+    "test:soak": "node test-soak.mjs",
+    "test:balance": "node probe-domain-balance.mjs"
   },
   "type": "module"
 }
