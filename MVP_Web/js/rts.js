@@ -574,6 +574,39 @@ export const MINIMAP_BLIPS = {
 };
 export function minimapSpec() { return Object.fromEntries(Object.entries(MINIMAP_BLIPS).map(([k, v]) => [k, { ...v }])); }
 
+/** 单位姿态（姿式）规格：B 侧据 posture 选择动画姿式，label 供单位检视面板只读展示。
+ *  全部为纯表现派生（由 state+moving+target 推导），不写入任何战斗数值、不消费随机流。 */
+export const UNIT_POSTURE = {
+  idle:     { label: '待命', pose: 'idle' },
+  work:     { label: '作业', pose: 'work' },
+  carry:    { label: '搬运', pose: 'carry' },
+  march:    { label: '行军', pose: 'march' },
+  advance:  { label: '突进', pose: 'advance' },
+  engage:   { label: '交战', pose: 'engage' },
+  skirmish: { label: '游斗', pose: 'skirmish' },
+  hold:     { label: '据守', pose: 'hold' },
+  patrol:   { label: '巡逻', pose: 'patrol' },
+  death:    { label: '阵亡', pose: 'death' },
+};
+/** 取单位姿态规格（含兜底）。 */
+export function postureSpec(key) { return { ...(UNIT_POSTURE[key] || UNIT_POSTURE.idle), key }; }
+/** 由逻辑状态与瞬时窗口推导只读姿态（与 _tickAnim 同源，但只产出 10 态供 B 侧挑选姿式）。 */
+export function derivePosture(state, moving, hp) {
+  if (hp <= 0) return 'death';
+  switch (state) {
+    case 'harvest': return 'work';
+    case 'return': return 'carry';
+    case 'repair': return 'work';
+    case 'idle': return 'idle';
+    case 'hold': return 'hold';
+    case 'patrol': return 'patrol';
+    case 'attack': return moving ? 'advance' : 'engage';
+    case 'attackmove': return 'skirmish';
+    case 'move': return 'march';
+    default: return moving ? 'march' : 'idle';
+  }
+}
+
 // 每种性格对应的专属兵种键
 export const ARCHETYPE_UNITS = { aggressive: 'charger', expansionist: 'brood', defensive: 'siege' };
 // 兵营/各域巢可产兵种（按纪元解锁）

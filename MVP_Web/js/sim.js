@@ -16,6 +16,7 @@ import {
   IMPACT_SPEC, impactFor, CORPSE_SPEC, corpseFor,
   BUILDING_STAGES, buildingStageOf, NODE_PHASES, nodePhaseOf,
   VETERAN_TIERS, veteranOf, CUE_TYPES, cueSpec, MINIMAP_BLIPS, minimapSpec,
+  UNIT_POSTURE, postureSpec, derivePosture,
   terrainHeight, TERRAIN, mapZones, mapWells, mapObstacles, zoneAt, WELL,
 } from './rts.js';
 import { MAP_CLIMATES, getMapClimate, getMapWeather, staticHazardsFor,
@@ -459,6 +460,8 @@ export class Simulation {
       lastHit: null,
       // 表现成长 / 聚集 / 指令反馈（全部只读数据层，不参与任何结算）
       kills: 0, vetTier: veteranOf(0), density: 0, densityBand: 0, cmdFlash: 0,
+      // 姿态 / 交战态（只读表现层：由 state+moving 推导，供 B 侧挑选姿式与战斗光效）
+      posture: 'idle', engaged: false,
       // 受击物理只读包络：方向单位向量 / 击退强度 / 顿帧 / 镜头震动 / 衰减。
       // 只由真实单位的直接命中写入，不改动坐标、速度、攻击计时器等任何结算字段。
       phys: { dx: 0, dz: 0, mag: 0, hitstop: 0, shake: 0, env: 0, t: 99,
@@ -1284,6 +1287,9 @@ export class Simulation {
       u.density = d;
       // 密度分级：0 散兵(<1) / 1 小队(1~3) / 2 集群(4~7) / 3 蜂群(≥8)，纯视觉只读。
       u.densityBand = d < 1 ? 0 : d < 4 ? 1 : d < 8 ? 2 : 3;
+      // 只读姿态 / 交战态：由逻辑状态 + 移动窗口推导，供 B 侧挑选姿式与战斗光效。
+      u.posture = derivePosture(u.state, u.moving, u.hp);
+      u.engaged = (u.state === 'attack' || u.state === 'attackmove') && !u.moving && u.hp > 0;
       if (u.side === SIDES.PLAYER && u.hp > 0) pa++;
       if (u.cmdFlash > 0) u.cmdFlash = Math.max(0, u.cmdFlash - 0.8);
     }
@@ -1376,6 +1382,46 @@ export class Simulation {
   densityBandOf(id) {
     const u = this.getUnit(id);
     return u ? u.densityBand : null;
+  }
+  /** 只读查询：单位当前姿态（10 态姿式，纯表现派生）。无该单位返回 null。 */
+  postureOf(id) {
+    const u = this.getUnit(id);
+    return u ? u.posture : null;
+  }
+  /** 只读查询：单位是否处于交战态（已接敌且静止输出）。无该单位返回 null。 */
+  engagedOf(id) {
+    const u = this.getUnit(id);
+    return u ? u.engaged : null;
+  }
+  /** 只读查询：姿态规格表（逐项深拷贝）。 */
+  postureSpec(key) { return postureSpec(key); }
+  /** 只读查询：局部战斗热度（0..1）——以 (x,z) 为圆心、radius 内交战单位数归一化。
+   *  供 B 侧做镜头自动推拉 / 震动与音频压低；纯聚合，不写入任何状态、不消费随机流。 */
+  battleIntensityAt(x, z, radius = 12) {
+    const R2 = radius * radius, cap = 8;   // 8 个交战单位即满热度
+    let n = 0;
+    for (const u of this.units) {
+      if (u.hp <= 0 || !u.engaged) continue;
+      const dx = u.x - x, dz = u.z - z;
+      if (dx * dx + dz * dz <= R2) n++;
+    }
+    return +clamp(n / cap, 0, 1).toFixed(3);
+  }
+  /** 只读查询：双方阵营密度对比（存活数 / 平均聚簇 / 分级分布），供 HUD 态势条只读展示。 */
+  factionDensity() {
+    const acc = {
+      P: { count: 0, sumDensity: 0, banded: [0, 0, 0, 0] },
+      E: { count: 0, sumDensity: 0, banded: [0, 0, 0, 0] },
+    };
+    for (const u of this.units) {
+      if (u.hp <= 0) continue;
+      const a = acc[u.side]; if (!a) continue;
+      a.count++; a.sumDensity += (u.density || 0); a.banded[u.densityBand || 0]++;
+    }
+    for (const k of ['P', 'E']) {
+      acc[k].avgDensity = acc[k].count ? +(acc[k].sumDensity / acc[k].count).toFixed(3) : 0;
+    }
+    return acc;
   }
   /** 只读查询：全部老兵阶梯规格（逐项深拷贝）。 */
   veteranSpec() { return VETERAN_TIERS.map(v => ({ ...v })); }
@@ -1635,11 +1681,15 @@ export class Simulation {
     const reach = u.range * this._terrainRangeMul(u) + r;   // 高台上的远程单位射程更远
     if (dist(u.x, u.z, tgt.x, tgt.z) > reach) {
       this._moveTo(u, tgt.x, tgt.z, dt);
-    } else if (u.atkTimer <= 0) {
-      this._strikeFeel(u);   // 攻击动作 / 起手 / 后坐窗口（表现层只读，不影响伤害与冷却）
-      this._dealDamage(u, tgt, u.dmg, u.x, u.z, !u.melee, u.dtype);
-      if (u.splash > 0) this._applySplash(u, tgt, u.dmg);
-      u.atkTimer = u.atkcd;
+    } else {
+      // 交战锁定朝向：进入射程后面向目标（纯视觉，不消费任何结算字段 / 不读 heading 做判定）。
+      u.heading = Math.atan2(tgt.z - u.z, tgt.x - u.x);
+      if (u.atkTimer <= 0) {
+        this._strikeFeel(u);   // 攻击动作 / 起手 / 后坐窗口（表现层只读，不影响伤害与冷却）
+        this._dealDamage(u, tgt, u.dmg, u.x, u.z, !u.melee, u.dtype);
+        if (u.splash > 0) this._applySplash(u, tgt, u.dmg);
+        u.atkTimer = u.atkcd;
+      }
     }
   }
 
