@@ -185,6 +185,7 @@ export class Simulation {
     this.time = 0;
     this.battleTime = 0;        // 实战累计秒数（仅在有真实伤害发生的 tick 累加，纯结算叙事）
     this._dmgFlag = false;      // 本 tick 是否发生真实伤害（驱动 battleTime 累计）
+    this._battlePulse = 0;      // 全局战斗能量脉冲（每次真实命中 +、逐帧衰减，纯只读镜头/音效信号）
     this.peakPop = { P: 0, E: 0 };
     const blank = () => ({ kills: 0, losses: 0, built: 0, harvested: 0, abilities: 0, evolved: 0, raided: 0, repaired: 0, wellPh: 0,
       dmgDealt: 0, dmgTaken: 0, critHits: 0, smartCasts: 0, defenses: 0, nodeSwitches: 0,
@@ -1063,6 +1064,8 @@ export class Simulation {
     this._checkEnd();
     // 实战累计秒数：仅在有真实伤害发生的 tick 累加（驱动结算 battleTime 叙事）。
     if (this._dmgFlag) { this.battleTime += dt; this._dmgFlag = false; }
+    // 全局战斗脉冲逐帧衰减（约 12s 从满衰减完，与 _dealDamage 真实命中累加共同构成 0..1 战斗能量信号）。
+    this._battlePulse = +clamp(this._battlePulse - dt * 0.08, 0, 1).toFixed(3);
     // 能力冷却倒计时递减（此前只设置不递减，会导致技能永久处于冷却）
     for (const side of ['P', 'E']) for (const k in this.cd[side]) {
       if (this.cd[side][k] > 0) this.cd[side][k] = Math.max(0, this.cd[side][k] - dt);
@@ -1506,6 +1509,45 @@ export class Simulation {
     }
     return +clamp(n / cap, 0, 1).toFixed(3);
   }
+  /** 只读查询：以某单位为圆心、R 内的聚簇密度按阵营与状态细分（细化 Pack5 标量 density）。
+   *  返回 { allies, enemies, total, byState:{state:count}, banded:[4档] }，供 B 侧做编队挤压 / 阵营着色。 */
+  densityBreakdown(id, R = 3.5) {
+    const u = this.getUnit(id);
+    if (!u) return null;
+    const R2 = R * R, out = { allies: 0, enemies: 0, total: 0, byState: {}, banded: [0, 0, 0, 0] };
+    for (const o of this.units) {
+      if (o.hp <= 0 || o === u) continue;
+      const dx = o.x - u.x, dz = o.z - u.z;
+      if (dx * dx + dz * dz > R2) continue;
+      out.total++;
+      if (o.side === u.side) out.allies++; else out.enemies++;
+      const s = o.state || 'idle';
+      out.byState[s] = (out.byState[s] || 0) + 1;
+      out.banded[o.densityBand || 0]++;
+    }
+    return out;
+  }
+  /** 只读查询：以 (x,z) 为圆心的局部威胁压强（相对 side 的敌方加权密度，0..1）。
+   *  权重 w=1/(1+dist²) 随距离衰减，R 内敌方越多越近 → 压强越高；B 侧用于危险晕影 / 镜头张力 / 音频威胁。 */
+  threatAt(x, z, side = SIDES.PLAYER, R = 14) {
+    const R2 = R * R; let sum = 0;
+    for (const o of this.units) {
+      if (o.hp <= 0 || o.side === side) continue;
+      const dx = o.x - x, dz = o.z - z, d2 = dx * dx + dz * dz;
+      if (d2 > R2) continue;
+      sum += 1 / (1 + d2 * 0.18);
+    }
+    return +clamp(sum / 4, 0, 1).toFixed(3);   // 约 4 个近点敌方单位即满压强
+  }
+  /** 只读查询：某单位是否处于被集火（其自身周围敌方加权密度），0..1。复用 threatAt。 */
+  concentratedFireOf(id, R = 5) {
+    const u = this.getUnit(id);
+    if (!u) return 0;
+    return this.threatAt(u.x, u.z, u.side, R);
+  }
+  /** 只读查询：全局战斗能量脉冲（0..1）——每次真实命中累加、逐帧衰减。
+   *  供 B 侧做全局镜头震动 / 音乐强度 / 战斗字幕节奏的单一输入；纯只读，不写任何状态、不改变战斗。 */
+  battlePulse() { return this._battlePulse; }
   /** 只读查询：双方阵营密度对比（存活数 / 平均聚簇 / 分级分布），供 HUD 态势条只读展示。 */
   factionDensity() {
     const acc = {
@@ -1978,7 +2020,10 @@ export class Simulation {
     if (aSide && this.refined[aSide] && attacker && UNITS[attacker.type] && UNITS[attacker.type].role === 'combat') d *= 1.08;
     const _wasAlive = tgt.hp > 0;
     tgt.hp -= d;
-    if (d > 0) this._dmgFlag = true;          // 标记本 tick 发生实战，驱动 battleTime 累计
+    if (d > 0) { this._dmgFlag = true;          // 标记本 tick 发生实战，驱动 battleTime 累计
+      // 全局战斗脉冲：每次真实命中累加（供 B 侧镜头震动 / 音乐强度自动映射），纯只读信号。
+      this._battlePulse = +clamp(this._battlePulse + 0.035, 0, 1).toFixed(3);
+    }
     // 击杀计功（仅真实单位击杀真实单位，且只在该次伤害造成致死时记一次）：
     // 纯表现成长数据，不改任何属性 / 不消耗随机流 / 不影响节奏；同时写入分级 kill 提示。
     if (_wasAlive && tgt.hp <= 0 && unitAtk && attacker && attacker.kills !== undefined) {
