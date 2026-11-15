@@ -64,6 +64,11 @@ has(touch, /export function isSyntheticMouse/, '导出合成鼠标判定');
 console.log('— 2) 触屏状态机（桩件行为测试） —');
 const { TouchController, isSyntheticMouse, isTouchActive, resetSyntheticMouse } = await import('./MVP_Web/js/touch.js');
 
+// Production callers omit the clock: exercise that path, not only injected clocks.
+resetSyntheticMouse();
+ok(isSyntheticMouse({clientX: 10, clientY: 10}) === false, '默认时钟支持真实鼠标调用');
+ok(isTouchActive() === false, '默认时钟支持无触控状态查询');
+
 function harness(enabled = true) {
   const H = {};
   const mkTarget = () => ({

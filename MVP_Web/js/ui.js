@@ -766,7 +766,7 @@ export class UI {
       this._bcost[type] = null;
       // 悬浮 tooltip：实时造价 + 专长域折扣提示
       this.attachTip(btn, () => {
-        const cost = effectiveBuildingCost(type, this.sim.sp.P, this.era.P);
+        const cost = effectiveBuildingCost(type, this.sim.sp.P, this.sim.era.P);
         const spec = specialtyOf(this.sim.sp.P.id);
         const disc = (b.domain && b.domain === spec) ? ' <span class="tip-disc">专长域·造价−25%</span>' : '';
         return `<b>${b.name}</b><br><span class="tip-desc">${b.desc}</span><br><span class="tip-cost">造价 ${costStr(cost)}</span>${disc}`;
@@ -1742,6 +1742,8 @@ export class UI {
       const txt = costStr(cost);
       if (this._bcost[type] !== txt) { this._bbtns[type].querySelector('small').textContent = txt; this._bcost[type] = txt; }
       this._bbtns[type].classList.toggle('disabled', !canAfford(s.res.P, cost));
+      this._bbtns[type].classList.toggle('armed', this.game.pendingBuild === type);
+      this._bbtns[type].setAttribute('aria-pressed', String(this.game.pendingBuild === type));
       const disc = (b.domain && b.domain === spec) ? '（专长域·造价−25%）' : '';
       if (this._bbtns[type].title !== b.desc + disc) this._bbtns[type].title = b.desc + disc;
     }

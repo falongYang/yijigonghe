@@ -175,7 +175,7 @@ function startGame(spId, sel = {}) {
 function beginBuild(type) {
   game.pendingBuild = type;
   if (game.pendingAbility) { game.pendingAbility = null; ui.setArmedAbility(null); }
-  ui.setBuildHint('', true);
+  ui.setBuildHint(`已选择${BUILDINGS[type].name}：在己方巢区单击地面放置，Esc 取消`, true);
   Sound.play('select');
   ui.toast(`放置「${BUILDINGS[type].name}」：左键选定位置，Esc 取消`);
 }
@@ -557,7 +557,11 @@ function orderFromMinimap(x, z, opts = {}) {
 }
 function placeBuild(x, y) {
   const g = world.screenToGround(x, y);
-  if (!g) return;
+  if (!g) {
+    ui.setBuildHint('未选中地面：请在画面中的战场地面单击，Esc 取消', false);
+    ui.toast('未选中地面，请在战场地面单击');
+    return;
+  }
   if (sim.startBuild(game.pendingBuild, g.x, g.z)) { game.pendingBuild = null; world.hideCursor(); ui.setBuildHint(''); }
 }
 function finishBox() {

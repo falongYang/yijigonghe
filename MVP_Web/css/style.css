@@ -169,6 +169,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 .bbtn small { color: #9fe0c8; font-size: 11px; }
 .bbtn:hover { border-color: #9fe0a0; }
 .bbtn.disabled { opacity: .42; cursor: not-allowed; }
+.bbtn.armed { outline: 2px solid var(--era, #7ef0a0); outline-offset: 2px; }
 #ability-bar { display: flex; gap: 6px; }
 .abtn { background: linear-gradient(180deg,#3a4a6a,#26324a); border: 1px solid #5a78b0; color: #dce8ff; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
 .abtn:hover { filter: brightness(1.15); }

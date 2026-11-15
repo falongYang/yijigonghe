@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const browser = await chromium.launch({executablePath:process.env.CHROME_EXECUTABLE || chromium.executablePath(), headless:true, args:['--enable-webgl','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+try {
+  const page = await browser.newPage({viewport:{width:1440,height:960}}), errors=[];
+  page.on('pageerror', e=>errors.push(e.stack));
+  await page.addInitScript(()=>localStorage.setItem('ant_epoch_tut_v1','1'));
+  await page.goto((process.env.GAME_URL || 'http://127.0.0.1:8000/')+'#auto?sp=SP01',{waitUntil:'networkidle'});
+  await page.waitForFunction(()=>window.__ANT_EPOCH__?.game.running);
+  await page.evaluate(()=>{const g=window.__ANT_EPOCH__.game;g.world.intro=null;document.querySelector('#map-brief').classList.add('hidden');g.world.cam.dist=120;g.world._camT.dist=120;});
+  await page.waitForTimeout(500);
+  const button=page.getByRole('button',{name:/^兵营/});
+  await button.hover();
+  assert.ok((await page.locator('.hud-tip').textContent()).includes('造价'));
+  await button.click();
+  await page.waitForFunction(()=>document.querySelector('#build-buttons .armed'));
+  assert.equal(await button.getAttribute('aria-pressed'),'true');
+  assert.equal(await page.evaluate(()=>window.__ANT_EPOCH__.game.pendingBuild),'barracks');
+  assert.ok(await page.locator('#build-hint').isVisible());
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(()=>window.__ANT_EPOCH__.game.pendingBuild),null);
+  await button.click();
+  // Force a missed ground ray to verify feedback without discarding the build intent.
+  await page.evaluate(()=>{const w=window.__ANT_EPOCH__.game.world;w._testGround=w.screenToGround;w.screenToGround=()=>null;});
+  const blank=await page.evaluate(()=>{for(let y=180;y<760;y+=20)for(let x=280;x<1160;x+=20)if(document.elementFromPoint(x,y)?.id==='scene')return {x,y};return null;});
+  assert.ok(blank,'canvas is reachable');
+  console.log('CANVAS',blank);
+  await page.evaluate(()=>{window._events=[];document.querySelector('#scene').addEventListener('mousedown',e=>window._events.push({type:e.type,x:e.clientX,y:e.clientY,pending:window.__ANT_EPOCH__.game.pendingBuild}));});
+  await page.mouse.click(blank.x,blank.y);
+  console.log('MISS',await page.evaluate(()=>({events:window._events,pending:window.__ANT_EPOCH__.game.pendingBuild,hint:document.querySelector('#build-hint').textContent,toast:document.querySelector('#toast').textContent}))); 
+  assert.ok((await page.locator('#build-hint').textContent()).includes('未选中地面'));
+  assert.equal(await page.evaluate(()=>window.__ANT_EPOCH__.game.pendingBuild),'barracks');
+  await page.evaluate(()=>{const w=window.__ANT_EPOCH__.game.world;w.screenToGround=w._testGround;delete w._testGround;});
+  const spot=await page.evaluate(()=>{const g=window.__ANT_EPOCH__.game;for(let y=180;y<760;y+=20)for(let x=280;x<1160;x+=20){const v=g.world.screenToGround(x,y);if(v&&g.sim.checkBuild('barracks',v.x,v.z).ok&&document.elementFromPoint(x,y)?.id==='scene')return {x,y};}return null;});
+  assert.ok(spot,'visible valid ground available');
+  const before=await page.evaluate(()=>{const s=window.__ANT_EPOCH__.game.sim;return {bio:s.res.P.bio,count:s.buildings.filter(b=>b.side==='P'&&b.type==='barracks').length};});
+  await page.mouse.click(spot.x,spot.y);
+  const after=await page.evaluate(()=>{const g=window.__ANT_EPOCH__.game;return {bio:g.sim.res.P.bio,count:g.sim.buildings.filter(b=>b.side==='P'&&b.type==='barracks').length,pending:g.pendingBuild};});
+  assert.equal(after.count,before.count+1);
+  assert.ok(after.bio<before.bio,'successful placement spends resources');
+  assert.equal(after.pending,null);
+  assert.deepEqual(errors,[]);
+  console.log(JSON.stringify({result:'PASS',before,after,errors,scope:'Chrome mouse click path; physical Mac trackpad not exercised'}));
+} finally { await browser.close(); }

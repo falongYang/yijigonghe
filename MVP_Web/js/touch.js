@@ -38,7 +38,7 @@ function markTouch(x, y, t) {
  * 判断一个 mouse 事件是否为触屏手势之后浏览器补发的「兼容鼠标事件」。
  * 命中即消费掉标记（一次性），避免触控后短时间内真实鼠标操作被持续误伤。
  */
-export function isSyntheticMouse(e, now = defaultNow()) {
+export function isSyntheticMouse(e, now = defaultNow) {
   const t = now();
   if (t - lastTouch.t > SUPPRESS_MS) return false;
   const x = e && e.clientX, y = e && e.clientY;
@@ -52,7 +52,7 @@ export function isSyntheticMouse(e, now = defaultNow()) {
  * 当前是否处于「触屏活跃窗口」（不消费标记）。主循环用它暂时关掉鼠标贴边滚屏与
  * 地貌提示：触屏没有 hover，浏览器补发的兼容 mousemove 不该让镜头自己漂走。
  */
-export function isTouchActive(now = defaultNow()) {
+export function isTouchActive(now = defaultNow) {
   return now() - lastTouch.t <= SUPPRESS_MS;
 }
 
