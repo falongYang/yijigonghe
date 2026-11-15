@@ -1,0 +1,185 @@
+{
+  "method": "Chapter 1 full campaign, initial economy/units/map/AI retained. Fixed added C1/C3 rosters near enemy HQ, player attack-move. All sides losses including campaign reinforcements counted at base bio+min cost; 90s or campaign end. Not isolated or equal-budget combat.",
+  "rows": [
+    {
+      "scenario": "C1",
+      "difficulty": "easy",
+      "seed": 20261114,
+      "seconds": 66.45,
+      "ended": "lose",
+      "atkLoss": 1155,
+      "defLoss": 165,
+      "R": 0.143
+    },
+    {
+      "scenario": "C1",
+      "difficulty": "easy",
+      "seed": 20261115,
+      "seconds": 62.9,
+      "ended": "lose",
+      "atkLoss": 1045,
+      "defLoss": 165,
+      "R": 0.158
+    },
+    {
+      "scenario": "C1",
+      "difficulty": "easy",
+      "seed": 20261116,
+      "seconds": 70.45,
+      "ended": "lose",
+      "atkLoss": 1375,
+      "defLoss": 165,
+      "R": 0.12
+    },
+    {
+      "scenario": "C1",
+      "difficulty": "normal",
+      "seed": 20261114,
+      "seconds": 61.85,
+      "ended": "lose",
+      "atkLoss": 1375,
+      "defLoss": 165,
+      "R": 0.12
+    },
+    {
+      "scenario": "C1",
+      "difficulty": "normal",
+      "seed": 20261115,
+      "seconds": 60.65,
+      "ended": "lose",
+      "atkLoss": 1375,
+      "defLoss": 165,
+      "R": 0.12
+    },
+    {
+      "scenario": "C1",
+      "difficulty": "normal",
+      "seed": 20261116,
+      "seconds": 59.8,
+      "ended": "lose",
+      "atkLoss": 1375,
+      "defLoss": 165,
+      "R": 0.12
+    },
+    {
+      "scenario": "C1",
+      "difficulty": "hard",
+      "seed": 20261114,
+      "seconds": 50.3,
+      "ended": "lose",
+      "atkLoss": 990,
+      "defLoss": 165,
+      "R": 0.167
+    },
+    {
+      "scenario": "C1",
+      "difficulty": "hard",
+      "seed": 20261115,
+      "seconds": 50.3,
+      "ended": "lose",
+      "atkLoss": 990,
+      "defLoss": 165,
+      "R": 0.167
+    },
+    {
+      "scenario": "C1",
+      "difficulty": "hard",
+      "seed": 20261116,
+      "seconds": 50.3,
+      "ended": "lose",
+      "atkLoss": 990,
+      "defLoss": 165,
+      "R": 0.167
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "easy",
+      "seed": 20261114,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 910,
+      "defLoss": 1065,
+      "R": 1.17
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "easy",
+      "seed": 20261115,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 910,
+      "defLoss": 1010,
+      "R": 1.11
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "easy",
+      "seed": 20261116,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 1020,
+      "defLoss": 1010,
+      "R": 0.99
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "normal",
+      "seed": 20261114,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 1020,
+      "defLoss": 955,
+      "R": 0.936
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "normal",
+      "seed": 20261115,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 1020,
+      "defLoss": 955,
+      "R": 0.936
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "normal",
+      "seed": 20261116,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 910,
+      "defLoss": 1065,
+      "R": 1.17
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "hard",
+      "seed": 20261114,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 1020,
+      "defLoss": 955,
+      "R": 0.936
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "hard",
+      "seed": 20261115,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 1020,
+      "defLoss": 955,
+      "R": 0.936
+    },
+    {
+      "scenario": "C3",
+      "difficulty": "hard",
+      "seed": 20261116,
+      "seconds": 90,
+      "ended": null,
+      "atkLoss": 910,
+      "defLoss": 1065,
+      "R": 1.17
+    }
+  ]
+}
