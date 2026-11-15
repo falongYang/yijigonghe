@@ -1957,7 +1957,9 @@ export class Simulation {
     if (dist(u.x, u.z, d.x, d.z) > DEPOSIT_RANGE) {
       this._moveTo(u, d.x, d.z, dt);
     } else {
-      const haul = Math.round(u.carrying);
+      // 敌方难度经济倍率只作用于采集卸货，避免放大退款、掠夺等入账。
+      const ecoMul = u.side === SIDES.ENEMY ? (this.difficulty?.ecoMul ?? 1) : 1;
+      const haul = Math.round(u.carrying * ecoMul);
       const haulRes = u.carryRes;
       this.gainRes(u.side, haulRes, haul);
       if (this.stats) this.stats[u.side].harvested += haul;
@@ -2671,7 +2673,7 @@ export class Simulation {
 
     ai.prodTimer -= dt;
     if (ai.prodTimer <= 0) {
-      ai.prodTimer = 2.4 * diff.thinkMul;
+      ai.prodTimer = 2.4 * diff.thinkMul / diff.armyMul;
       const workerCap = arch.expandBias > 1.2 ? 11 : 8;
       if (workers.length < workerCap && hq.queue.length === 0 && bio > 60 + resBio) {
         const e = effectiveUnit('worker', this.sp[E], this.era[E]);
@@ -2700,7 +2702,7 @@ export class Simulation {
           }
         }
         const cost = effectiveCost(ut, this.sp[E]);
-        if (this.canAfford(E, cost) && bio > resBio + 30 && this.pop(E) < 100 && Math.random() < diff.armyMul) {
+        if (this.canAfford(E, cost) && bio > resBio + 30 && this.pop(E) < 100) {
           this.spend(E, cost); b.queue.push({ type: ut, t: UNITS[ut].build });
           if (ut === sig) ai.sigCount++;
         }

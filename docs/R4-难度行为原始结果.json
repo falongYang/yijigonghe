@@ -1,0 +1,305 @@
+{
+  "method": "Chapter 1 unmodified initial setup, full tick, passive player; 90s or terminal. harvested is credited income after multiplier; pop is total population including workers. No injected C1/C3 armies.",
+  "rows": [
+    {
+      "difficulty": "easy",
+      "seed": 20261114,
+      "time": 90,
+      "ended": null,
+      "harvested": 3792,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261115,
+      "time": 90,
+      "ended": null,
+      "harvested": 3840,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261116,
+      "time": 90,
+      "ended": null,
+      "harvested": 3816,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261117,
+      "time": 90,
+      "ended": null,
+      "harvested": 3744,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261118,
+      "time": 90,
+      "ended": null,
+      "harvested": 3816,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261119,
+      "time": 90,
+      "ended": null,
+      "harvested": 3744,
+      "pop": 37,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261120,
+      "time": 90,
+      "ended": null,
+      "harvested": 3792,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261121,
+      "time": 90,
+      "ended": null,
+      "harvested": 3792,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261122,
+      "time": 90,
+      "ended": null,
+      "harvested": 3744,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261123,
+      "time": 90,
+      "ended": null,
+      "harvested": 3792,
+      "pop": 39,
+      "towers": 0,
+      "waves": 1
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261114,
+      "time": 90,
+      "ended": null,
+      "harvested": 4867,
+      "pop": 40,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261115,
+      "time": 90,
+      "ended": null,
+      "harvested": 4960,
+      "pop": 45,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261116,
+      "time": 90,
+      "ended": null,
+      "harvested": 5022,
+      "pop": 45,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261117,
+      "time": 90,
+      "ended": null,
+      "harvested": 5053,
+      "pop": 45,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261118,
+      "time": 90,
+      "ended": null,
+      "harvested": 4805,
+      "pop": 40,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261119,
+      "time": 90,
+      "ended": null,
+      "harvested": 4743,
+      "pop": 40,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261120,
+      "time": 90,
+      "ended": null,
+      "harvested": 5177,
+      "pop": 45,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261121,
+      "time": 90,
+      "ended": null,
+      "harvested": 5301,
+      "pop": 45,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261122,
+      "time": 90,
+      "ended": null,
+      "harvested": 5022,
+      "pop": 45,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261123,
+      "time": 90,
+      "ended": null,
+      "harvested": 4898,
+      "pop": 40,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261114,
+      "time": 90,
+      "ended": null,
+      "harvested": 7400,
+      "pop": 49,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261115,
+      "time": 90,
+      "ended": null,
+      "harvested": 7440,
+      "pop": 49,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261116,
+      "time": 90,
+      "ended": null,
+      "harvested": 7360,
+      "pop": 49,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261117,
+      "time": 90,
+      "ended": null,
+      "harvested": 7320,
+      "pop": 49,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261118,
+      "time": 90,
+      "ended": null,
+      "harvested": 7400,
+      "pop": 49,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261119,
+      "time": 90,
+      "ended": null,
+      "harvested": 7440,
+      "pop": 49,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261120,
+      "time": 90,
+      "ended": null,
+      "harvested": 7200,
+      "pop": 48,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261121,
+      "time": 90,
+      "ended": null,
+      "harvested": 7240,
+      "pop": 48,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261122,
+      "time": 90,
+      "ended": null,
+      "harvested": 7320,
+      "pop": 49,
+      "towers": 0,
+      "waves": 2
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261123,
+      "time": 90,
+      "ended": null,
+      "harvested": 7440,
+      "pop": 49,
+      "towers": 0,
+      "waves": 3
+    }
+  ]
+}
