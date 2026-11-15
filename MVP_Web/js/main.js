@@ -41,7 +41,17 @@ function boot() {
       onEvolve: uid => sim.evolve(uid),
       onMinimap: (x, z) => world.focus(x, z, true),   // 小地图拖动需严格跟手，不做缓动
       onMinimapOrder: (x, z, opts) => orderFromMinimap(x, z, opts),
-      onRestart: () => location.reload(),
+      onRestart: () => {
+        const q = new URLSearchParams({
+          sp: sim.sp.P.id,
+          m: sim.mode,
+          c: String(sim.chapter ?? 0),
+          a: sim.archetype.id,
+          d: sim.difficulty.id,
+        });
+        history.replaceState(null, "", "#auto?" + q);
+        location.reload();
+      },
       onSpeed: n => { if (game.paused) togglePause(); game.speed = n; },
       onPause: () => togglePause(),
       onMenu: () => gotoMenu(),

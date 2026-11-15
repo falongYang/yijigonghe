@@ -1,0 +1,2885 @@
+{
+  "method": "SP01 passive player, defensive skirmish and campaign chapter index 2; full .05s tick until natural terminal or 300s; placement is not completion; no injected resources, immunity, or terminal suppression",
+  "summary": [
+    {
+      "mode": "skirmish",
+      "difficulty": "easy",
+      "n": 10,
+      "earlyTerminal": 10,
+      "allPlaced": 1,
+      "allCompleted": 1,
+      "completedCounts": [
+        1,
+        2,
+        3,
+        1,
+        1,
+        2,
+        1,
+        1,
+        2,
+        2
+      ],
+      "terminalTimes": [
+        126.2,
+        130.95,
+        123.2,
+        126.7,
+        128.05,
+        135.65,
+        127.6,
+        125.5,
+        121.35,
+        131.85
+      ],
+      "thirdCompletedTimes": [
+        null,
+        null,
+        104.7,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "mode": "skirmish",
+      "difficulty": "normal",
+      "n": 10,
+      "earlyTerminal": 10,
+      "allPlaced": 10,
+      "allCompleted": 10,
+      "completedCounts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "terminalTimes": [
+        105.95,
+        104.8,
+        104.15,
+        119.3,
+        119,
+        115.75,
+        114.1,
+        106.4,
+        101.75,
+        114.45
+      ],
+      "thirdCompletedTimes": [
+        65.4,
+        65.4,
+        74.45,
+        83.5,
+        101.6,
+        92.55,
+        92.55,
+        65.4,
+        65.4,
+        92.55
+      ]
+    },
+    {
+      "mode": "skirmish",
+      "difficulty": "hard",
+      "n": 10,
+      "earlyTerminal": 10,
+      "allPlaced": 10,
+      "allCompleted": 10,
+      "completedCounts": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3
+      ],
+      "terminalTimes": [
+        90.45,
+        104,
+        102.05,
+        100.05,
+        95.2,
+        99.55,
+        96.95,
+        95.75,
+        98.95,
+        109.85
+      ],
+      "thirdCompletedTimes": [
+        46.4,
+        46.4,
+        46.4,
+        46.4,
+        46.4,
+        46.4,
+        46.4,
+        46.4,
+        46.4,
+        46.4
+      ]
+    },
+    {
+      "mode": "campaign",
+      "difficulty": "easy",
+      "n": 10,
+      "earlyTerminal": 10,
+      "allPlaced": 0,
+      "allCompleted": 0,
+      "completedCounts": [
+        1,
+        0,
+        0,
+        0,
+        1,
+        2,
+        0,
+        1,
+        2,
+        0
+      ],
+      "terminalTimes": [
+        203.2,
+        203.6,
+        223.9,
+        192.95,
+        190.7,
+        201.05,
+        192.4,
+        189.05,
+        184.25,
+        217.5
+      ],
+      "thirdCompletedTimes": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "mode": "campaign",
+      "difficulty": "normal",
+      "n": 10,
+      "earlyTerminal": 10,
+      "allPlaced": 2,
+      "allCompleted": 2,
+      "completedCounts": [
+        2,
+        1,
+        3,
+        3,
+        1,
+        1,
+        1,
+        1,
+        0,
+        1
+      ],
+      "terminalTimes": [
+        186.2,
+        188.4,
+        196.05,
+        207.3,
+        182.95,
+        196.4,
+        191.45,
+        174.9,
+        193.95,
+        173.5
+      ],
+      "thirdCompletedTimes": [
+        null,
+        null,
+        65.4,
+        65.4,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "mode": "campaign",
+      "difficulty": "hard",
+      "n": 10,
+      "earlyTerminal": 10,
+      "allPlaced": 0,
+      "allCompleted": 0,
+      "completedCounts": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "terminalTimes": [
+        177.75,
+        182.7,
+        183.55,
+        180.2,
+        181.95,
+        172.35,
+        172.55,
+        176,
+        163.95,
+        178.1
+      ],
+      "thirdCompletedTimes": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261116,
+      "time": 126.2,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 83,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 97,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 83,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261117,
+      "time": 130.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 83,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 97,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 83,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 97,
+          "time": 130.8,
+          "x": 24,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261118,
+      "time": 123.2,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 53,
+          "time": 72.55,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 64,
+          "time": 85.6,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 73,
+          "time": 98.65,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 53,
+          "time": 78.6,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 64,
+          "time": 91.65,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 73,
+          "time": 104.7,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261119,
+      "time": 126.7,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 83,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 97,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 83,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261120,
+      "time": 128.05,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 83,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 97,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 83,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261121,
+      "time": 135.65,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 83,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 97,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 83,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 97,
+          "time": 130.8,
+          "x": 24,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261122,
+      "time": 127.6,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 83,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 97,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 83,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261123,
+      "time": 125.5,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 83,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 97,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 83,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261124,
+      "time": 121.35,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 74,
+          "time": 98.65,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 87,
+          "time": 111.7,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 74,
+          "time": 104.7,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 87,
+          "time": 117.75,
+          "x": 24,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "easy",
+      "seed": 20261125,
+      "time": 131.85,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 83,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 96,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 83,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 96,
+          "time": 130.8,
+          "x": 24,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261116,
+      "time": 105.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 38,
+          "time": 41.25,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 47,
+          "time": 50.3,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 55,
+          "time": 59.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 38,
+          "time": 47.3,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 47,
+          "time": 56.35,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 55,
+          "time": 65.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261117,
+      "time": 104.8,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 38,
+          "time": 41.25,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 47,
+          "time": 50.3,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 52,
+          "time": 59.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 38,
+          "time": 47.3,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 47,
+          "time": 56.35,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 52,
+          "time": 65.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261118,
+      "time": 104.15,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 46,
+          "time": 50.3,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 51,
+          "time": 59.35,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 57,
+          "time": 68.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 46,
+          "time": 56.35,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 51,
+          "time": 65.4,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 57,
+          "time": 74.45,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261119,
+      "time": 119.3,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 51,
+          "time": 59.35,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 61,
+          "time": 68.4,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 69,
+          "time": 77.45,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 51,
+          "time": 65.4,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 61,
+          "time": 74.45,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 69,
+          "time": 83.5,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261120,
+      "time": 119,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 63,
+          "time": 77.45,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 72,
+          "time": 86.5,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 81,
+          "time": 95.55,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 63,
+          "time": 83.5,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 72,
+          "time": 92.55,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 81,
+          "time": 101.6,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261121,
+      "time": 115.75,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 58,
+          "time": 68.4,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 67,
+          "time": 77.45,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 76,
+          "time": 86.5,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 58,
+          "time": 74.45,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 67,
+          "time": 83.5,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 76,
+          "time": 92.55,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261122,
+      "time": 114.1,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 58,
+          "time": 68.4,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 66,
+          "time": 77.45,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 76,
+          "time": 86.5,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 58,
+          "time": 74.45,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 66,
+          "time": 83.5,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 76,
+          "time": 92.55,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261123,
+      "time": 106.4,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 39,
+          "time": 41.25,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 47,
+          "time": 50.3,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 56,
+          "time": 59.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 39,
+          "time": 47.3,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 47,
+          "time": 56.35,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 56,
+          "time": 65.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261124,
+      "time": 101.75,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 39,
+          "time": 41.25,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 47,
+          "time": 50.3,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 56,
+          "time": 59.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 39,
+          "time": 47.3,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 47,
+          "time": 56.35,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 56,
+          "time": 65.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "normal",
+      "seed": 20261125,
+      "time": 114.45,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 58,
+          "time": 68.4,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 67,
+          "time": 77.45,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 76,
+          "time": 86.5,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 58,
+          "time": 74.45,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 67,
+          "time": 83.5,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 76,
+          "time": 92.55,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261116,
+      "time": 90.45,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 43,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 43,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261117,
+      "time": 104,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 43,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 43,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261118,
+      "time": 102.05,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 39,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 39,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261119,
+      "time": 100.05,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 39,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 39,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261120,
+      "time": 95.2,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 43,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 43,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261121,
+      "time": 99.55,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 43,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 43,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261122,
+      "time": 96.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 43,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 43,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261123,
+      "time": 95.75,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 43,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 43,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261124,
+      "time": 98.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 43,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 43,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "skirmish",
+      "chapter": null,
+      "difficulty": "hard",
+      "seed": 20261125,
+      "time": 109.85,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 33,
+          "time": 28.05,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 34.2,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 39,
+          "time": 40.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 33,
+          "time": 34.1,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 40.25,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 39,
+          "time": 46.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261116,
+      "time": 203.2,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 52,
+          "time": 85.6,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 52,
+          "time": 91.65,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261117,
+      "time": 203.6,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 4,
+      "planLength": 7,
+      "placements": [],
+      "completions": [],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261118,
+      "time": 223.9,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 4,
+      "planLength": 7,
+      "placements": [],
+      "completions": [],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261119,
+      "time": 192.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 4,
+      "planLength": 7,
+      "placements": [],
+      "completions": [],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261120,
+      "time": 190.7,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 68,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 68,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261121,
+      "time": 201.05,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 70,
+          "time": 124.75,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 78,
+          "time": 137.8,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 70,
+          "time": 130.8,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 78,
+          "time": 143.85,
+          "x": 24,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261122,
+      "time": 192.4,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 4,
+      "planLength": 7,
+      "placements": [],
+      "completions": [],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261123,
+      "time": 189.05,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 70,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 70,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261124,
+      "time": 184.25,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 63,
+          "time": 111.7,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 66,
+          "time": 124.75,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 63,
+          "time": 117.75,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 66,
+          "time": 130.8,
+          "x": 24,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "easy",
+      "seed": 20261125,
+      "time": 217.5,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 4,
+      "planLength": 7,
+      "placements": [],
+      "completions": [],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261116,
+      "time": 186.2,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 6,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 56,
+          "time": 77.45,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 59,
+          "time": 86.5,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        }
+      ],
+      "completions": [
+        {
+          "id": 56,
+          "time": 83.5,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 59,
+          "time": 92.55,
+          "x": 24,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261117,
+      "time": 188.4,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 42,
+          "time": 50.3,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 42,
+          "time": 56.35,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261118,
+      "time": 196.05,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 35,
+          "time": 41.25,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 50.3,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 39,
+          "time": 59.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 35,
+          "time": 47.3,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 56.35,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 39,
+          "time": 65.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261119,
+      "time": 207.3,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 7,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 35,
+          "time": 41.25,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        },
+        {
+          "id": 38,
+          "time": 50.3,
+          "x": 24,
+          "z": -37.54,
+          "drift": 8
+        },
+        {
+          "id": 39,
+          "time": 59.35,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762,
+          "drift": 7.999999999999999
+        }
+      ],
+      "completions": [
+        {
+          "id": 35,
+          "time": 47.3,
+          "x": 16,
+          "z": -37.54
+        },
+        {
+          "id": 38,
+          "time": 56.35,
+          "x": 24,
+          "z": -37.54
+        },
+        {
+          "id": 39,
+          "time": 65.4,
+          "x": 21.65685424949238,
+          "z": -31.88314575050762
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261120,
+      "time": 182.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 42,
+          "time": 50.3,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 42,
+          "time": 56.35,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261121,
+      "time": 196.4,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 42,
+          "time": 50.3,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 42,
+          "time": 56.35,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261122,
+      "time": 191.45,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 47,
+          "time": 59.35,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 47,
+          "time": 65.4,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261123,
+      "time": 174.9,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 56,
+          "time": 77.45,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 56,
+          "time": 83.5,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261124,
+      "time": 193.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 4,
+      "planLength": 7,
+      "placements": [],
+      "completions": [],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "normal",
+      "seed": 20261125,
+      "time": 173.5,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 56,
+          "time": 77.45,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 56,
+          "time": 83.5,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261116,
+      "time": 177.75,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 35,
+          "time": 34.2,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 35,
+          "time": 40.25,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261117,
+      "time": 182.7,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 35,
+          "time": 34.2,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 35,
+          "time": 40.25,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261118,
+      "time": 183.55,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 36,
+          "time": 40.35,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 36,
+          "time": 46.4,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261119,
+      "time": 180.2,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 35,
+          "time": 34.2,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 35,
+          "time": 40.25,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261120,
+      "time": 181.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 35,
+          "time": 34.2,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 35,
+          "time": 40.25,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261121,
+      "time": 172.35,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 36,
+          "time": 40.35,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 36,
+          "time": 46.4,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261122,
+      "time": 172.55,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 36,
+          "time": 40.35,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 36,
+          "time": 46.4,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261123,
+      "time": 176,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 35,
+          "time": 34.2,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 35,
+          "time": 40.25,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261124,
+      "time": 163.95,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 36,
+          "time": 40.35,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 36,
+          "time": 46.4,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    },
+    {
+      "mode": "campaign",
+      "chapter": 2,
+      "difficulty": "hard",
+      "seed": 20261125,
+      "time": 178.1,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "planned": 3,
+      "buildIdx": 5,
+      "planLength": 7,
+      "placements": [
+        {
+          "id": 36,
+          "time": 40.35,
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ],
+      "completions": [
+        {
+          "id": 36,
+          "time": 46.4,
+          "x": 16,
+          "z": -37.54
+        }
+      ],
+      "hq": {
+        "x": 0,
+        "z": -41.54
+      }
+    }
+  ]
+}

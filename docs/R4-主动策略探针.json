@@ -1,0 +1,245 @@
+{
+  "method": "Chapter 1 SP01, normal economy/production/build/attack-move; 0.05s full ticks, 600s cap; no injected units/resources/damage; known objective coordinate; automated orders once/second; not browser/physical-input acceptance or balance proof",
+  "rows": [
+    {
+      "difficulty": "easy",
+      "seed": 20261116,
+      "seconds": 79.45,
+      "ended": "win",
+      "produced": 11,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261117,
+      "seconds": 69.3,
+      "ended": "win",
+      "produced": 10,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261118,
+      "seconds": 74.05,
+      "ended": "win",
+      "produced": 10,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261119,
+      "seconds": 71,
+      "ended": "win",
+      "produced": 10,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261120,
+      "seconds": 66.55,
+      "ended": "win",
+      "produced": 10,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261121,
+      "seconds": 71.5,
+      "ended": "win",
+      "produced": 10,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261122,
+      "seconds": 145.85,
+      "ended": "win",
+      "produced": 28,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261123,
+      "seconds": 101.65,
+      "ended": "win",
+      "produced": 14,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261124,
+      "seconds": 74.45,
+      "ended": "win",
+      "produced": 10,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261125,
+      "seconds": 125.75,
+      "ended": "win",
+      "produced": 23,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261116,
+      "seconds": 88.7,
+      "ended": "win",
+      "produced": 13,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261117,
+      "seconds": 86.85,
+      "ended": "win",
+      "produced": 14,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261118,
+      "seconds": 108.9,
+      "ended": "win",
+      "produced": 18,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261119,
+      "seconds": 97.7,
+      "ended": "win",
+      "produced": 17,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261120,
+      "seconds": 168.45,
+      "ended": "win",
+      "produced": 40,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261121,
+      "seconds": 83.3,
+      "ended": "win",
+      "produced": 12,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261122,
+      "seconds": 81.7,
+      "ended": "win",
+      "produced": 12,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261123,
+      "seconds": 74.35,
+      "ended": "win",
+      "produced": 10,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261124,
+      "seconds": 156,
+      "ended": "win",
+      "produced": 34,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261125,
+      "seconds": 88.85,
+      "ended": "win",
+      "produced": 13,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261116,
+      "seconds": 147.45,
+      "ended": "win",
+      "produced": 29,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261117,
+      "seconds": 186.7,
+      "ended": "win",
+      "produced": 47,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261118,
+      "seconds": 164.05,
+      "ended": "lose",
+      "produced": 16,
+      "playerHQ": 0
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261119,
+      "seconds": 151.65,
+      "ended": "lose",
+      "produced": 20,
+      "playerHQ": 0
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261120,
+      "seconds": 150.85,
+      "ended": "lose",
+      "produced": 17,
+      "playerHQ": 0
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261121,
+      "seconds": 146.15,
+      "ended": "win",
+      "produced": 31,
+      "playerHQ": 1800
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261122,
+      "seconds": 123.15,
+      "ended": "lose",
+      "produced": 13,
+      "playerHQ": 0
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261123,
+      "seconds": 144,
+      "ended": "lose",
+      "produced": 15,
+      "playerHQ": 0
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261124,
+      "seconds": 165.8,
+      "ended": "lose",
+      "produced": 23,
+      "playerHQ": 0
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261125,
+      "seconds": 150.05,
+      "ended": "lose",
+      "produced": 19,
+      "playerHQ": 0
+    }
+  ]
+}

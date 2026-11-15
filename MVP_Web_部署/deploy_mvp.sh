@@ -50,6 +50,7 @@ expect {
 }
 if {[catch wait st]} { puts "ssh 失败"; exit 1 }
 puts "SSH_EXIT=[lindex $st 3]"
+if {[lindex $st 3] != 0} { puts "远端部署失败"; exit 1 }
 EOF
 
 echo ">>> 部署完成： http://$HOST/ （备用 http://$HOST:8080/ ）"

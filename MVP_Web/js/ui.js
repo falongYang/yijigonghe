@@ -487,12 +487,15 @@ export class UI {
     grid.addEventListener('pointerdown', e => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       active = true; moved = false; sx = e.clientX; base = offNow(); pid = e.pointerId;
-      try { grid.setPointerCapture(pid); } catch { /* 老浏览器忽略 */ }
+      // 原地点击保留卡片作为 click 目标；确定为拖动后才捕获指针。
     });
     grid.addEventListener('pointermove', e => {
       if (!active) return;
       const dx = e.clientX - sx;
-      if (!moved && Math.abs(dx) > 5) { moved = true; grid.classList.add('dragging'); }
+      if (!moved && Math.abs(dx) > 5) {
+        moved = true; grid.classList.add('dragging');
+        try { grid.setPointerCapture(pid); } catch { /* 老浏览器忽略 */ }
+      }
       if (moved) {
         track.style.transform = `translateX(${base + dx}px)`;
         if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
