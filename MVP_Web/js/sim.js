@@ -2932,10 +2932,20 @@ export class Simulation {
   }
 
   _makeAIBuilding(type, x, z) {
-    for (const ex of this.buildings) {
-      if (ex.side === SIDES.ENEMY && dist(x, z, ex.x, ex.z) < (ex.size + BUILDINGS[type].size) * 0.7) return false;
+    // 边界夹取可能使预设落点重叠；按固定顺序搜索备用点，不消费随机数。
+    const free = (px, pz) => !this.buildings.some(ex => ex.side === SIDES.ENEMY
+      && dist(px, pz, ex.x, ex.z) < (ex.size + BUILDINGS[type].size) * 0.7);
+    let spot = free(x, z) ? { x, z } : null;
+    for (let radius = 8; !spot && radius <= 40; radius += 8) {
+      for (let i = 0; i < 16; i++) {
+        const angle = i * Math.PI / 8;
+        const px = clamp(x + Math.cos(angle) * radius, -HALF_W + 6, HALF_W - 6);
+        const pz = clamp(z + Math.sin(angle) * radius, -HALF_H + 6, HALF_H - 6);
+        if (free(px, pz)) { spot = { x: px, z: pz }; break; }
+      }
     }
-    this._makeBuilding(SIDES.ENEMY, type, x, z, false);
+    if (!spot) return false;
+    this._makeBuilding(SIDES.ENEMY, type, spot.x, spot.z, false);
     return true;
   }
 }

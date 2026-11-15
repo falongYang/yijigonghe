@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {Simulation} from './MVP_Web/js/sim.js';
+import {BUILDINGS,HALF_W,HALF_H} from './MVP_Web/js/rts.js';
+const s=new Simulation();s.reset('SP01');
+s._makeBuilding('E','tech',0,-57.54,true);
+assert.equal(s._makeAIBuilding('ugnest',0,-61),true);
+const b=s.buildings.at(-1);assert.equal(b.type,'ugnest');
+assert.ok(Math.abs(b.x)<=HALF_W-6&&Math.abs(b.z)<=HALF_H-6);
+for(const e of s.buildings)if(e!==b&&e.side==='E')assert.ok(Math.hypot(e.x-b.x,e.z-b.z)>=(e.size+BUILDINGS.ugnest.size)*.7);
+assert.equal(s._makeAIBuilding('tower',16,-37.54),true);
+console.log('PASS blocked edge placement retries without blocking tower');
