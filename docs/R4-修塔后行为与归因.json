@@ -1,0 +1,1539 @@
+{
+  "method": "Chapter1 passive player, full tick; early terminal samples excluded from 90s quartiles and retained separately. prodTimer initialization is fixed 2s, subsequent decision intervals receive difficulty multipliers. A/B measures decision cadence, not resource-limited completed production.",
+  "ab": [
+    {
+      "armyMul": 1,
+      "thinkMul": 1,
+      "resetInterval": 2.4,
+      "decisionCyclesIn10s": 4
+    },
+    {
+      "armyMul": 2,
+      "thinkMul": 1,
+      "resetInterval": 1.2,
+      "decisionCyclesIn10s": 8
+    },
+    {
+      "armyMul": 1,
+      "thinkMul": 0.5,
+      "resetInterval": 1.2,
+      "decisionCyclesIn10s": 8
+    }
+  ],
+  "summary": {
+    "easy": {
+      "n": 10,
+      "earlyTerminal": 0,
+      "harvested": [
+        4024,
+        4165
+      ],
+      "pop": [
+        40,
+        41
+      ],
+      "towers": [
+        1,
+        1
+      ],
+      "waves": [
+        1,
+        1
+      ]
+    },
+    "normal": {
+      "n": 10,
+      "earlyTerminal": 1,
+      "harvested": [
+        4874,
+        5422.75
+      ],
+      "pop": [
+        42.25,
+        51
+      ],
+      "towers": [
+        1,
+        1
+      ],
+      "waves": [
+        2,
+        2
+      ]
+    },
+    "hard": {
+      "n": 10,
+      "earlyTerminal": 2,
+      "harvested": [
+        7884.25,
+        8270.25
+      ],
+      "pop": [
+        55,
+        56
+      ],
+      "towers": [
+        1,
+        1
+      ],
+      "waves": [
+        2,
+        2
+      ]
+    }
+  },
+  "rows": [
+    {
+      "difficulty": "easy",
+      "seed": 20261114,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4183,
+      "pop": 41,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261115,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4042,
+      "pop": 40,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261116,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4439,
+      "pop": 44,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261117,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4111,
+      "pop": 41,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261118,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4207,
+      "pop": 41,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261119,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4018,
+      "pop": 40,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261120,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4066,
+      "pop": 40,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261121,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4018,
+      "pop": 40,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261122,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 3971,
+      "pop": 40,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "easy",
+      "seed": 20261123,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4042,
+      "pop": 40,
+      "towers": 1,
+      "waves": 1,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261114,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4919,
+      "pop": 41,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261115,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 5546,
+      "pop": 52,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261116,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 5397,
+      "pop": 51,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261117,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 5430,
+      "pop": 51,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261118,
+      "time": 89.25,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "harvested": 4737,
+      "pop": 43,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261119,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4826,
+      "pop": 41,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261120,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 5235,
+      "pop": 49,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261121,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 5471,
+      "pop": 49,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261122,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 5401,
+      "pop": 51,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261123,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4859,
+      "pop": 46,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "normal",
+      "seed": 20261124,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 4826,
+      "pop": 41,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261114,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 8288,
+      "pop": 55,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261115,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 8106,
+      "pop": 56,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261116,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 8464,
+      "pop": 56,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261117,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 7835,
+      "pop": 56,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261118,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 7755,
+      "pop": 55,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261119,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 7804,
+      "pop": 56,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261120,
+      "time": 85.75,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "harvested": 6998,
+      "pop": 52,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261121,
+      "time": 89.35,
+      "sample": "early-terminal",
+      "ended": "lose",
+      "harvested": 7638,
+      "pop": 54,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261122,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 8032,
+      "pop": 55,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261123,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 8217,
+      "pop": 56,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261124,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 8291,
+      "pop": 55,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    },
+    {
+      "difficulty": "hard",
+      "seed": 20261125,
+      "time": 90,
+      "sample": "90s",
+      "ended": null,
+      "harvested": 8143,
+      "pop": 56,
+      "towers": 1,
+      "waves": 2,
+      "buildIdx": 5,
+      "placements": [
+        {
+          "type": "nursery",
+          "x": 12,
+          "z": -51.54,
+          "drift": 0
+        },
+        {
+          "type": "barracks",
+          "x": -14,
+          "z": -49.54,
+          "drift": 0
+        },
+        {
+          "type": "tech",
+          "x": 0,
+          "z": -57.54,
+          "drift": 0
+        },
+        {
+          "type": "ugnest",
+          "x": 8,
+          "z": -61,
+          "drift": 8
+        },
+        {
+          "type": "tower",
+          "x": 16,
+          "z": -37.54,
+          "drift": 0
+        }
+      ]
+    }
+  ]
+}

@@ -2665,7 +2665,7 @@ export class Simulation {
       ai.buildTimer = 9 * diff.thinkMul * arch.buildSpeed;
       const type = ai.buildPlan[ai.buildIdx];
       const cost = BUILDINGS[type].cost || {};
-      if (this.canAfford(E, cost) && !eb.some(b => b.type === type)) {
+      if (this.canAfford(E, cost) && (type === 'tower' || !eb.some(b => b.type === type))) {
         const off = this._aiBuildPos(type);
         if (this._makeAIBuilding(type, off.x, off.z)) ai.buildIdx++;
       }
