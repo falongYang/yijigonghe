@@ -462,7 +462,7 @@ function closeTopOverlay() {
 
 let lastPick = { t: 0, id: null };
 function pickAt(x, y) {
-  const hit = world.pickEntity(x, y);
+  const hit = world.pickEntity(x, y, isTouchActive() ? 24 : 12);
   const now = performance.now();
   let keepPick = null;
   if (hit && hit.kind === 'unit') {

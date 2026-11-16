@@ -3531,7 +3531,7 @@ export class World {
   }
 
   /** 命中实体（单位/建筑），返回 {kind, id} 或 null。 */
-  pickEntity(x, y) {
+  pickEntity(x, y, unitTolerance = 0) {
     this._setNdc(x, y);
     const hits = this.raycaster.intersectObjects(this.pickables, false);
     for (const h of hits) {
@@ -3539,6 +3539,26 @@ export class World {
       for (let o = h.object; o; o = o.parent) if (!o.visible) { visible = false; break; }
       if (!visible) continue;
       if (h.object.userData && h.object.userData.kind) return { kind: h.object.userData.kind, id: h.object.userData.id };
+    }
+    // Only selection opts in; attack/repair targeting keeps exact ray semantics.
+    if (unitTolerance > 0) {
+      const rect = this.canvas.getBoundingClientRect();
+      let nearest = null, distance = unitTolerance * unitTolerance;
+      const center = new THREE.Vector3();
+      for (const [id, m] of this.unitMeshes) {
+        if (m.side !== SIDES.PLAYER) continue;
+        let visible = true;
+        for (let o = m.body; o; o = o.parent) if (!o.visible) { visible = false; break; }
+        if (!visible) continue;
+        m.body.getWorldPosition(center);
+        center.project(this.camera);
+        if (center.z < -1 || center.z > 1 || Math.abs(center.x) > 1 || Math.abs(center.y) > 1) continue;
+        const px = rect.left + (center.x + 1) * rect.width / 2;
+        const py = rect.top + (1 - center.y) * rect.height / 2;
+        const d = (px - x) ** 2 + (py - y) ** 2;
+        if (d < distance) { distance = d; nearest = { kind: 'unit', id }; }
+      }
+      return nearest;
     }
     return null;
   }
