@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import { OperationGuide, guideText } from './MVP_Web/js/operation-guide.js';
+import { Simulation } from './MVP_Web/js/sim.js';
+import { UNITS } from './MVP_Web/js/rts.js';
+const sim=new Simulation(); sim.reset('SP01',{mode:'campaign',chapter:0,difficulty:'easy'});
+const guide=new OperationGuide(sim);
+assert.equal(guide.observe(sim,UNITS),0);
+for(let i=0;i<300;i++)sim.tick(1/30);
+assert.equal(guide.observe(sim,UNITS),0,'automatic economy alone cannot dismiss selection lesson');
+const worker=sim.units.find(u=>u.side==='P'&&UNITS[u.type].role==='econ');sim.selected.add(worker.id);
+assert.equal(guide.observe(sim,UNITS),1);
+let spot;for(let x=-30;x<30&&!spot;x+=5)for(let z=20;z<65;z+=5)if(sim.checkBuild('barracks',x,z).ok){spot={x,z};break;}
+assert.ok(spot);assert.ok(sim.startBuild('barracks',spot.x,spot.z));
+assert.equal(guide.observe(sim,UNITS),1,'placement alone is not completed construction');
+for(let i=0;i<300;i++)sim.tick(1/30);
+assert.equal(guide.observe(sim,UNITS),2);
+const barracks=sim.buildings.find(b=>b.side==='P'&&b.type==='barracks');assert.ok(sim.produce(barracks.id,'s1'));
+assert.equal(guide.observe(sim,UNITS),2,'queued production is not completed production');
+for(let i=0;i<210;i++)sim.tick(1/30);
+assert.equal(guide.observe(sim,UNITS),3);
+const soldier=sim.units.find(u=>u.side==='P'&&u.type==='s1');sim.selected.clear();sim.selected.add(soldier.id);
+guide.confirmOrder(sim,UNITS);assert.equal(guide.observe(sim,UNITS),3,'selection alone is not a command');
+sim.commandMove([soldier.id],0,20);guide.confirmOrder(sim,UNITS);assert.equal(guide.observe(sim,UNITS),4);
+assert.ok(guideText(3,true).includes('长按'));assert.ok(guideText(3,false).includes('右键'));
+sim.res.P.bio=0;const check=sim.checkBuild('barracks',0,0);assert.ok(check.reason.includes('还缺'));assert.ok(check.reason.includes('现有 0'));
+assert.equal(new OperationGuide(sim).observe(sim,UNITS),0,'new guide resets completion');
+console.log('PASS operation guide: normal economy/build/production/order, negative gates, resource shortfall');

@@ -1,3 +1,4 @@
+import { OperationGuide, guideText } from './operation-guide.js';
 import { resetTransientInput } from './input-state.js';
 /* 主入口：装配 sim / world / ui，处理输入、相机、主循环，并把指令回灌给模拟层。 */
 import { Simulation } from './sim.js';
@@ -153,7 +154,8 @@ function startGame(spId, sel = {}) {
   world.setEra(0, true);
   ui.setMapName(sim.map);
   // 首次引导为全屏覆盖层，简报卡等引导结束后再弹出，避免被遮挡
-  if (!maybeShowTutorial()) ui.showMapBrief(sim.map);
+  if (mode === 'campaign' && chapter === 0) { game.tutOpen = false; document.getElementById('tutorial')?.classList.add('hidden'); ui.showMapBrief(sim.map); }
+  else if (!maybeShowTutorial()) ui.showMapBrief(sim.map);
   // 入场运镜：从高空斜侧俯冲至己方巢区，2.6s 揭示战场；系统开启「减少动态效果」时直接到位
   const introTo = { tx: 0, tz: HALF_H * 0.60, dist: 150, pitch: 0.92, yaw: Math.PI };
   world.setFollow(false);
@@ -180,6 +182,7 @@ function startGame(spId, sel = {}) {
     : `战争开始 · ${sim.map.name}：采集 → 建造 → 出兵 → 研究纪元 → 能力 → 进化 → 掠夺（敌·${sim.archetype.name}/${sim.difficulty.name}）`;
   ui.toast(tip);
   game.running = true;
+  setupOperationGuide();
 }
 
 function beginBuild(type) {
@@ -490,6 +493,11 @@ function pickAt(x, y) {
 /** 指令落点标记：移动=指向箭头、攻击=准星、维修=十字、集结=菱形；
  *  颜色沿用青=移动 / 橙=攻击 / 蓝=集结 / 金=追加路径点与维修。 */
 function orderFx(x, z, color, kind = 'move', dir = 0) {
+  if (['move', 'attack'].includes(kind)) {
+    game.operationGuide?.confirmOrder(sim, UNITS);
+    const accepted = playerSel().filter(id => { const u = sim.getUnit(id); return u.order === 'manual' && ['move', 'attackmove', 'attack'].includes(u.state); }).length;
+    if (accepted) ui.toast(`指令已接收 · ${accepted} 个单位${kind === 'attack' ? '进攻' : '移动'}`);
+  }
   world.addEffect('order' + kind[0].toUpperCase() + kind.slice(1), { x, y: 0.4, z }, { color, dir });
 }
 /** 战术标记：Alt + 左键点地面，地面脉冲环 + 光柱，小地图同步。 */
@@ -729,6 +737,42 @@ function focusGroup(d) {
   ui.toast(`镜头聚焦编队 ${d}（${bounds.count} 只 · 视距 ${Math.round(dist || world.cam.dist)}）`);
 }
 
+/* First chapter: non-blocking guidance driven by observed player actions. */
+function setupOperationGuide() {
+  document.getElementById('operation-guide')?.remove();
+  document.getElementById('placement-cancel')?.remove();
+  game.operationGuide = sim.mode === 'campaign' && sim.chapter === 0 ? new OperationGuide(sim) : null;
+  if (game.operationGuide) {
+    const mission = document.getElementById('mission'); mission.classList.remove('hidden');
+    document.getElementById('mission-title').textContent = '第一章 · 建立蚁群';
+    document.getElementById('mission-obj').textContent = '目标：摧毁敌方蚁后巢；保护己方蚁后巢。';
+    const panel = document.createElement('div'); panel.id = 'operation-guide';
+    const text = document.createElement('span'); text.id = 'operation-guide-text'; text.setAttribute('role', 'status');
+    const close = document.createElement('button'); close.textContent = '收起教学';
+    close.onclick = () => { game.operationGuide = null; panel.remove(); };
+    panel.append(text, close); document.getElementById('mission').append(panel);
+  }
+  const cancel = document.createElement('button'); cancel.id = 'placement-cancel'; cancel.textContent = '取消放置';
+  cancel.onclick = () => {
+    game.pendingBuild = null; game.pendingAbility = null; game.pendingPatrol = null;
+    world.hideCursor(); ui.setBuildHint(''); ui.setArmedAbility(null);
+    ui.toast('已取消，未扣除放置费用');
+  };
+  document.getElementById('hud').append(cancel);
+}
+function refreshOperationGuide() {
+  const cancel = document.getElementById('placement-cancel');
+  if (cancel) cancel.hidden = !game.running || !!sim.ended || !(game.pendingBuild || game.pendingAbility || game.pendingPatrol);
+  const guide = game.operationGuide, text = document.getElementById('operation-guide-text');
+  if (!guide || !text || !game.running || sim.ended) {
+    if (text) text.parentElement.hidden = true;
+    return;
+  }
+  const step = guide.observe(sim, UNITS);
+  const value = `${step < 4 ? `操作 ${step + 1}/4 · ` : ''}${guideText(step, isTouchActive())}`;
+  if (text.textContent !== value) text.textContent = value;
+}
+
 /* ---------------------------------------------------------------- 首次引导 */
 const TUT_STEPS = [
   { t: '镜头操作', d: '按住左键或右键在地图上拖动即可跟手平移视角（单击仍是点选 / 下令，拖动超过 5px 自动切换为平移，不会误发指令）；中键拖动旋转视角，滚轮缩放远近，方向键 / W·D 平移镜头，鼠标贴近屏幕边缘也会自动平移（可在暂停菜单设置中关闭）。点击或拖动右下角小地图可快速跳转；在小地图上右键可给选中单位直接下令（Shift 追加路径点、Alt 攻击移动），触屏则点「下令」后再轻点地图，下令时镜头不会跟着跳走。空格回到己方巢区，F 跟随选中单位（手动平移即退出），Shift + 空格循环切换标准 / 俯瞰 / 低角视角预设。地面贴有战术坐标网格、中轴基准线与边缘刻度，拉近镜头更清晰；小地图带主次网格、坐标刻度、地形、水域与白框视野，交战处会亮起短寿红橙热点。开局会弹出战场简报（点资源栏地图名可重看），Alt + 左键可在地面放战术标记。地面高台 / 泥沼 / 浅滩有发光描边与标签，鼠标所指地形显示在图例条；金色信息素井可驻兵占领、持续产信息素。A / S 专用于战场指令。' },
@@ -887,6 +931,7 @@ function loop(now) {
   frameNo++;
   world.syncFrame(sim, game.paused);
   ui.refresh();
+  refreshOperationGuide();
   world.update(game.paused ? 0 : dt, dt);   // 暂停冻结场景时间，但相机阻尼仍用真实帧时间推进
   // 昼夜明暗驱动蚁巢环境音起伏；会战处按热度轻微压低底噪，让战斗音效更清晰
   Sound.setAmbient(world.dayFactor * (1 - 0.35 * game.heat));

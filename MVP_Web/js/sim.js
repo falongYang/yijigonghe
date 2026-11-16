@@ -744,7 +744,7 @@ export class Simulation {
     const b = BUILDINGS[type];
     if (!b) return { ok: false, reason: '未知巢室', cost: null };
     const cost = effectiveBuildingCost(type, this.sp.P, this.era.P);   // 专长域 / 纪元折扣
-    if (!this.canAfford(SIDES.PLAYER, cost)) return { ok: false, reason: `资源不足：需 ${this._costStr(cost)}`, cost };
+    if (!this.canAfford(SIDES.PLAYER, cost)) return { ok: false, reason: `资源不足：${this._shortfall(cost)}`, cost };
     if (dist(x, z, PLAYER_BASE.x, PLAYER_BASE.z) > 66) return { ok: false, reason: '超出己方巢区建造范围', cost };
     // 地形合法性：陡坡无法夯土；深水中央不能筑巢（巢区本身豁免，避免个别章节整片巢区被水覆盖）。
     if (Math.abs(terrainHeight(x, z)) > 4.2) return { ok: false, reason: '坡度过陡，无法夯土筑巢', cost };
@@ -774,6 +774,10 @@ export class Simulation {
     this._emit('build', { id: nb.id });
     return true;
   }
+  _shortfall(cost) {
+    return RES_ORDER.filter(r => (cost[r] || 0) > this.res_(SIDES.PLAYER, r))
+      .map(r => `${RESOURCES[r].short}还缺 ${Math.ceil(cost[r] - this.res_(SIDES.PLAYER, r))}（现有 ${Math.floor(this.res_(SIDES.PLAYER, r))} / 需要 ${cost[r]}）`).join('；');
+  }
   _costStr(cost) {
     return RES_ORDER.filter(r => cost[r]).map(r => `${cost[r]}${RESOURCES[r].short}`).join('·');
   }
@@ -790,7 +794,7 @@ export class Simulation {
     if (this.era.P < need) { this._toast(`「${UNITS[unitType].name}」需纪元 ${need + 1}（研究史官堂解锁）`); return false; }
     if (this.pop(SIDES.PLAYER) >= POP_CAP) { this._toast('人口已达上限'); return false; }
     const cost = effectiveCost(unitType, this.sp.P);
-    if (!this.canAfford(SIDES.PLAYER, cost)) { this._toast(`资源不足，需 ${this._costStr(cost)}`); return false; }
+    if (!this.canAfford(SIDES.PLAYER, cost)) { this._toast(`资源不足：${this._shortfall(cost)}`); return false; }
     this.spend(SIDES.PLAYER, cost);
     b.queue.push({ type: unitType, t: UNITS[unitType].build });
     this._emit('produce', { id: b.id });
