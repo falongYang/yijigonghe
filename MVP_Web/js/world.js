@@ -3534,14 +3534,20 @@ export class World {
   pickEntity(x, y, unitTolerance = 0) {
     this._setNdc(x, y);
     const hits = this.raycaster.intersectObjects(this.pickables, false);
+    let exact = null;
     for (const h of hits) {
       let visible = true;
       for (let o = h.object; o; o = o.parent) if (!o.visible) { visible = false; break; }
       if (!visible) continue;
-      if (h.object.userData && h.object.userData.kind) return { kind: h.object.userData.kind, id: h.object.userData.id };
+      if (h.object.userData && h.object.userData.kind) {
+        exact = { kind: h.object.userData.kind, id: h.object.userData.id };
+        break;
+      }
     }
-    // Only selection opts in; attack/repair targeting keeps exact ray semantics.
-    if (unitTolerance > 0) {
+    // Selection compares friendly units even when the ray hit a neighboring unit.
+    // Buildings, enemies and command targeting retain exact ray semantics.
+    const friendlyHit = unitTolerance > 0 && exact?.kind === 'unit' && this.unitMeshes.get(exact.id)?.side === SIDES.PLAYER;
+    if (unitTolerance > 0 && (!exact || friendlyHit)) {
       const rect = this.canvas.getBoundingClientRect();
       let nearest = null, distance = unitTolerance * unitTolerance;
       const center = new THREE.Vector3();
@@ -3558,9 +3564,9 @@ export class World {
         const d = (px - x) ** 2 + (py - y) ** 2;
         if (d < distance) { distance = d; nearest = { kind: 'unit', id }; }
       }
-      return nearest;
+      return nearest || exact;
     }
-    return null;
+    return exact;
   }
 
   // ---------------------------------------------------------------- 主循环钩子

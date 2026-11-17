@@ -83,3 +83,17 @@ for (const visible of [true,false]) {
  const fake={_setNdc(){},pickables:[],raycaster:{intersectObjects:()=>[{object:hidden},{object:shown}]}};
  assert.deepEqual(World.prototype.pickEntity.call(fake,0,0),{kind:'unit',id:2},'hidden parent excludes raycast target');
 }
+
+// Ray order must not let a neighboring friendly unit steal a nearer tap.
+{
+ const THREE=await import('three');
+ const body=(x,visible=true)=>{const b=new THREE.Object3D();b.position.set(x,0,0);b.visible=visible;b.updateMatrixWorld();return b;};
+ const meshes=new Map([[1,{side:'P',body:body(.2)}],[2,{side:'P',body:body(0)}],[3,{side:'P',body:body(.01,false)}]]);
+ const fake={_setNdc(){},pickables:[],camera:new THREE.Camera(),unitMeshes:meshes,canvas:{getBoundingClientRect:()=>({left:0,top:0,width:100,height:100})},raycaster:{intersectObjects:()=>[{object:{visible:true,userData:{kind:'unit',id:1}}}]}};
+ assert.deepEqual(World.prototype.pickEntity.call(fake,50,50,24),{kind:'unit',id:2},'nearer friendly center beats ray-hit neighbor');
+ assert.deepEqual(World.prototype.pickEntity.call(fake,50,50),{kind:'unit',id:1},'commands retain exact ray target');
+ fake.raycaster.intersectObjects=()=>[{object:{visible:true,userData:{kind:'building',id:10}}}];
+ assert.deepEqual(World.prototype.pickEntity.call(fake,50,50,24),{kind:'building',id:10},'unit tolerance does not steal building selection');
+ fake.raycaster.intersectObjects=()=>[];
+ assert.deepEqual(World.prototype.pickEntity.call(fake,50,50,24),{kind:'unit',id:2},'ray miss still recovers nearest visible unit');
+}
