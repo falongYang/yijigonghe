@@ -172,7 +172,7 @@ function startGame(spId, sel = {}) {
     world.startIntro(introTo);
   }
   game.speed = 1; game.paused = false; acc = 0;
-  groupTap.reset(); viewPresetIdx = 0;   // 换局清掉上一局的连击计时与视角预设序号
+  groupTap.reset(); viewPresetIdx = 0; cameraViewButton.textContent = '视角 · 标准';   // 换局清掉上一局的连击计时与视角预设序号
   document.querySelectorAll('#speeds .tbtn').forEach(x => x.classList.toggle('on', x.dataset.s === '1'));
   ui.hideStart();
   ui.showPause(false);
@@ -666,10 +666,7 @@ function onKey(e) {
     e.preventDefault();
     // Shift + 空格：循环视角预设（标准 → 俯瞰 → 低角），只改角度/距离目标，不改镜头落点
     if (e.shiftKey) {
-      viewPresetIdx = (viewPresetIdx + 1) % VIEW_PRESET_KEYS.length;
-      const key = VIEW_PRESET_KEYS[viewPresetIdx];
-      world.setViewPreset(key);
-      ui.toast(`镜头视角：${VIEW_PRESETS[key].label}（Shift + 空格继续切换）`);
+      cycleViewPreset();
       return;
     }
     world.setFollow(false); world.focus(0, HALF_H * 0.62);
@@ -724,6 +721,19 @@ function playerSel() { return [...sim.selected].filter(id => { const u = sim.get
 /** 编队连按计时与视角预设序号：纯 B 侧状态，不写模拟层。 */
 const groupTap = createDoubleTap();
 let viewPresetIdx = 0;
+const cameraViewButton = document.getElementById('btn-camera-view');
+cameraViewButton.onclick = cycleViewPreset;
+
+function cycleViewPreset() {
+  if (!game.running || game.paused || game.tutOpen || sim.ended) return;
+  viewPresetIdx = (viewPresetIdx + 1) % VIEW_PRESET_KEYS.length;
+  const key = VIEW_PRESET_KEYS[viewPresetIdx];
+  world.setViewPreset(key);
+  const label = VIEW_PRESETS[key].label;
+  cameraViewButton.textContent = `视角 · ${label}`;
+  ui.toast(`镜头视角：${label}（Shift + 空格继续切换）`);
+}
+
 
 /* ---------------------------------------------------------------- 编队 */
 function setGroup(d) {
