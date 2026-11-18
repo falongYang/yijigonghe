@@ -147,6 +147,7 @@ function startGame(spId, sel = {}) {
   game.nearbySelection = null;
   lastPick = { t: 0, id: null };
   sim.reset(spId, { mode, chapter, archetype, difficulty });
+  ui.mapOrderMark = null;
   ui.atlas?.close();
   world.resetBattle();
   world.setSides(sim.sp.P, sim.sp.E);
@@ -578,7 +579,7 @@ function orderFromMinimap(x, z, opts = {}) {
   if (!Number.isFinite(wx) || !Number.isFinite(wz)) return;
   const tx = Math.max(-HALF_W, Math.min(HALF_W, wx));
   const tz = Math.max(-HALF_H, Math.min(HALF_H, wz));
-  if (!game.running || game.paused || game.tutOpen) { ui.toast('战局未进行，无法从地图下令'); return; }
+  if (!game.running || game.paused || game.tutOpen || sim.ended) { ui.toast('战局未进行，无法从地图下令'); return; }
   const ids = playerSel();
   if (!ids.length) { ui.toast('先选中单位，再从小地图下令'); return; }
   if (opts && opts.attackMove) {
@@ -586,12 +587,14 @@ function orderFromMinimap(x, z, opts = {}) {
     orderFx(tx, tz, 0xffb070);
     Sound.play('move', { x: tx, z: tz });
     ui.toast('攻击移动指令已下达');
+    ui.markMapOrder(tx, tz, 'attack');
     return;
   }
   const append = !!(opts && opts.append);
   sim.commandMove(ids, tx, tz, { append });
   orderFx(tx, tz, append ? 0xffd27f : 0x7ef0c8, 'move');
   Sound.play('move', { x: tx, z: tz });
+  ui.markMapOrder(tx, tz, append ? 'append' : 'move');
   ui.toast(append ? '已追加路径点（单位将依次经过）' : `已下令前往 (${Math.round(tx)}, ${Math.round(tz)})`);
 }
 function placeBuild(x, y) {
