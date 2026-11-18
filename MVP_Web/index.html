@@ -63,7 +63,7 @@
         <button class="dtab" data-diff="easy">蛰伏</button>
         <button class="dtab on" data-diff="normal">共时</button>
         <button class="dtab" data-diff="hard">回响</button>
-        <span id="diff-hint" class="opt-hint"></span>
+        <span id="diff-hint" class="opt-hint" aria-live="polite"></span>
         <div id="diff-brief" class="diff-brief"></div>
       </div>
 
@@ -88,27 +88,28 @@
           <input id="cc-name" type="text" maxlength="12" autocomplete="off" autocapitalize="off"
                  spellcheck="false" placeholder="输入代号" aria-describedby="cc-hint">
         </div>
-        <button id="cc-toggle" class="cc-fold" type="button" aria-expanded="false" title="展开 / 收起战绩">⌄</button>
+        <button id="cc-toggle" class="cc-fold" type="button" aria-label="档案详情" aria-controls="cc-body" aria-expanded="false" title="展开 / 收起战绩">⌄</button>
       </div>
       <p id="cc-welcome" class="cc-welcome"></p>
       <div id="cc-body" class="cc-body hidden">
+        <p id="cc-rank" class="cc-rh"></p>
         <div id="cc-stats" class="cc-stats"></div>
         <div id="cc-recent" class="cc-recent"></div>
         <div class="cc-actions">
-          <button id="cc-export" class="cc-mini" type="button" title="导出档案为 JSON 备份（并尝试复制到剪贴板）">导出档案</button>
+          <button id="cc-export" class="cc-mini" type="button" title="下载 JSON 备份，下载失败时尝试复制到剪贴板">导出档案</button>
           <button id="cc-import" class="cc-mini" type="button" title="从 JSON 备份恢复代号与战绩">导入档案</button>
           <button id="cc-reset" class="cc-reset" type="button">重置战绩</button>
         </div>
         <input id="cc-file" type="file" accept="application/json,.json" class="hidden" aria-label="选择档案备份文件">
       </div>
-      <p id="cc-hint" class="cc-hint">代号仅保存在本机 · 不上传</p>
+      <p id="cc-hint" class="cc-hint" role="status">代号仅保存在本机 · 不上传</p>
     </aside>
   </div>
 
   <!-- 主 HUD -->
   <div id="hud" class="hidden">
     <!-- 资源栏 -->
-    <div id="res">
+    <div id="res" role="region" aria-label="战场资源" tabindex="0">
       <div class="res-chip"><i class="dot bio"></i><span>生</span><b id="res-bio">0</b><small class="res-rate" id="rate-bio"></small></div>
       <div class="res-chip"><i class="dot min"></i><span>矿</span><b id="res-min">0</b><small class="res-rate" id="rate-min"></small></div>
       <div class="res-chip"><i class="dot ph"></i><span>素</span><b id="res-ph">0</b><small class="res-rate" id="rate-ph"></small></div>
@@ -140,7 +141,7 @@
     <div id="cue-subtitle" class="hidden"></div>
 
     <!-- 右上控制 -->
-    <div id="topright">
+    <div id="topright" role="region" aria-label="战场控制">
       <span id="cmd-chip" class="cmd-chip" title="本机指挥官档案（可在开始页修改代号）"></span>
       <div id="speeds">
         <button class="tbtn on" data-s="1">▶</button>
@@ -232,17 +233,21 @@
       <div id="settings" class="settings">
         <div class="set-title">偏好设置（自动保存）</div>
         <div id="pause-profile" class="pause-profile"></div>
-        <label class="set-row"><span>音量</span><input id="set-volume" type="range" min="0" max="100" value="50"><b id="set-volume-val">50%</b></label>
-        <label class="set-check"><input id="set-edgepan" type="checkbox"><span>鼠标贴边自动平移镜头</span></label>
-        <label class="set-check"><input id="set-floats" type="checkbox"><span>显示浮动伤害数字</span></label>
-        <label class="set-check"><input id="set-fps" type="checkbox"><span>显示帧率 / 画质指示</span></label>
-        <label class="set-check"><input id="set-qauto" type="checkbox"><span>画质按帧率自动调节</span></label>
-        <label class="set-check"><input id="set-cues" type="checkbox"><span>战场提示（镜头冲击 / 字幕 / 加权音效）</span></label>
-        <label class="set-check"><input id="set-intel" type="checkbox"><span>默认开启小地图情报图层</span></label>
-        <label class="set-row"><span>画质档位</span>
-          <select id="set-quality"><option value="0">省电</option><option value="1">均衡</option><option value="2">精细</option></select>
-        </label>
-        <p class="set-note">档位会同时限制渲染像素比与地表细节：省电档收起草砾与远景装饰、只保留大地标，精细档全开；拉远镜头也会自动隐去细碎装饰。自动调节按帧率升降档，切换即时生效且可完全恢复。</p>
+        <fieldset class="set-group"><legend>声音与操作</legend>
+          <label class="set-row"><span>音量</span><input id="set-volume" type="range" min="0" max="100" value="50"><b id="set-volume-val">50%</b></label>
+          <label class="set-check"><input id="set-edgepan" type="checkbox"><span>鼠标贴边自动平移镜头</span></label>
+          <label class="set-check"><input id="set-intel" type="checkbox"><span>默认开启小地图情报图层</span></label>
+        </fieldset>
+        <fieldset class="set-group"><legend>画面与提示</legend>
+          <label class="set-check"><input id="set-floats" type="checkbox"><span>显示浮动伤害数字</span></label>
+          <label class="set-check"><input id="set-fps" type="checkbox"><span>显示帧率 / 画质指示</span></label>
+          <label class="set-check"><input id="set-qauto" type="checkbox"><span>画质按帧率自动调节</span></label>
+          <label class="set-check"><input id="set-cues" type="checkbox"><span>战场提示（镜头冲击 / 字幕 / 加权音效）</span></label>
+          <label class="set-row"><span>画质档位</span>
+            <select id="set-quality"><option value="0">省电</option><option value="1">均衡</option><option value="2">精细</option></select>
+          </label>
+          <p class="set-note">档位会同时限制渲染像素比与地表细节：省电档收起草砾与远景装饰、只保留大地标，精细档全开；拉远镜头也会自动隐去细碎装饰。自动调节按帧率升降档，切换即时生效且可完全恢复。</p>
+        </fieldset>
       </div>
       <div class="pause-btns">
         <button id="pause-resume" class="primary">继续游戏 (P)</button>

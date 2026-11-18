@@ -50,7 +50,7 @@ has(uiSrc, /window\.addEventListener\('pointermove'/, '小地图拖动改走 poi
 has(uiSrc, /window\.addEventListener\('pointercancel', endDrag\)/, '小地图处理 pointercancel');
 hasNot(uiSrc, /this\.mm\.addEventListener\('mousedown'/, '小地图不再只监听鼠标');
 has(css, /#scene \{[^}]*touch-action: none/, '画布关闭浏览器默认手势');
-has(css, /\.sp-carousel, \.ch-carousel \{ cursor: grab; touch-action: none; \}/, '轮播允许触屏横向拖动');
+has(css, /\.sp-carousel, \.ch-carousel \{ cursor: grab; touch-action: pan-y; \}/, '轮播保留横向拖动，同时允许页面纵向滚动');
 has(css, /#minimap \{[^}]*touch-action: none/, '小地图关闭默认手势');
 has(css, /@media \(pointer: coarse\)/, '粗指针点击区域适配');
 has(css, /-webkit-tap-highlight-color: transparent/, '去掉触屏点按高亮块');

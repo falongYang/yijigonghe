@@ -4,7 +4,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 #scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: grab; touch-action: none; }
 #scene.grabbing { cursor: grabbing; }
 /* 首页轮播：拖动时关掉吸附过渡，卡片实时跟手；抓手光标提示可拖 */
-.sp-carousel, .ch-carousel { cursor: grab; touch-action: none; }
+.sp-carousel, .ch-carousel { cursor: grab; touch-action: pan-y; }
 .sp-carousel.dragging, .ch-carousel.dragging { cursor: grabbing; }
 .sp-carousel.dragging .sp-track, .ch-carousel.dragging .ch-track { transition: none; }
 .sp-carousel.dragging *, .ch-carousel.dragging * { user-select: none; }
@@ -59,7 +59,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 
 /* ---------------- 指挥官档案：开始页本机身份卡 ---------------- */
 /* 绝对定位浮在选种页右上角，不占用单屏弹性布局的高度，避免挤压轮播与开局按钮 */
-#commander-card { --cc-color: #9aa489; position: absolute; top: 14px; right: 16px; width: 246px; z-index: 5;
+#commander-card { --cc-color: #9aa489; position: absolute; top: 14px; right: 16px; width: 246px; z-index: 5; max-height: calc(100% - 28px); overflow-y: auto;
   background: linear-gradient(160deg, rgba(24,32,18,.94), rgba(12,16,9,.93));
   border: 1px solid rgba(126,240,160,.24); border-radius: 12px; padding: 10px 12px 9px;
   box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.03);
@@ -113,7 +113,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
 @media (max-width: 980px) {
   #commander-card { width: 190px; top: 8px; right: 8px; padding: 7px 9px; }
   .cc-stats { grid-template-columns: repeat(2, 1fr); }
-  .cc-hint, .cc-recent { display: none; }
 }
 @media (max-width: 620px) {
   #commander-card { width: 152px; }
@@ -760,7 +759,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #11130d; f
   #sel { max-height: 56vh; overflow-y: auto; }
   #log { max-height: 72px; }
   #build-panel { gap: 4px; }
-  .cc-body, .cc-recent { display: none; }
 }
 
 /* 系统「减少动态效果」：关掉装饰动画与过渡，功能状态切换仍即时生效 */
@@ -850,4 +848,30 @@ button, .sp-nav, .ch-nav, .bbtn, .abtn, .tbtn, .mtab, .dtab, .atab, .mm-intel-bt
   #operation-guide { max-width: 280px; font-size: 11px; line-height: 1.3; }
   #operation-guide button { min-height: 28px; margin-top: 2px; }
   #placement-cancel { top: 160px; right: 8px; }
+}
+
+/* 首页档案在移动端进入正常阅读顺序，战前选项和备份操作可纵向滚动。 */
+.cc-spark { height: auto; align-items: stretch; }
+.cc-sp { display: grid; place-items: center; padding: 2px 0; font-style: normal; font-size: 9px; color: #10180d; }
+.cc-sp.win, .cc-sp.lose { height: auto; }
+.set-group { min-width: 0; border: 0; margin: 8px 0 0; }
+.set-group legend { color: #d8e8b0; font-size: 12px; margin-bottom: 4px; }
+.set-group + .set-group { border-top: 1px solid rgba(255,255,255,.12); padding-top: 4px; }
+.sp-carousel:focus-visible, .ch-carousel:focus-visible { outline: 2px solid #9fe0a0; outline-offset: -2px; }
+@media (max-width: 720px), (max-height: 500px) {
+  #start { overflow-y: auto; }
+  .start-inner { flex: 0 0 auto; height: auto; min-height: calc(100% - 104px); overflow: visible; }
+  .sp-wrap { flex: 1 0 168px; }
+  #commander-card { position: relative; top: auto; right: auto; width: min(360px, calc(100% - 24px)); max-height: none; flex-shrink: 0; margin: 8px auto 12px; }
+  .cc-fold, .cc-mini, .cc-reset { min-height: 32px; }
+  .pause-inner, .end-inner { padding: 14px 16px; }
+  .pause-btns, .end-btns { flex-wrap: wrap; gap: 6px; }
+  #end-highlights { padding: 10px; }
+  #end-stats div { padding: 7px; }
+}
+@media (max-width: 880px) {
+  #topright { flex-wrap: nowrap; justify-content: flex-start; }
+  #topright > .cmd-chip { display: none; }
+  #topright #speeds { margin-inline-start: auto; }
+  #res { scrollbar-width: thin; }
 }

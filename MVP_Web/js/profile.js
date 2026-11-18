@@ -56,7 +56,7 @@ export function badgeOf(p) {
   const wins = int(p && p.wins);
   let b = BADGES[0];
   for (const item of BADGES) if (wins >= item.min) b = item;
-  return { ...b, wins };
+  return { ...b, wins, next: BADGES[b.tier + 1] ? { ...BADGES[b.tier + 1] } : null };
 }
 
 function defaults() {

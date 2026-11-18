@@ -81,7 +81,7 @@ export class UI {
       // 打字时阻断冒泡：避免代号里的 w/a/s/d/f 等字符被当成战场快捷键
       input.addEventListener('keydown', e => {
         e.stopPropagation();
-        if (e.key === 'Enter') { e.preventDefault(); commit(); input.blur(); }
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); input.blur(); }
         else if (e.key === 'Escape') { e.preventDefault(); input.value = this._profile.name; input.blur(); }
       });
       input.addEventListener('blur', commit);
@@ -130,25 +130,25 @@ export class UI {
     const file = document.getElementById('cc-file');
     if (expBtn) expBtn.onclick = () => this._exportProfile();
     if (impBtn && file) {
-      impBtn.onclick = () => { try { file.click(); } catch { this.toast('当前浏览器不支持读取本地文件'); } };
+      impBtn.onclick = () => { try { file.click(); } catch { this._profileFeedback('当前浏览器不支持读取本地文件', true); } };
       file.onchange = () => {
         const f = file.files && file.files[0];
         if (!f) return;
         let reader = null;
-        try { reader = new FileReader(); } catch { this.toast('当前浏览器不支持读取本地文件'); return; }
+        try { reader = new FileReader(); } catch { this._profileFeedback('当前浏览器不支持读取本地文件', true); return; }
         reader.onload = () => {
           const r = Profile.importText(reader.result);
-          if (!r.ok) { this.toast('导入失败：' + r.error); return; }
+          if (!r.ok) { this._profileFeedback('导入失败：' + r.error, true); return; }
           this._profile = r.profile;
           this._profileNew = false;
           this._renderProfile();
           const nameInput = document.getElementById('cc-name');
           if (nameInput) nameInput.value = r.profile.name;
-          this.toast(`档案已导入：${r.profile.name} · ${r.profile.games} 局战绩`);
+          this._profileFeedback(`档案已导入：${r.profile.name} · ${r.profile.games} 局战绩`);
           Sound.play('select');
         };
-        reader.onerror = () => this.toast('档案文件读取失败');
-        try { reader.readAsText(f); } catch { this.toast('档案文件读取失败'); }
+        reader.onerror = () => this._profileFeedback('档案文件读取失败', true);
+        try { reader.readAsText(f); } catch { this._profileFeedback('档案文件读取失败', true); }
         try { file.value = ''; } catch { /* 允许再次导入同一文件 */ }
       };
     }
@@ -177,10 +177,13 @@ export class UI {
 
   _saveProfileName(raw) {
     const input = document.getElementById('cc-name');
+    const hint = document.getElementById('cc-hint');
+    if (hint) { hint.textContent = '代号仅保存在本机 · 不上传'; hint.classList.remove('cc-invalid'); }
     if (cleanName(raw) === this._profile.name) { if (input) input.value = this._profile.name; return; }
     const r = Profile.setName(raw);
     if (!r.ok) {
       if (input) input.value = this._profile.name;      // 非法输入回滚，不写盘
+      if (hint) { hint.textContent = r.error; hint.classList.add('cc-invalid'); }
       this.toast(r.error);
     } else {
       this._profile = r.profile;
@@ -204,6 +207,10 @@ export class UI {
     if (welcome) welcome.textContent = this._profileNew
       ? '新指挥官 · 已生成临时代号，点击上方即可修改'
       : (p.games ? `欢迎回来 · 已征战 ${p.games} 局 · 胜率 ${s.winRate}%` : '欢迎回来 · 首战即将开始');
+    const rank = document.getElementById('cc-rank');
+    if (rank) rank.textContent = b.next
+      ? `${b.label} · 再赢 ${b.next.min - b.wins} 局晋升${b.next.label}`
+      : `${b.label} · 最高徽记`;
     const stats = document.getElementById('cc-stats');
     if (stats) stats.innerHTML =
       `<div><b>${s.games}</b><span>场次</span></div><div><b>${s.winRate}%</b><span>胜率</span></div>` +
@@ -212,9 +219,9 @@ export class UI {
     if (recent) {
       // 最近 8 局胜负迷你条：一眼看出连胜 / 连败走势，纯展示、不改任何档案字段
       const spark = p.recent.length
-        ? '<div class="cc-spark" title="最近 8 局胜负（左旧右新）">' +
+        ? '<div class="cc-rh">胜负走势（左旧右新）</div><div class="cc-spark">' +
           p.recent.slice(0, 8).reverse().map(r =>
-            `<i class="cc-sp ${r.win ? 'win' : 'lose'}" title="${r.win ? '胜' : '负'} · ${fmtTime(r.sec)}"></i>`).join('') +
+            `<i class="cc-sp ${r.win ? 'win' : 'lose'}" title="${r.win ? '胜' : '负'} · ${fmtTime(r.sec)}"><span>${r.win ? '胜' : '负'}</span></i>`).join('') +
           '</div>'
         : '';
       recent.innerHTML = spark + (p.recent.length
@@ -238,10 +245,19 @@ export class UI {
     }
   }
 
+  _profileFeedback(message, error = false) {
+    const hint = document.getElementById('cc-hint');
+    if (hint) {
+      hint.textContent = message;
+      hint.classList.toggle('cc-invalid', error);
+    }
+    this.toast(message);
+  }
+
   /** 导出本机指挥官档案为 JSON 备份文件；下载不可用时退化为剪贴板文本。 */
-  _exportProfile() {
+  async _exportProfile() {
     let text = '';
-    try { text = Profile.exportText(); } catch { this.toast('档案导出失败'); return; }
+    try { text = Profile.exportText(); } catch { this._profileFeedback('档案导出失败', true); return; }
     const stamp = new Date().toISOString().slice(0, 10);
     try {
       const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
@@ -252,16 +268,16 @@ export class UI {
       a.click();
       if (a.remove) a.remove();
       setTimeout(() => { try { URL.revokeObjectURL(url); } catch { /* ignore */ } }, 2000);
-      this.toast('指挥官档案已导出为 JSON 备份');
+      this._profileFeedback('已发起 JSON 备份下载');
     } catch {
-      this.toast('文件下载不可用，已尝试复制档案文本到剪贴板');
-    }
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        const p = navigator.clipboard.writeText(text);
-        if (p && p.catch) p.catch(() => {});
+      try {
+        await navigator.clipboard.writeText(text);
+        this._profileFeedback('档案 JSON 已复制到剪贴板');
+      } catch {
+        this._profileFeedback('无法下载或复制档案，请重试', true);
+        return;
       }
-    } catch { /* 剪贴板不可用不影响导出 */ }
+    }
     Sound.play('select');
   }
 
@@ -480,17 +496,19 @@ export class UI {
   _wireDragCarousel(grid, track, stepFn, centerFn) {
     if (!grid || !track) return;
     let active = false, sx = 0, base = 0, moved = false, pid = null;
+    let suppressClick = false;
+    let resetClick;
     const offNow = () => {
       const m = /translateX\(([-\d.]+)px\)/.exec(track.style.transform || '');
       return m ? parseFloat(m[1]) : 0;
     };
     grid.addEventListener('pointerdown', e => {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (active || e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
       active = true; moved = false; sx = e.clientX; base = offNow(); pid = e.pointerId;
       // 原地点击保留卡片作为 click 目标；确定为拖动后才捕获指针。
     });
     grid.addEventListener('pointermove', e => {
-      if (!active) return;
+      if (!active || e.pointerId !== pid) return;
       const dx = e.clientX - sx;
       if (!moved && Math.abs(dx) > 5) {
         moved = true; grid.classList.add('dragging');
@@ -502,12 +520,12 @@ export class UI {
       }
     });
     const end = e => {
-      if (!active) return;
+      if (!active || e.pointerId !== pid) return;
       active = false;
       grid.classList.remove('dragging');
       try { if (pid != null) grid.releasePointerCapture(pid); } catch { /* ignore */ }
       pid = null;
-      const cancelled = e.type === 'pointercancel';
+      const cancelled = e.type !== 'pointerup';
       const dx = Number.isFinite(e.clientX) ? e.clientX - sx : 0;
       const cardW = (track.firstElementChild && track.firstElementChild.offsetWidth) || 240;
       if (moved && !cancelled && Math.abs(dx) > 18) {
@@ -515,17 +533,21 @@ export class UI {
         stepFn(dx < 0 ? n : -n);   // centerFn 由 stepFn 内部的 select* 触发
       } else centerFn();           // 轻拖 / 原地点击：回弹到当前卡
       if (moved) {
-        this._suppressCarouselClick = true;
-        setTimeout(() => { this._suppressCarouselClick = false; }, 150);
+        suppressClick = !cancelled;
+        clearTimeout(resetClick);
+        resetClick = setTimeout(() => { suppressClick = false; }, 150);
       }
       moved = false;
     };
     grid.addEventListener('pointerup', end);
     grid.addEventListener('pointercancel', end);
+    grid.addEventListener('lostpointercapture', end);
+    grid.addEventListener('pointerleave', e => { if (!moved) end(e); });
+    grid.addEventListener('dragstart', e => e.preventDefault());
     // 拖动后的那次 click 不应选中卡片（capture 阶段拦截，避免 drag 结束时误触）
     grid.addEventListener('click', e => {
-      if (this._suppressCarouselClick) {
-        this._suppressCarouselClick = false;
+      if (suppressClick) {
+        suppressClick = false;
         e.preventDefault(); e.stopPropagation();
       }
     }, true);
@@ -612,8 +634,11 @@ export class UI {
     const brief = $('#diff-brief');
     const set = (id) => {
       this.sel.difficulty = id;
-      document.querySelectorAll('.dtab').forEach(x => x.classList.remove('on'));
-      document.querySelector(`.dtab[data-diff="${id}"]`).classList.add('on');
+      document.querySelectorAll('.dtab').forEach(tab => {
+        const selected = tab.dataset.diff === id;
+        tab.classList.toggle('on', selected);
+        tab.setAttribute('aria-pressed', String(selected));
+      });
       const d = DIFFICULTY[id];
       hint.textContent = d.desc;
       if (brief) {
