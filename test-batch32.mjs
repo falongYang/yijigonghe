@@ -91,14 +91,20 @@ try {
   mm.fire('pointerdown', ev());
   ok(jumps.length === 1 && jumps[0].x === 0 && jumps[0].z === 0, '轻点中心跳转镜头到原点');
   ok(orders.length === 0, '普通跳转不触发指令');
-  winFire('pointerup', {});
+  mm.fire('pointerdown', ev({ pointerId: 2, isPrimary: false }));
+  winFire('pointerup', ev({ pointerId: 2, isPrimary: false }));
+  ok(ui._mmDrag && ui._mmPid === 1 && jumps.length === 1, '次指按下或抬起不接管主指拖图');
+  mm.fire('contextmenu', ev());
+  ok(orders.length === 0, '触屏长按菜单不误发桌面右键指令');
+
+  winFire('pointerup', ev());
   mm.fire('pointerdown', ev({ clientX: -80, clientY: 500 }));
   ok(jumps.length === 2 && jumps[1].x === -94 && jumps[1].z === 67, '指针滑出画布时坐标钳制到图内');
-  winFire('pointerup', {});
+  winFire('pointerup', ev());
   mm.rect = { left: 0, top: 0, width: 0, height: 0 };
   mm.fire('pointerdown', ev());
   ok(jumps.length === 3 && Number.isFinite(jumps[2].x) && Number.isFinite(jumps[2].z), '零尺寸画布不产生 NaN 坐标');
-  winFire('pointerup', {});
+  winFire('pointerup', ev());
   mm.rect = null;
   mm.fire('contextmenu', ev({ pointerType: 'mouse', button: 2, shiftKey: true, altKey: true }));
   ok(orders.length === 1 && orders[0].x === 0 && orders[0].z === 0, '右键按映射点下达指令');
@@ -115,7 +121,7 @@ try {
   ok(ui._mmOrderArmed === false && ui._mmDrag === false && jumps.length === 3, '一次性下令态用完即收且不拖图');
   mm.fire('pointerdown', ev());
   ok(jumps.length === 4, '退出下令态后恢复镜头跳转');
-  winFire('pointerup', {});
+  winFire('pointerup', ev());
   ui.setMinimapOrderArmed(true);
   ok(ui.disarmMinimapOrder() === true && ui._mmOrderArmed === false, 'Esc 可收起待下指令');
   ok(ui.disarmMinimapOrder() === false, '未 armed 时 Esc 不吞掉后续层级');

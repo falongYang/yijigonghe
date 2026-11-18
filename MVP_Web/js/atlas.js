@@ -21,7 +21,7 @@ export class BattlefieldAtlas {
     this.box.addEventListener('click',e=>{if(e.target===this.box)this.close();});
     for(const input of this.box.querySelectorAll('[data-atlas-layer]')) input.onchange=()=>{this.layers[input.dataset.atlasLayer]=input.checked;this.render();};
     this.canvas.addEventListener('pointerdown',e=>{
-      if(e.button!==0&&e.button!==2)return;e.preventDefault();
+      if(e.isPrimary===false||(e.button!==0&&e.button!==2))return;e.preventDefault();
       const p=atlasPoint(e.clientX,e.clientY,this.canvas.getBoundingClientRect());
       if(this.orderMode||e.button===2) {
         if(this.ui.game.paused||this.ui.game.tutOpen){this.ui.toast('暂停期间可以查看地图，恢复战局后再下令');return;}
@@ -37,9 +37,16 @@ export class BattlefieldAtlas {
   hint(){const el=document.getElementById('atlas-hint');if(el)el.textContent=this.orderMode?'下令模式：点击移动；Shift + 点击攻击移动。暂停时仅可查看。':'点击定位镜头 · 右键下令 · Shift + 右键攻击移动 · Esc 关闭';}
   inspect(p){
     const s=this.ui.sim;let text=`坐标 ${Math.round(p.x)}, ${Math.round(p.z)}`;
-    const node=s.nodes.find(n=>Math.hypot(n.x-p.x,n.z-p.z)<6);
-    const well=s.wells.find(w=>Math.hypot(w.x-p.x,w.z-p.z)<6);
-    if(node)text+=` · ${DOMAINS[node.domain]?.name||'陆'}域${RESOURCES[node.res]?.name||'资源'} · ${s.scouting.isVisible(node.x,node.z)?'储量 '+Math.round(node.amount||0):'储量待侦察'}`;
+    const nearest = items => {
+      let match, distance = 6;
+      for (const item of items) {
+        const next = Math.hypot(item.x - p.x, item.z - p.z);
+        if (next < distance) { match = item; distance = next; }
+      }
+      return match;
+    };
+    const node=nearest(s.nodes), well=nearest(s.wells);
+    if(node&&(!well||Math.hypot(node.x-p.x,node.z-p.z)<=Math.hypot(well.x-p.x,well.z-p.z)))text+=` · ${DOMAINS[node.domain]?.name||'陆'}域${RESOURCES[node.res]?.name||'资源'} · ${s.scouting.isVisible(node.x,node.z)?'储量 '+Math.round(node.amount||0):'储量待侦察'}`;
     else if(well)text+=` · 信息素井 · ${well.owner==='P'?'我方控制':well.owner==='E'?'敌方控制':'中立'} · 占领 ${Math.round(Math.abs(well.progress||0)*100)}%`;
     else {const zone=s.zoneAt(p.x,p.z);if(zone)text+=` · ${TERRAIN[zone.type]?.name||zone.type}`;}
     document.getElementById('atlas-inspect').textContent=text;
@@ -68,6 +75,7 @@ export class BattlefieldAtlas {
     for(const b of s.buildings){if(!atlasVisible(b))continue;g.fillStyle=b.side==='P'?'#9feaaf':'#ff9c78';const size=b.type==='hq'?12:7;g.fillRect(x(b.x)-size/2,z(b.z)-size/2,size,size);if(b.type==='hq'){g.font='bold 12px sans-serif';g.fillText(b.side==='P'?'我方蚁后巢':'敌方蚁后巢',x(b.x)+9,z(b.z)+4);}}
     for(const u of s.units){if(u.hp<=0||!atlasVisible(u))continue;circle(u,UNITS[u.type]?.role==='econ'?2.3:3.5,u.side==='P'?COLORS[u.domain]:'#ff856b');if(s.selected.has(u.id)){g.strokeStyle='#fff';g.beginPath();g.arc(x(u.x),z(u.z),6,0,Math.PI*2);g.stroke();}}
     const cam=this.ui.world?.cam;if(cam){g.strokeStyle='#fff';g.lineWidth=1.5;g.beginPath();g.arc(x(cam.tx),z(cam.tz),13,0,Math.PI*2);g.moveTo(x(cam.tx)-18,z(cam.tz));g.lineTo(x(cam.tx)+18,z(cam.tz));g.moveTo(x(cam.tx),z(cam.tz)-18);g.lineTo(x(cam.tx),z(cam.tz)+18);g.stroke();}
+    this.ui.drawMapOrderMark(g,x,z,8);
     document.getElementById('atlas-title').textContent=`${s.map.name} · ${timeLabel(s.time)}`;
     this.hint();
     const events=s.battleTimeline();const signature=events.map(e=>e.id).join(',');

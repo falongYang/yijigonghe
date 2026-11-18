@@ -928,6 +928,7 @@ export class UI {
     // pointerdown 上 preventDefault 可抑制浏览器补发的兼容鼠标事件，避免一次点击跳两次。
     this._mmDrag = false; this._mmPid = null;
     this.mm.addEventListener('pointerdown', e => {
+      if (e.isPrimary === false || this._mmDrag) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
       // 下令态：一次点按 = 给选中单位下达移动指令，用完即收，避免后续拖图被误判为指令
@@ -945,13 +946,19 @@ export class UI {
       if (this._mmPid != null && e.pointerId != null && e.pointerId !== this._mmPid) return;
       jump(e);
     });
-    const endDrag = () => { this._mmDrag = false; this._mmPid = null; };
+    const endDrag = e => {
+      if (e.pointerId !== this._mmPid) return;
+      this._mmDrag = false;
+      this._mmPid = null;
+    };
+    this.mm.addEventListener('lostpointercapture', endDrag);
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
     // 桌面右键 = 小地图下令（Shift 追加路径点 / Alt 攻击移动）。
     // pointerdown 已忽略非左键，因此右键不会顺带把镜头跳走。
     this.mm.addEventListener('contextmenu', e => {
       if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
+      if (e.pointerType && e.pointerType !== 'mouse') return;
       issue(e, { append: !!e.shiftKey, attackMove: !!e.altKey });
     });
     this.mm.style.cursor = 'crosshair';
@@ -2291,6 +2298,35 @@ export class UI {
     }
   }
 
+  markMapOrder(x, z, kind) {
+    this.mapOrderMark = { x, z, kind, time: performance.now() };
+  }
+
+  drawMapOrderMark(g, toX, toY, radius) {
+    const mark = this.mapOrderMark;
+    if (!mark) return;
+    const age = (performance.now() - mark.time) / 1200;
+    if (age >= 1) return;
+    const x = toX(mark.x), y = toY(mark.z);
+    const size = radius * (1 + age * 0.35);
+    const colors = { move: '#7ef0c8', append: '#ffd27f', attack: '#ffb070' };
+    g.save();
+    g.globalAlpha = 1 - age;
+    g.lineWidth = 3;
+    g.strokeStyle = '#172016';
+    g.beginPath();
+    g.moveTo(x, y - size);
+    g.lineTo(x + size, y);
+    g.lineTo(x, y + size);
+    g.lineTo(x - size, y);
+    g.closePath();
+    g.stroke();
+    g.lineWidth = 1.5;
+    g.strokeStyle = colors[mark.kind];
+    g.stroke();
+    g.restore();
+  }
+
   _drawMinimap() {
     const s = this.sim, g = this.mmx, W = this.mm.width, H = this.mm.height;
     if (!s.sp) return;
@@ -2486,5 +2522,6 @@ export class UI {
     const vh = Math.min(H * 0.96, (c.dist * 0.62) / (2 * HH) * H);
     g.strokeStyle = 'rgba(255,255,255,0.78)'; g.lineWidth = 1;
     g.strokeRect(toX(c.tx) - vw / 2, toY(c.tz) - vh / 2, vw, vh);
+    this.drawMapOrderMark(g, toX, toY, 5);
   }
 }
