@@ -1201,7 +1201,7 @@ export class World {
     if (ds && Number.isFinite(ds.sky)) bg.lerp(new THREE.Color(ds.sky), 0.22);
     this.scene.background = bg;
     this.scene.fog.color.copy(bg);
-    this._applySky(bg);
+    this._applySky(bg, f);
     this.dayFactor = 0.16 + 0.84 * f;
     const ICON = { 拂晓: '🌅', 正昼: '☀', 黄昏: '🌇', 夜幕: '🌑' };
     if (ds && ds.label && ICON[ds.label]) {
@@ -1630,12 +1630,14 @@ export class World {
     this.sky.renderOrder = -10;
     this.scene.add(this.sky);
     this.skyMat = mat;
+    this._daySkyTint = new THREE.Color(0xbcd8f2);
   }
-  _applySky(bg) {
+  _applySky(bg, daylight = 1) {
     if (!this.skyMat) return;
-    const b = new THREE.Color(bg);
-    this.skyMat.uniforms.botColor.value.copy(b);
-    this.skyMat.uniforms.topColor.value.copy(b.clone().lerp(new THREE.Color(0xbcd8f2), 0.6));
+    const { botColor, topColor } = this.skyMat.uniforms;
+    botColor.value.copy(bg);
+    topColor.value.setHex(0x101d36).lerp(this._daySkyTint, daylight);
+    topColor.value.lerp(bg, 0.36);
   }
   _buildHills() {
     this.hillsGroup = new THREE.Group();
@@ -2386,7 +2388,11 @@ export class World {
     // 已接敌且静止输出（u.engaged）：极轻微的体量脉动，让对峙更有张力
     const engaged = u.engaged === true;
     const breatheInFight = engaged ? 1 + Math.sin(this.time * 7.5 + u.id) * 0.02 * animK : 1;
-    const walk = u.moving ? ((step != null ? step : Math.sin(this.time * 16 + u.id) * 0.07) * animK * pm.bob) : 0;
+    const walkTarget = u.moving ? 1 : 0;
+    m.walkBlend ??= walkTarget;
+    const walkK = 1 - Math.exp(-12 * (this._frameDt || 0) * animK);
+    m.walkBlend += (walkTarget - m.walkBlend) * walkK;
+    const walk = (step != null ? step : Math.sin(this.time * 16 + u.id) * 0.07) * m.walkBlend * animK * pm.bob;
     const bodyScale = pop * pm.scale * breatheInFight;
     m.body.scale.set(
       bodyScale * (1 - Math.abs(walk) * 0.3),
@@ -2409,14 +2415,18 @@ export class World {
       if (rec > 0) lunge += 0.82 * rec * rec * animK;
     }
     m.body.position.x = lunge;
+    // 每帧先建立待机底姿态，随后叠加攻击与受击，避免覆盖后仰。
+    m.body.rotation.x = (!u.moving && u.state !== 'attack')
+      ? Math.sin(this.time * 1.6 + u.id) * 0.05 * animK : 0;
     // 攻击姿态差异：近战啃咬绕竖轴小幅摆头；远程/喷吐先微微后仰蓄力再弹回
     if (u.state === 'attack') {
       const isMelee = u.dtype === 'bite';
       if (isMelee) {
-        m.body.rotation.y = Math.sin(this.time * 26 + u.id) * 0.22;
+        m.body.rotation.y = Math.sin(this.time * 26 + u.id) * 0.22 * animK;
       } else {
+        m.body.rotation.y = 0;
         const charge = u.atkcd ? clamp(1 - (u.atkTimer < u.atkcd * 0.66 ? u.atkTimer / (u.atkcd * 0.66) : 0), 0, 1) : 0;
-        m.body.rotation.x += -0.22 * charge * Math.sin(this.time * 16 + u.id * 2);
+        m.body.rotation.x += -0.22 * charge * Math.sin(this.time * 16 + u.id * 2) * animK;
       }
     } else {
       m.body.rotation.y = 0;
@@ -2431,18 +2441,15 @@ export class World {
     if (u.domain === 'sea') {
       m.body.rotation.z += Math.sin(this.time * 3 + u.id) * (u.moving ? 0.2 : 0.1);
     }
-    // 待机（不移动且非攻击）时轻微点头，增强生命感
-    m.body.rotation.x = (!u.moving && u.state !== 'attack') ? Math.sin(this.time * 1.6 + u.id) * 0.05 : 0;
 
     // 受击应激：以 u.flash 为衰减包络，身体后缩 + 高频抖动 + 被击得微微弹起
+    m.body.position.y = Number(m.body.geometry?.userData?.stanceHeight) || 0;
     if (u.flash > 0) {
       const f = clamp(u.flash / 0.16, 0, 1);
       m.body.rotation.z += Math.sin(this.time * 82 + u.id * 3.1) * 0.2 * f;
       m.body.rotation.x += Math.sin(this.time * 61 + u.id) * 0.09 * f;
       m.body.position.x -= 0.7 * f;                       // 沿身体前后轴向后缩
       m.body.position.y += Math.abs(Math.sin(this.time * 44 + u.id)) * 0.25 * f;
-    } else {
-      m.body.position.y = Number(m.body.geometry?.userData?.stanceHeight) || 0;
     }
 
     // 采集货载：按已携带量显隐/缩放，并按资源类型着色，随步伐轻微晃动
@@ -3395,6 +3402,12 @@ export class World {
     this.focus(cx, cz, false);
     const T = this._camEnsure();
     T.dist = focusDistance(spread, T.dist);
+    // 竖屏横向取景更窄，按编队散布适度拉远，保持小队近景。
+    const aspect = this.camera?.aspect;
+    if (aspect > 0 && aspect < 1 && spread > 0) {
+      const portraitSpread = spread * Math.min(1.6, 1 / aspect);
+      T.dist = focusDistance(portraitSpread, T.dist);
+    }
     // 入场俯冲运镜期间 tx/tz/dist 每帧由 intro 曲线接管，直接写目标会被下一帧覆盖；
     // 把聚焦点并入运镜终点，揭示动画结束后正好停在编队上。
     if (this.intro && this.intro.to) {
