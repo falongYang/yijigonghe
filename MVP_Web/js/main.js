@@ -18,6 +18,7 @@ const game = {
   pendingAbility: null,
   pendingPatrol: null,   // 巡逻布点：进行中为 { pts: [{x,z}...] }，落点用绿色 ping 标注
   groups: {},
+  nearbySelection: null,
   box: null, shift: false,
 };
 // 主动能力的地面作用半径（用于落点准星大小）。范围/面积类按实际杀伤半径，
@@ -39,6 +40,7 @@ function boot() {
       onCancelProduce: (bid, i) => sim.cancelProduce(bid, i),
       onResearch: bid => sim.research(bid),
       onAbility: key => beginAbility(key),
+      onSwitchNearbyUnit: switchNearbyUnit,
       onEvolve: uid => sim.evolve(uid),
       onMinimap: (x, z) => world.focus(x, z, true),   // 小地图拖动需严格跟手，不做缓动
       onMinimapOrder: (x, z, opts) => orderFromMinimap(x, z, opts),
@@ -142,6 +144,8 @@ function startGame(spId, sel = {}) {
   const { mode = 'skirmish', chapter = 0, archetype = null, difficulty = 'normal' } = sel;
   Sound.init(); // 首次用户手势：解锁音频
   Sound.startAmbient();   // 蚁巢环境氛围音（低音量持续嗡鸣）
+  game.nearbySelection = null;
+  lastPick = { t: 0, id: null };
   sim.reset(spId, { mode, chapter, archetype, difficulty });
   ui.atlas?.close();
   world.resetBattle();
@@ -461,7 +465,9 @@ function closeTopOverlay() {
 
 let lastPick = { t: 0, id: null };
 function pickAt(x, y) {
-  const hit = world.pickEntity(x, y, isTouchActive() ? 24 : 12);
+  const nearbyIds = [];
+  game.nearbySelection = null;
+  const hit = world.pickEntity(x, y, isTouchActive() ? 24 : 12, nearbyIds);
   const now = performance.now();
   let keepPick = null;
   if (hit && hit.kind === 'unit') {
@@ -479,6 +485,10 @@ function pickAt(x, y) {
       ui.toast(`已全选「${UNITS[u.type].name}」×${n}`);
     } else {
       keepPick = { t: now, id: u ? u.id : null };
+      if (u?.side === SIDES.PLAYER && nearbyIds.some(id => id !== u.id)) {
+        if (!nearbyIds.includes(u.id)) nearbyIds.unshift(u.id);
+        game.nearbySelection = { selectedId: u.id, ids: nearbyIds };
+      }
     }
   } else if (hit && hit.kind === 'building') {
     const b = sim.getBuilding(hit.id);
@@ -488,6 +498,18 @@ function pickAt(x, y) {
     sim.selected.clear(); sim.selectedBuilding = null;
   }
   lastPick = keepPick || { t: 0, id: null };
+}
+function switchNearbyUnit(fromId, toId) {
+  const nearby = game.nearbySelection;
+  if (!game.running || game.paused || game.tutOpen || !nearby || nearby.selectedId !== fromId ||
+      sim.selectedBuilding != null || sim.selected.size !== 1 || !sim.selected.has(fromId) ||
+      !nearby.ids.includes(toId) || sim.getUnit(toId)?.side !== SIDES.PLAYER) return;
+  clearPendingAction(game, world, ui);
+  sim.selected.clear();
+  sim.selected.add(toId);
+  nearby.selectedId = toId;
+  lastPick = { t: 0, id: null };
+  Sound.play('select');
 }
 /** 指令落点标记：移动=指向箭头、攻击=准星、维修=十字、集结=菱形；
  *  颜色沿用青=移动 / 橙=攻击 / 蓝=集结 / 金=追加路径点与维修。 */

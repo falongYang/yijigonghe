@@ -3531,7 +3531,7 @@ export class World {
   }
 
   /** 命中实体（单位/建筑），返回 {kind, id} 或 null。 */
-  pickEntity(x, y, unitTolerance = 0) {
+  pickEntity(x, y, unitTolerance = 0, nearbyUnitIds = null) {
     this._setNdc(x, y);
     const hits = this.raycaster.intersectObjects(this.pickables, false);
     let exact = null;
@@ -3551,6 +3551,7 @@ export class World {
       const rect = this.canvas.getBoundingClientRect();
       let nearest = null, distance = unitTolerance * unitTolerance;
       const center = new THREE.Vector3();
+      const candidates = nearbyUnitIds ? [] : null;
       for (const [id, m] of this.unitMeshes) {
         if (m.side !== SIDES.PLAYER) continue;
         let visible = true;
@@ -3562,7 +3563,12 @@ export class World {
         const px = rect.left + (center.x + 1) * rect.width / 2;
         const py = rect.top + (1 - center.y) * rect.height / 2;
         const d = (px - x) ** 2 + (py - y) ** 2;
+        if (candidates && d < unitTolerance * unitTolerance) candidates.push({ id, d });
         if (d < distance) { distance = d; nearest = { kind: 'unit', id }; }
+      }
+      if (candidates) {
+        candidates.sort((a, b) => a.d - b.d);
+        for (const { id } of candidates) nearbyUnitIds.push(id);
       }
       return nearest || exact;
     }

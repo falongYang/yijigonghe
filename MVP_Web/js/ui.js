@@ -1822,6 +1822,14 @@ export class UI {
   _refreshSelection() {
     const s = this.sim;
     const b = s.selectedBuilding != null ? s.getBuilding(s.selectedBuilding) : null;
+    const nearby = this.game.nearbySelection;
+    if (nearby && (b || s.selected.size !== 1 || !s.selected.has(nearby.selectedId))) {
+      this.game.nearbySelection = null;
+    }
+    const candidates = this.game.nearbySelection?.ids.filter(id => s.getUnit(id)?.side === SIDES.PLAYER) || [];
+    const currentId = this.game.nearbySelection?.selectedId;
+    const currentIndex = candidates.indexOf(currentId);
+    const nextId = candidates.length > 1 && currentIndex >= 0 ? candidates[(currentIndex + 1) % candidates.length] : null;
     let sig;
     if (b) sig = `B${b.id}:${b.queue.length}:${b.queue.map(it => Math.ceil(it.t * 2)).join('.')}:${b.research ? 1 : 0}:${b.state}:${Math.round((b.buildProg || 0) * 20)}:${b.rally ? Math.round(b.rally.x) + ',' + Math.round(b.rally.z) : '-'}:${Math.ceil(b.hp / 8)}:${s.units.filter(u => u.repairId === b.id).length}`;
     else {
@@ -1848,6 +1856,7 @@ export class UI {
       }
       sig = `U${ids.slice().sort().join(',')}:${s.pop(SIDES.PLAYER)}:${wp}${detail}${squad}`;
     }
+    sig += `:${candidates.join(',')}`;
     if (sig === this.selSig) return;
     this.selSig = sig;
 
@@ -1904,6 +1913,11 @@ export class UI {
         const u0 = units[0];
         title.textContent = `${UNITS[u0.type].name}${u0.side === SIDES.PLAYER ? '' : '（敌方）'}${u0.elite ? ' · 精英' : ''}`;
         body.innerHTML = this._unitDetail(u0);
+        if (nextId != null) {
+          const next = s.getUnit(nextId);
+          this._addCtx(ctx, `切换附近单位 · ${UNITS[next.type].name}（${currentIndex + 1}/${candidates.length}）`,
+            () => this.hooks.onSwitchNearbyUnit(currentId, nextId));
+        }
       } else {
         title.textContent = `已选择 ${units.length} 个单位`;
         // 多选指挥视图：整队耐久 / 等级与精英汇总 / 域分布 / 编队归属，再列兵种构成
