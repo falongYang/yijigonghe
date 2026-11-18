@@ -1,5 +1,5 @@
 import { OperationGuide, guideText } from './operation-guide.js';
-import { resetTransientInput } from './input-state.js';
+import { resetTransientInput, clearPendingAction } from './input-state.js';
 /* 主入口：装配 sim / world / ui，处理输入、相机、主循环，并把指令回灌给模拟层。 */
 import { Simulation } from './sim.js';
 import { World } from './world.js';
@@ -186,8 +186,8 @@ function startGame(spId, sel = {}) {
 }
 
 function beginBuild(type) {
+  clearPendingAction(game, world, ui);
   game.pendingBuild = type;
-  if (game.pendingAbility) { game.pendingAbility = null; ui.setArmedAbility(null); }
   ui.setBuildHint(`已选择${BUILDINGS[type].name}：在己方巢区单击地面放置，Esc 取消`, true);
   Sound.play('select');
   ui.toast(`放置「${BUILDINGS[type].name}」：左键选定位置，Esc 取消`);
@@ -198,8 +198,8 @@ function beginAbility(key) {
   if (!a) return;
   if ((sim.cd.P[key] || 0) > 0) { ui.toast(`${a.name} 冷却中（${Math.ceil(sim.cd.P[key])}s）`); return; }
   if (sim.res.P.ph < a.cost) { ui.toast(`信息素不足，施放「${a.name}」需 ${a.cost}`); return; }
+  clearPendingAction(game, world, ui);
   game.pendingAbility = key;
-  if (game.pendingBuild) { game.pendingBuild = null; world.hideCursor(); ui.setBuildHint(''); }
   ui.setArmedAbility(key);
   Sound.play('select');
   ui.toast(`「${a.name}」：移动鼠标选落点，左键施放，右键 / Esc 取消`);
@@ -231,8 +231,7 @@ function beginPatrol() {
   if (!game.running || game.paused) return;
   const ids = playerSel();
   if (!ids.length) { ui.toast('先选中己方单位，再按 G 设置巡逻路线'); return; }
-  if (game.pendingBuild) { game.pendingBuild = null; world.hideCursor(); ui.setBuildHint(''); }
-  if (game.pendingAbility) { game.pendingAbility = null; world.hideCursor(); ui.setArmedAbility(null); }
+  clearPendingAction(game, world, ui);
   game.pendingPatrol = { pts: [] };
   ui.toast('巡逻布点：左键依次落点，右键 / 回车确认（至少 2 点），Esc 取消');
 }
@@ -623,8 +622,7 @@ function onKey(e) {
     if (ui && typeof ui.disarmMinimapOrder === 'function' && ui.disarmMinimapOrder()) return;
     if (game.pendingPatrol) { cancelPatrol(); return; }
     if (game.paused) { togglePause(); return; }
-    game.pendingBuild = null; game.pendingAbility = null; world.hideCursor();
-    ui.setArmedAbility(null); ui.setBuildHint('');
+    clearPendingAction(game, world, ui);
   }
   if (!game.running) return;
   if (game.tutOpen) return;  // 引导期间屏蔽战场快捷键
@@ -752,17 +750,23 @@ function setupOperationGuide() {
     close.onclick = () => { game.operationGuide = null; panel.remove(); };
     panel.append(text, close); document.getElementById('mission').append(panel);
   }
-  const cancel = document.createElement('button'); cancel.id = 'placement-cancel'; cancel.textContent = '取消放置';
+  const cancel = document.createElement('button'); cancel.id = 'placement-cancel'; cancel.textContent = '取消操作';
+  cancel.hidden = true;
   cancel.onclick = () => {
-    game.pendingBuild = null; game.pendingAbility = null; game.pendingPatrol = null;
-    world.hideCursor(); ui.setBuildHint(''); ui.setArmedAbility(null);
-    ui.toast('已取消，未扣除放置费用');
+    const label = game.pendingBuild ? '建造放置' : game.pendingAbility ? '技能瞄准' : game.pendingPatrol ? '巡逻布点' : null;
+    if (!label) return;
+    clearPendingAction(game, world, ui);
+    cancel.hidden = true;
+    ui.toast(`已取消${label}`);
   };
   document.getElementById('hud').append(cancel);
 }
 function refreshOperationGuide() {
   const cancel = document.getElementById('placement-cancel');
-  if (cancel) cancel.hidden = !game.running || !!sim.ended || !(game.pendingBuild || game.pendingAbility || game.pendingPatrol);
+  if (cancel) {
+    cancel.hidden = !game.running || game.paused || !!sim.ended || !(game.pendingBuild || game.pendingAbility || game.pendingPatrol);
+    cancel.textContent = game.pendingBuild ? '取消建造' : game.pendingAbility ? '取消技能' : '取消巡逻';
+  }
   const guide = game.operationGuide, text = document.getElementById('operation-guide-text');
   if (!guide || !text || !game.running || sim.ended) {
     if (text) text.parentElement.hidden = true;
@@ -826,13 +830,15 @@ function togglePause() {
   ui.showPause(game.paused);
   if (game.paused) {
     // 暂停时清掉尚未确认的放置/瞄准态，避免恢复后误触发
-    game.pendingBuild = null; game.pendingAbility = null;
-    world.hideCursor(); ui.setArmedAbility(null); ui.setBuildHint('');
+    clearPendingAction(game, world, ui);
+    ui.disarmMinimapOrder?.();
   } else { acc = 0; last = performance.now(); }
   Sound.play('select');
 }
 function gotoMenu() {
   Sound.stopAmbient();
+  clearPendingAction(game, world, ui);
+  ui.disarmMinimapOrder?.();
   game.paused = false; game.running = false;
   world.setFollow(false);
   world.setEdge(0, 0, false);

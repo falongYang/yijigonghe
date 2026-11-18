@@ -1,4 +1,13 @@
 // 丢失焦点后可能收不到 keyup / mouseup；只释放瞬时输入，不改变战局或指令。
+export function clearPendingAction(game, world, ui) {
+  game.pendingBuild = null;
+  game.pendingAbility = null;
+  game.pendingPatrol = null;
+  world?.hideCursor();
+  ui?.setBuildHint('');
+  ui?.setArmedAbility(null);
+}
+
 export function resetTransientInput(game, world, canvas) {
   game.shift = false;
   game.box = null;
