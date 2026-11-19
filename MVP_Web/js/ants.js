@@ -83,20 +83,20 @@ export function buildAntGeometry(sp, caste = 'worker', carry = false, domain = '
   const isQueen = caste === 'queen';
 
   // —— 体节（沿 +X 为头向）：腹 → 腹柄(细腰) → 胸 → 头 ——
-  const gasterX = -1.05 * S, petX = -0.52 * S, thoX = 0.0, headX = 0.70 * S;
+  const gasterX = -1.16 * S, petX = -0.64 * S, thoX = 0.0, headX = 0.70 * S;
   const headR = (0.30 + hr * 0.34) * S;
-  const abSeg = isQueen ? 1.95 : 1.30;
+  const abSeg = isQueen ? 2.02 : 1.28;
   // 腹节（最粗）
-  parts.push(blob(gasterX, 0.06 * S, 0, 0.62 * S, abSeg, 0.92, 1.02));
+  parts.push(blob(gasterX, 0.06 * S, 0, 0.62 * S, abSeg, 0.85, 0.98));
   if (isQueen) parts.push(blob(gasterX - 0.42 * S, 0.0, 0, 0.34 * S, 1.3, 0.82, 0.9));
   // 腹柄（细腰节点）
-  parts.push(blob(petX, 0.05 * S, 0, 0.18 * S, 1, 1, 1, 8));
+  parts.push(blob(petX, 0.05 * S, 0, 0.15 * S, 1, 1, 1, 8));
   // 细腰连接（胸经腹柄到腹，形成明显收腰）
   parts.push(cyl(V(thoX - 0.16 * S, 0.05 * S, 0), V(gasterX + 0.30 * S, 0.08 * S, 0), 0.075 * S, 0.055 * S));
   // 胸（并胸腹节）
-  parts.push(blob(thoX, 0.07 * S, 0, 0.40 * S, 1.14, 1.0, 1.0, 8));
+  parts.push(blob(thoX, 0.07 * S, 0, 0.40 * S, 1.22, 1.0, 0.96, 8));
   // 头
-  parts.push(blob(headX, 0.10 * S, 0, headR, 1.06, 1.0, 1.14));
+  parts.push(blob(headX, 0.10 * S, 0, headR, 1.0, 0.96, 1.18));
   // 口器座（头前下方突起）
   parts.push(blob(headX + 0.16 * S, -0.05 * S, 0, 0.15 * S, 1.0, 0.9, 1.0, 8));
   // 螯针（兵蚁3 / 蚁后尾部尖刺）
@@ -114,11 +114,11 @@ export function buildAntGeometry(sp, caste = 'worker', carry = false, domain = '
   // 六足：三对，分节（基节-腿节-胫节-跗节），明显外张呈典型蚁态
   const legLen = (0.72 + lr * 0.5) * S;
   for (let i = 0; i < 3; i++) {
-    const bx = (0.16 - i * 0.30) * S;
+    const bx = (0.23 - i * 0.23) * S;
     for (const side of [-1, 1]) {
       const knee = V(bx + (0.06 - i * 0.10) * S, 0.02 * S + 0.46 * S, side * legLen * 0.52);
-      const ankle = V(bx + (0.22 - i * 0.20) * S, -0.34 * S, side * legLen * 1.02);
-      const foot = V(bx + (0.30 - i * 0.16) * S, -0.44 * S, side * legLen * 1.18);
+      const ankle = V(bx + (0.26 - i * 0.26) * S, -0.34 * S, side * legLen * 1.02);
+      const foot = V(bx + (0.36 - i * 0.32) * S, -0.44 * S, side * legLen * 1.18);
       const leg = [cyl(V(bx, 0.0, side * 0.20 * S), knee, 0.055 * S, 0.045 * S),
         cyl(knee, ankle, 0.045 * S, 0.03 * S), cyl(ankle, foot, 0.03 * S, 0.012 * S)];
       for (const g of leg) { g.userData.antHinge = [bx, 0, side * 0.20 * S, (i + (side > 0 ? 1 : 0)) % 2 + 1]; parts.push(g); }
@@ -137,7 +137,7 @@ export function buildAntGeometry(sp, caste = 'worker', carry = false, domain = '
   const eyeR = 0.15 * S, eyeX = headX + 0.02 * S, eyeY = 0.17 * S, eyeZ = headR * 0.62;
   for (const side of [-1, 1]) parts.push(blob(eyeX, eyeY, side * eyeZ, eyeR, 1, 1, 1, 8));
   // 大颚（钳形）：每侧两节弯向中线形成夹钳
-  const jawScale = isSoldier ? 1.55 : (caste === 'soldier3' ? 1.9 : 1.0);
+  const jawScale = caste === 'soldier3' ? 1.9 : (isSoldier ? 1.55 : 1.0);
   const jawBaseX = headX + 0.14 * S, jawY = -0.06 * S;
   const jawSpread = (sp.mandible.includes('不闭合') ? 0.30 : 0.18) * S;
   const jawLen = (sp.mandible.includes('长') || sp.mandible.includes('镰') ? 0.62 : 0.40) * S * jawScale;
@@ -234,16 +234,22 @@ export function buildAntGeometry(sp, caste = 'worker', carry = false, domain = '
   }
 
   const geo = mergeGeometries(parts);
-  geo.scale(2.2, 2.2, 2.2);
+  const renderScale = 2.32;
+  geo.scale(renderScale, renderScale, renderScale);
   const hinges = geo.getAttribute('antHinge');
-  if (hinges) for (let i=0;i<hinges.count;i++) { hinges.setX(i,hinges.getX(i)*2.2); hinges.setY(i,hinges.getY(i)*2.2); hinges.setZ(i,hinges.getZ(i)*2.2); }
-  // 暴露复眼在 body 局部坐标系（已含 2.2 倍缩放）的位置，供 world.js 叠加深色发光眼点
-  const k = 2.2;
+  if (hinges) {
+    for (let i = 0; i < hinges.count; i++) {
+      hinges.setX(i, hinges.getX(i) * renderScale);
+      hinges.setY(i, hinges.getY(i) * renderScale);
+      hinges.setZ(i, hinges.getZ(i) * renderScale);
+    }
+  }
+  // 暴露复眼在 body 局部坐标系（已含整体缩放）的位置，供 world.js 叠加深色发光眼点
   geo.userData = {
-    stanceHeight: 0.44 * S * 2.2,
+    stanceHeight: 0.44 * S * renderScale,
     eyes: [
-      { x: eyeX * k, y: eyeY * k, z: eyeZ * k, r: eyeR * k },
-      { x: eyeX * k, y: eyeY * k, z: -(eyeZ * k), r: eyeR * k },
+      { x: eyeX * renderScale, y: eyeY * renderScale, z: eyeZ * renderScale, r: eyeR * renderScale },
+      { x: eyeX * renderScale, y: eyeY * renderScale, z: -(eyeZ * renderScale), r: eyeR * renderScale },
     ],
   };
   // 让「头朝 +X」成为默认朝向，便于用 lookAt 对齐移动方向
