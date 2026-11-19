@@ -1,3 +1,4 @@
+import { HALF_W, HALF_H } from './MVP_Web/js/map-bounds.js';
 /* 批次32 验证：小地图战术指令（右键 / 一次性下令态）
  * 运行：node test-batch32.mjs
  * 源码接线审计 + UI 小地图 Pointer/ContextMenu DOM 桩 + 真实 Simulation 命令签名。
@@ -97,7 +98,7 @@ try {
 
   winFire('pointerup', ev());
   mm.fire('pointerdown', ev({ clientX: -80, clientY: 500 }));
-  ok(jumps.length === 2 && jumps[1].x === -94 && jumps[1].z === 67, '指针滑出画布时坐标钳制到图内');
+  ok(jumps.length === 2 && jumps[1].x === -HALF_W && jumps[1].z === HALF_H, '指针滑出画布时坐标钳制到图内');
   winFire('pointerup', ev());
   mm.rect = { left: 0, top: 0, width: 0, height: 0 };
   mm.fire('pointerdown', ev());
@@ -114,7 +115,7 @@ try {
   ok(ui._mmOrderArmed === true && orderBtn['aria-pressed'] === 'true' && mm.style.cursor === 'cell', '下令按钮进入 armed 态');
   ok(orderBtn.classList.on === true && toasts.some(t => t.includes('小地图下令已开启')), '按钮高亮并给出提示');
   mm.fire('pointerdown', ev({ clientX: 200, clientY: 0, shiftKey: true }));
-  ok(orders.length === 2 && orders[1].x === 94 && orders[1].z === -67, '下令态点击按像素映射下令');
+  ok(orders.length === 2 && orders[1].x === HALF_W && orders[1].z === -HALF_H, '下令态点击按像素映射下令');
   ok(orders[1].o.append === true && orders[1].o.attackMove === false, '下令态 Shift 追加路径点');
   ok(ui._mmOrderArmed === false && ui._mmDrag === false && jumps.length === 3, '一次性下令态用完即收且不拖图');
   mm.fire('pointerdown', ev());

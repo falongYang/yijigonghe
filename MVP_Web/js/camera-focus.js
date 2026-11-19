@@ -4,13 +4,13 @@
  *       因此与滚轮、捏合、事件推拉共用同一条平滑通道，不会硬跳或互相覆盖。
  */
 export const CAM_DIST_MIN = 42;
-export const CAM_DIST_MAX = 250;
+export const CAM_DIST_MAX = 300;
 export const GROUP_TAP_MS = 380;
 
 /** 视角预设：只改 yaw / pitch / dist 的目标值，不动镜头落点 tx/tz。 */
 export const VIEW_PRESETS = {
   standard: { label: '标准', yaw: Math.PI, pitch: 0.92, dist: 150 },
-  overhead: { label: '俯瞰', yaw: Math.PI, pitch: 1.28, dist: 178 },
+  overhead: { label: '俯瞰', yaw: Math.PI, pitch: 1.28, dist: 198 },
   low:      { label: '低角', yaw: Math.PI, pitch: 0.46, dist: 128 },
 };
 export const VIEW_PRESET_KEYS = Object.keys(VIEW_PRESETS);

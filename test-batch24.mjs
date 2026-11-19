@@ -1,3 +1,4 @@
+import { CAM_DIST_MAX } from './MVP_Web/js/camera-focus.js';
 /* 批次24 验证：触屏 / 指针交互层（画布手势、小地图、Esc 浮层收拢、触屏样式）
  * 运行：node test-batch24.mjs
  * 包含源码接线审计、TouchController 确定性状态机行为测试，以及与 World 相机方法的真实联动。
@@ -30,7 +31,7 @@ has(main, /pan: \(dx, dy\) => world\.panByPixels\(dx, dy\)/, '拖动接入镜头
 has(main, /zoom: \(d, px, py\) => \{/, '捏合接入相机缩放');
 has(main, /world\.pinchZoom\(d\)/, '连续捏合走无漂移通道');
 has(worldSrc, /pinchZoom\(delta\) \{/, 'World 暴露连续捏合缩放方法');
-has(worldSrc, /T\.dist = clamp\(T\.dist \* \(1 \+ d \* 0\.0012\), 42, 250\)/, '捏合与滚轮共用距离系数与限幅');
+has(worldSrc, /T\.dist = clamp\(T\.dist \* \(1 \+ d \* 0\.0012\), CAM_DIST_MIN, CAM_DIST_MAX\)/, '捏合与滚轮共用距离系数与限幅');
 has(main, /rotate: \(dyaw, dpitch\) => world\.rotate\(dyaw, dpitch\)/, '双指旋转接入相机');
 has(main, /drag: on => \{ world\.setDragPan\(on\)/, '拖动期间关闭边缘滚屏');
 has(main, /firstTouch: \(\) => showTouchHint\(\)/, '首次触屏提示接线');
@@ -280,7 +281,7 @@ try {
   w.pinchZoom(NaN);
   ok(T2.dist === dist0, '非法 delta 不改变距离目标');
   w.pinchZoom(1e6);
-  ok(T2.dist === 250, '捏合上限与滚轮一致');
+  ok(T2.dist === CAM_DIST_MAX, '捏合上限与滚轮一致');
   w.pinchZoom(-1e6);
   ok(T2.dist === 42, '捏合下限与滚轮一致');
   ok(w.cam.tx === tx0 && w.cam.tz === tz0, '连续捏合不触碰相机目标坐标，杜绝逐帧漂移');

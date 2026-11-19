@@ -7,7 +7,7 @@ import {
   effectiveUnit, effectiveCost, effectiveBuildingCost, researchCost, RESOURCES, RES_ORDER, specialtyOf, DOMAINS,
   DETECTION, combatTags, WEAPONS, ARMOR_MULT, XP_PER_LEVEL, MAX_LEVEL,
   ENEMY_ARCHETYPES, DIFFICULTY, CAMPAIGN, DIFFICULTY_ORDER, CAMPAIGN_SAVE_KEY,
-  TERRAIN, mapZones, mapWells, terrainNoise,
+  TERRAIN, HALF_W, HALF_H, mapZones, mapWells, terrainNoise,
 } from './rts.js';
 import { SIDES, UNIT_INTENT } from './rts.js';
 import { Sound } from './audio.js';
@@ -932,7 +932,7 @@ export class UI {
     this.mmx = this.mm.getContext('2d');
     this._mmBase = null; this._mmBaseName = '';   // 地形底图缓存（换地图时重建）
     // 点击 / 拖拽小地图跳转镜头（与 _drawMinimap 的 HW/HH 映射对应）
-    const HW = 94, HH = 67;
+    const HW = HALF_W, HH = HALF_H;
     // 屏幕像素 → 战术坐标：钳制到 0..1，避免指针滑出画布时算出图外坐标
     const mapPoint = e => {
       const rect = this.mm.getBoundingClientRect();
@@ -2142,7 +2142,7 @@ export class UI {
   // ----------------------------------------------------------- 小地图绘制
   /** 生成战术底图：地形明暗 / 网格 / 水域 / 巢区环，仅在换地图时重算一次。 */
   _buildMinimapBase(cfg, size = null) {
-    const W = size ? size.width : this.mm.width, H = size ? size.height : this.mm.height, HW = 94, HH = 67;
+    const W = size ? size.width : this.mm.width, H = size ? size.height : this.mm.height, HW = HALF_W, HH = HALF_H;
     const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
     const g = cv.getContext('2d');
     const pal = cfg.pal || { low: 0x6e6647, mid: 0x8a7f56, high: 0x9fa86a };
@@ -2294,7 +2294,7 @@ export class UI {
     }
     const blips = cache.blips, spec = cache.spec;
     if (!Array.isArray(blips)) return;
-    const HW = 94, HH = 67, cols = 10, rows = 7, cw = W / cols, ch = H / rows;
+    const HW = HALF_W, HH = HALF_H, cols = 10, rows = 7, cw = W / cols, ch = H / rows;
     const heat = new Float32Array(cols * rows);
     for (const b of blips) {
       if (!b || b.kind !== 'unit' || b.side !== SIDES.ENEMY) continue;
@@ -2357,7 +2357,7 @@ export class UI {
   _drawMinimap() {
     const s = this.sim, g = this.mmx, W = this.mm.width, H = this.mm.height;
     if (!s.sp) return;
-    const HW = 94, HH = 67;
+    const HW = HALF_W, HH = HALF_H;
     const toX = x => (x + HW) / (2 * HW) * W;
     const toY = z => (z + HH) / (2 * HH) * H;
     if (s.map && (!this._mmBase || this._mmBaseName !== s.map.name)) this._buildMinimapBase(s.map);

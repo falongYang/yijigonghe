@@ -71,7 +71,7 @@ const { groupBounds, focusDistance, createDoubleTap, VIEW_PRESETS, VIEW_PRESET_K
 {
   ok(focusDistance(0) === 72, '紧凑小队拉近到 72');
   ok(focusDistance(60) === 174, '分散编队拉远到 174');
-  ok(focusDistance(1000) === CAM_DIST_MAX - 24, '超大散布限幅到 226');
+  ok(focusDistance(1000) === CAM_DIST_MAX - 24, '超大散布保留 24 的镜头余量');
   ok(focusDistance(-5) === 72, '负散布按 0 处理');
   ok(focusDistance(NaN) === 72 && focusDistance(undefined, null) === 72, '非有限输入按 0 处理');
   ok(focusDistance(0, 78) === 78, '当前视距已在死区内则保持不变');
@@ -121,7 +121,7 @@ try {
   ok(w._camFocusT && w._camFocusT.x === 30 && w._camFocusT.z === -20, '落点写入平滑聚焦缓动');
   ok(w.cam.tx === 0 && w.cam.tz === 0, '当前帧不瞬移镜头');
   ok(w.follow === false, '聚焦时退出跟随模式');
-  const d1 = w.focusGroup(10, 10, 100);
+  const d1 = w.focusGroup(10, 10, 200);
   ok(d1 === CAM_DIST_MAX - 24, '大范围编队拉远并限幅');
   ok(w._camFocusT.x === 10 && w._camFocusT.z === 10, '聚焦目标随新编队更新');
   const before = { ...w._camT };
@@ -132,7 +132,7 @@ try {
   ok(w.focusGroup(0, 0, 0) === 78, '接近期望视距时保留用户缩放');
   const keep = { x: w._camFocusT.x, z: w._camFocusT.z };
   ok(w.setViewPreset('overhead') === 'overhead', '切换到俯瞰预设');
-  ok(w._camT.pitch === 1.28 && w._camT.dist === 178 && w._camT.yaw === Math.PI, '预设写入角度与距离目标');
+  ok(w._camT.pitch === 1.28 && w._camT.dist === VIEW_PRESETS.overhead.dist && w._camT.yaw === Math.PI, '预设写入角度与距离目标');
   ok(w.cam.dist === 150 && w.cam.pitch === 0.92, '预设同样不硬改当前相机值');
   ok(w.cam.tx === 0 && w.cam.tz === 0, '预设不动镜头落点');
   ok(w._camFocusT.x === keep.x && w._camFocusT.z === keep.z, '预设不打断正在进行的聚焦缓动');
@@ -146,7 +146,7 @@ try {
   ok(w.intro.to.tx === 44 && w.intro.to.tz === -33, '运镜中的聚焦写入终点落点');
   ok(w.intro.to.dist === 72, '运镜中的聚焦写入终点视距');
   w.setViewPreset('overhead');
-  ok(w.intro.to.pitch === 1.28 && w.intro.to.dist === 178 && w.intro.to.yaw === Math.PI, '运镜中的预设写入终点角度');
+  ok(w.intro.to.pitch === 1.28 && w.intro.to.dist === VIEW_PRESETS.overhead.dist && w.intro.to.yaw === Math.PI, '运镜中的预设写入终点角度');
   w.intro = null;
   w.focusGroup(44, -33, 0);
   ok(!w.intro && w._camFocusT.x === 44, '运镜结束后恢复普通平滑聚焦');

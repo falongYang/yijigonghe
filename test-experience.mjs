@@ -1,3 +1,4 @@
+import { HALF_W, HALF_H } from './MVP_Web/js/map-bounds.js';
 import assert from 'node:assert/strict';
 import {ScoutingMemory} from './MVP_Web/js/scouting.js';
 import {atlasPoint,atlasVisible,BattlefieldAtlas} from './MVP_Web/js/atlas.js';
@@ -9,7 +10,7 @@ ok(atlasVisible({side:'E',type:'hq'}),'enemy HQ remains a known strategic target
 ok(atlasVisible({side:'P',type:'s1'}),'own units remain visible');
 const rect={left:10,top:20,width:752,height:536};
 assert.deepEqual(atlasPoint(386,288,rect),{x:0,z:0});count++;
-assert.deepEqual(atlasPoint(-100,999,rect),{x:-94,z:67});count++;
+assert.deepEqual(atlasPoint(-100,999,rect),{x:-HALF_W,z:HALF_H});count++;
 assert.deepEqual(atlasPoint(0,0,{width:0,height:0}),{x:0,z:0});count++;
 ok(timeLabel(61.9)==='01:01'&&timeLabel(NaN)==='00:00','timestamps remain finite');
 const event={label:'<script>',text:'<img src=x onerror=alert(1)>',at:61,side:'P',color:0xffffff};

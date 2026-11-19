@@ -7,8 +7,8 @@
  */
 import { SPECIES, ERAS } from './data.js';
 
-export const MAP = { W: 188, H: 134 };   // 战场地面尺寸（单位=cm，同 v2 口径）
-export const HALF_W = MAP.W / 2, HALF_H = MAP.H / 2;
+import { HALF_W, HALF_H } from './map-bounds.js';
+export { MAP, HALF_W, HALF_H } from './map-bounds.js';
 export const SIDES = { PLAYER: 'P', ENEMY: 'E' };
 export const ENEMY_NAMES = { P: '我方蚁群', E: '敌方蚁群' };
 

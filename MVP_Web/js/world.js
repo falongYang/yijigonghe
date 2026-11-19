@@ -267,7 +267,7 @@ export class World {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xdfe6d2);
-    this.scene.fog = new THREE.Fog(0xdfe6d2, 200, 460);
+    this.scene.fog = new THREE.Fog(0xdfe6d2, 220, 520);
 
     this.camera = new THREE.PerspectiveCamera(50, 1, 1, 1400);
 
@@ -446,7 +446,7 @@ export class World {
 
   // ---------------------------------------------------------------- 地面
   _buildTerrain() {
-    const segX = 96, segZ = 70;
+    const segX = Math.ceil(MAP.W / 2), segZ = Math.ceil(MAP.H / 2);
     const geo = new THREE.PlaneGeometry(MAP.W, MAP.H, segX, segZ);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
@@ -3300,7 +3300,7 @@ export class World {
   zoom(delta, px, py) {
     const T = this._camEnsure();
     const before = T.dist;
-    const next = clamp(before * (1 + delta * 0.0012), 42, 250);
+    const next = clamp(before * (1 + delta * 0.0012), CAM_DIST_MIN, CAM_DIST_MAX);
     if (Math.abs(next - before) < 1e-6) return;
     T.dist = next;
     if (Number.isFinite(px) && Number.isFinite(py) && typeof this.screenToGround === 'function') {
@@ -3325,7 +3325,7 @@ export class World {
     const d = Number(delta);
     if (!Number.isFinite(d)) return;
     const T = this._camEnsure();
-    T.dist = clamp(T.dist * (1 + d * 0.0012), 42, 250);
+    T.dist = clamp(T.dist * (1 + d * 0.0012), CAM_DIST_MIN, CAM_DIST_MAX);
     this.follow = false; this._followX = null; this._followZ = null;
     this._camFocusT = null;
   }

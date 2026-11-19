@@ -29,9 +29,10 @@ assert.ok((await page.locator('#sel-body').textContent()).includes('对空'),'se
 
 
 await page.screenshot({path:join(tmpdir(),'yijigonghe-navigation-desktop.png')});
-const result=await page.evaluate(()=>{
+const result=await page.evaluate(async ()=>{
+ const {HALF_W,HALF_H}=await import("/js/map-bounds.js");
  const {sim:s,world:w}=window.__ANT_EPOCH__.game;
- const scenerySafe=w.hillsGroup.children.every(h=>{const r=h.geometry.parameters.radius;return Math.hypot(Math.max(0,Math.abs(h.position.x)-94),Math.max(0,Math.abs(h.position.z)-67))>r&&h.renderOrder<0&&!h.material.depthWrite;});
+ const scenerySafe=w.hillsGroup.children.every(h=>{const r=h.geometry.parameters.radius;return Math.hypot(Math.max(0,Math.abs(h.position.x)-HALF_W),Math.max(0,Math.abs(h.position.z)-HALF_H))>r&&h.renderOrder<0&&!h.material.depthWrite;});
  const u=s._makeUnit('P','s1',-30,0);u.state='move';
  const ob=s.obstacles[0]; u.x=ob.x-ob.r-10;u.z=ob.z;
  const tx=ob.x+ob.r+10,tz=ob.z; u.target={x:tx,z:tz}; u.order='manual';

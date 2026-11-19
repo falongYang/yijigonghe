@@ -2,6 +2,7 @@
  * water 为视觉水域圆盘兼地形约束（海兵资源点应落在其内），nodes 为资源点布局。
  * 美术主题来自 map-art.js；组装后由 rts.js 转出，保持既有 import 路径不变。
  */
+import { MAP, HALF_W, HALF_H } from './map-bounds.js';
 import { MAP_ART } from './map-art.js';
 
 export const MAP_RULES = [
@@ -275,7 +276,6 @@ export function ambienceFor(mode, chapter) {
  * 地图装饰点位：确定性布点，纯视觉（草簇 / 石砾 / 菌菇 / 枯枝 / 水洼 / 孢子 /
  * 残骸 / 晶簇）。用自有 hash，绝不消费 Math.random，避免污染 AI 固定随机流。
  * 硬约束：避开资源点、水域、双方巢区、静态危害区与地图边缘，避免挡住交互与行军。
- * 与 rts.js 的 MAP.W/H 口径同步；此处不 import rts 以规避循环依赖。
  * ------------------------------------------------------------------------ */
 const DECOR_KINDS = ['tuft', 'pebble', 'fungus', 'twig', 'puddle', 'spore', 'bone', 'crystal'];
 export const MAP_DECOR = [
@@ -286,8 +286,7 @@ export const MAP_DECOR = [
   { count: 104, weights: [2, 4, 1, 1, 5, 1, 1, 0], tint: 0x8fa8b8 },  // 4 海岸
   { count: 92,  weights: [0, 2, 2, 0, 1, 4, 1, 6], tint: 0xa48fd0 },  // 5 虚空
 ];
-const DECOR_HALF_W = 94, DECOR_HALF_H = 67;   // == rts.HALF_W / HALF_H
-const DECOR_BASE_Z = DECOR_HALF_H * 0.62;
+const DECOR_BASE_Z = HALF_H * 0.62;
 function _dhash(a, b, c) {
   let x = (Math.imul(a, 374761393) + Math.imul(b, 668265263) + Math.imul(c, 1442695041)) | 0;
   x = Math.imul(x ^ (x >>> 13), 1274126177) | 0;
@@ -304,8 +303,8 @@ export function decorFor(mode, chapter) {
   const out = [];
   const maxTry = cfg.count * 12;
   for (let i = 0; i < maxTry && out.length < cfg.count; i++) {
-    const x = (_dhash(ci, i, salt) * 2 - 1) * (DECOR_HALF_W - 6);
-    const z = (_dhash(ci, i, salt + 1) * 2 - 1) * (DECOR_HALF_H - 6);
+    const x = (_dhash(ci, i, salt) * 2 - 1) * (HALF_W - 6);
+    const z = (_dhash(ci, i, salt + 1) * 2 - 1) * (HALF_H - 6);
     if (rules.nodes.some(n => Math.hypot(x - n.x, z - n.z) < 9)) continue;
     if (water.some(w => Math.hypot(x - w.x, z - w.z) < w.r + 3)) continue;
     if (hazards.some(h => Math.hypot(x - h.x, z - h.z) < h.r + 3)) continue;
@@ -320,7 +319,7 @@ export function decorFor(mode, chapter) {
     let dn = Infinity, dw = Infinity, de = Infinity;
     for (const n of rules.nodes) dn = Math.min(dn, Math.hypot(x - n.x, z - n.z));
     for (const w of water) dw = Math.min(dw, Math.hypot(x - w.x, z - w.z) - (w.r || 0));
-    de = Math.min(DECOR_HALF_W - Math.abs(x), DECOR_HALF_H - Math.abs(z));
+    de = Math.min(HALF_W - Math.abs(x), HALF_H - Math.abs(z));
     let biome = 'field', shadeExtra = 0, tintMix = 0, mixCol = cfg.tint;
     if (dw < 12) { biome = 'water'; tintMix = 0.5; mixCol = 0x9fd0dc; shadeExtra = 0.06; }
     else if (de < 12) { biome = 'edge'; tintMix = 0.45; mixCol = 0x4a3f33; shadeExtra = -0.10; }
@@ -423,11 +422,11 @@ export function terrainFeaturesFor(mode, chapter) {
   const wsum = cfg.weights.reduce((a, b) => a + b, 0) || 1;
   const salt = 41 + ci;
   const out = [];
-  const baseZ = DECOR_HALF_H * 0.62;
+  const baseZ = HALF_H * 0.62;
   const maxTry = cfg.count * 16;
   for (let i = 0; i < maxTry && out.length < cfg.count; i++) {
-    const x = (_dhash(ci, i, salt) * 2 - 1) * (DECOR_HALF_W - 10);
-    const z = (_dhash(ci, i, salt + 1) * 2 - 1) * (DECOR_HALF_H - 10);
+    const x = (_dhash(ci, i, salt) * 2 - 1) * (HALF_W - 10);
+    const z = (_dhash(ci, i, salt + 1) * 2 - 1) * (HALF_H - 10);
     if (rules.nodes.some(n => Math.hypot(x - n.x, z - n.z) < 11)) continue;
     if (water.some(w => Math.hypot(x - w.x, z - w.z) < w.r + 4)) continue;
     if (hazards.some(h => Math.hypot(x - h.x, z - h.z) < h.r + 4)) continue;
@@ -466,11 +465,11 @@ export function elevationPointsFor(mode, chapter) {
   const ci = (mode === 'campaign' && chapter != null) ? (chapter % MAP_RULES.length) : 0;
   const cfg = ELEV_CFG[ci];
   const rules = MAP_RULES[ci];
-  const baseZ = DECOR_HALF_H * 0.62;
+  const baseZ = HALF_H * 0.62;
   const pts = [];
   for (let i = 0; i < cfg.count * 20 && pts.length < cfg.count; i++) {
-    const x = (_dhash(ci, i, 91) * 2 - 1) * (DECOR_HALF_W - 12);
-    const z = (_dhash(ci, i, 92) * 2 - 1) * (DECOR_HALF_H - 12);
+    const x = (_dhash(ci, i, 91) * 2 - 1) * (HALF_W - 12);
+    const z = (_dhash(ci, i, 92) * 2 - 1) * (HALF_H - 12);
     if (rules.nodes.some(n => Math.hypot(x - n.x, z - n.z) < 12)) continue;
     if (Math.hypot(x, z - baseZ) < 24 || Math.hypot(x, z + baseZ) < 24) continue;
     const h = +((_dhash(ci, i, 93) * 2 - 1) * cfg.amp).toFixed(3);
@@ -503,6 +502,6 @@ export function minimapZonesFor(mode, chapter) {
   const water = (rules.water || []).map(w => ({ x: w.x, z: w.z, r: w.r, kind: 'water' }));
   const hazards = (STATIC_HAZARDS[ci] || []).map(h => ({ x: h.x, z: h.z, r: h.r, kind: 'hazard', type: h.type }));
   const features = terrainFeaturesFor(mode, chapter).map(f => ({ x: f.x, z: f.z, r: +(f.size * 1.5).toFixed(2), kind: 'feature', type: f.kind }));
-  return { edge: { w: DECOR_HALF_W * 2, h: DECOR_HALF_H * 2 }, water, hazards, features };
+  return { edge: { w: MAP.W, h: MAP.H }, water, hazards, features };
 }
 
