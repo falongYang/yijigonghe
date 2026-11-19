@@ -20,9 +20,7 @@ const css = read('MVP_Web/css/style.css');
 console.log('— 1) 接线审计 —');
 has(uiSrc, /const mapPoint = e => \{/, '屏幕像素→战术坐标抽成共用函数');
 has(uiSrc, /Math\.max\(0, Math\.min\(1, \(e\.clientX - rect\.left\) \/ \(rect\.width \|\| 1\)\)\)/, '横坐标钳制并防零宽');
-has(uiSrc, /if \(this\.hooks\.onMinimapOrder\) this\.hooks\.onMinimapOrder\(p\.x, p\.z, opts \|\| \{\}\)/, '指令走独立 hook');
 has(uiSrc, /if \(this\._mmOrderArmed\) \{/, 'pointerdown 识别一次性下令态');
-has(uiSrc, /this\.setMinimapOrderArmed\(false\);\n\s+issue\(e/, '下令后自动收起态');
 has(uiSrc, /addEventListener\('contextmenu'/, '桌面右键监听');
 has(uiSrc, /append: !!e\.shiftKey, attackMove: !!e\.altKey/, 'Shift 追加 / Alt 攻击移动');
 has(uiSrc, /document\.getElementById\('mm-order'\)/, '触屏下令按钮接线');
@@ -126,6 +124,12 @@ try {
   ok(ui.disarmMinimapOrder() === true && ui._mmOrderArmed === false, 'Esc 可收起待下指令');
   ok(ui.disarmMinimapOrder() === false, '未 armed 时 Esc 不吞掉后续层级');
   ok(toasts.some(t => t.includes('已退出小地图下令模式')), '退出时给出提示');
+  orderBtn.onclick();
+  mm.fire('contextmenu', ev({ pointerType: 'mouse', button: 2 }));
+  ok(orders.length === 3 && orderBtn['aria-pressed'] === 'false', '下令态右键下令后收起按钮');
+  mm.fire('pointerdown', ev({ pointerType: 'mouse' }));
+  ok(jumps.length === 5 && orders.length === 3, '下令态右键后的左键仅跳转镜头');
+  winFire('pointerup', ev());
   if (savedDoc) Object.defineProperty(globalThis, 'document', savedDoc); else delete globalThis.document;
   if (savedWin) Object.defineProperty(globalThis, 'window', savedWin); else delete globalThis.window;
 } catch (e) {

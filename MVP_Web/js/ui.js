@@ -945,9 +945,12 @@ export class UI {
       if (this.hooks.onMinimap) this.hooks.onMinimap(p.x, p.z);
     };
     /** 战术指令：与镜头跳转分开，右键 / 下令按钮共用，镜头保持原地。 */
-    const issue = (e, opts) => {
+    const issue = e => {
+      if (this._mmOrderArmed) this.setMinimapOrderArmed(false);
       const p = mapPoint(e);
-      if (this.hooks.onMinimapOrder) this.hooks.onMinimapOrder(p.x, p.z, opts || {});
+      if (this.hooks.onMinimapOrder) {
+        this.hooks.onMinimapOrder(p.x, p.z, { append: !!e.shiftKey, attackMove: !!e.altKey });
+      }
     };
     // 统一走 Pointer Events：鼠标点击 / 拖动照旧，触屏点按与拖动小地图同样能跳转镜头。
     // pointerdown 上 preventDefault 可抑制浏览器补发的兼容鼠标事件，避免一次点击跳两次。
@@ -958,8 +961,7 @@ export class UI {
       if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
       // 下令态：一次点按 = 给选中单位下达移动指令，用完即收，避免后续拖图被误判为指令
       if (this._mmOrderArmed) {
-        this.setMinimapOrderArmed(false);
-        issue(e, { append: !!e.shiftKey, attackMove: !!e.altKey });
+        issue(e);
         return;
       }
       this._mmDrag = true; this._mmPid = e.pointerId;
@@ -984,7 +986,7 @@ export class UI {
     this.mm.addEventListener('contextmenu', e => {
       if (e.cancelable && typeof e.preventDefault === 'function') e.preventDefault();
       if (e.pointerType && e.pointerType !== 'mouse') return;
-      issue(e, { append: !!e.shiftKey, attackMove: !!e.altKey });
+      issue(e);
     });
     this.mm.style.cursor = 'crosshair';
     const tip = $('#mm-tip');
