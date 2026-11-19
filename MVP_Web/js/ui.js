@@ -130,13 +130,26 @@ export class UI {
     const file = document.getElementById('cc-file');
     if (expBtn) expBtn.onclick = () => this._exportProfile();
     if (impBtn && file) {
+      let importGeneration = 0;
+      let pendingReader = null;
       impBtn.onclick = () => { try { file.click(); } catch { this._profileFeedback('当前浏览器不支持读取本地文件', true); } };
       file.onchange = () => {
         const f = file.files && file.files[0];
         if (!f) return;
+        const generation = ++importGeneration;
+        if (pendingReader) { try { pendingReader.abort(); } catch { /* already finished */ } }
+        pendingReader = null;
+        try { file.value = ''; } catch { /* allow selecting the same file again */ }
+        if (f.size > 65536) {
+          this._profileFeedback('导入失败：档案文件过大（上限 64 KB）', true);
+          return;
+        }
         let reader = null;
         try { reader = new FileReader(); } catch { this._profileFeedback('当前浏览器不支持读取本地文件', true); return; }
+        pendingReader = reader;
         reader.onload = () => {
+          if (generation !== importGeneration) return;
+          pendingReader = null;
           const r = Profile.importText(reader.result);
           if (!r.ok) { this._profileFeedback('导入失败：' + r.error, true); return; }
           this._profile = r.profile;
@@ -147,8 +160,12 @@ export class UI {
           this._profileFeedback(`档案已导入：${r.profile.name} · ${r.profile.games} 局战绩`);
           Sound.play('select');
         };
-        reader.onerror = () => this._profileFeedback('档案文件读取失败', true);
-        try { reader.readAsText(f); } catch { this._profileFeedback('档案文件读取失败', true); }
+        reader.onerror = () => {
+          if (generation !== importGeneration) return;
+          pendingReader = null;
+          this._profileFeedback('档案文件读取失败', true);
+        };
+        try { reader.readAsText(f); } catch { pendingReader = null; this._profileFeedback('档案文件读取失败', true); }
         try { file.value = ''; } catch { /* 允许再次导入同一文件 */ }
       };
     }
