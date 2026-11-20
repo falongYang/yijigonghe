@@ -2068,7 +2068,7 @@ export class World {
     fill.renderOrder = 999;
     fill.position.z = 0.01;
     bar.add(bg); bar.add(fill);
-    bar.visible = false;   // 仅受伤/选中时显示（见 _syncUnit）
+    bar.visible = false;   // 按选中、攻击目标和近期受击状态显示
     group.add(bar);
 
     // 进化/精英单位专属金色辉光环（常显，便于在蚁群中辨识老兵）
@@ -2314,7 +2314,7 @@ export class World {
     return m.moraleK;
   }
 
-  _syncUnit(u, force, sel) {
+  _syncUnit(u, force, sel, isTarget = false, simTime = 0) {
     const m = this.unitMeshes.get(u.id);
     if (!m) return;
     updateLocomotion(m.body?.material, u, this.time);
@@ -2543,7 +2543,9 @@ export class World {
     // 血条 / 等级星点 / 选择环 / 精英辉光（按需显示，降低画面杂乱与渲染开销）
     const rawRatio = Number.isFinite(u.hpRatio) ? u.hpRatio : (u.maxHp ? u.hp / u.maxHp : 1);
     const ratio = clamp(rawRatio, 0, 1);
-    const showBar = sel || ratio < 0.999;
+    if (u.hp < m.previousHp) m.showHealthUntil = simTime + 1.5;
+    m.previousHp = u.hp;
+    const showBar = sel || isTarget || simTime < m.showHealthUntil;
     m.bar.visible = showBar;
     if (showBar) {
       m.fill.scale.x = Math.max(0.001, ratio);
@@ -2740,6 +2742,39 @@ export class World {
     m.bar.quaternion.premultiply(m.mesh.quaternion.clone().invert());
   }
 
+  // 只让短时受击血条让位，保留所有选中单位与它们的攻击目标。
+  _declutterUnitBars(priorityBars, recentBars) {
+    this.camera.updateMatrixWorld();
+    const point = new THREE.Vector3();
+    const boundsFor = ({ bar }) => {
+      const background = bar.children[0];
+      background.updateWorldMatrix(true, false);
+      const vertices = background.geometry.attributes.position;
+      const bounds = { left: Infinity, right: -Infinity, top: -Infinity, bottom: Infinity };
+      for (let i = 0; i < vertices.count; i++) {
+        point.fromBufferAttribute(vertices, i).applyMatrix4(background.matrixWorld).project(this.camera);
+        if (point.z < -1 || point.z > 1) return null;
+        bounds.left = Math.min(bounds.left, point.x);
+        bounds.right = Math.max(bounds.right, point.x);
+        bounds.top = Math.max(bounds.top, point.y);
+        bounds.bottom = Math.min(bounds.bottom, point.y);
+      }
+      return bounds.right < -1 || bounds.left > 1 || bounds.top < -1 || bounds.bottom > 1 ? null : bounds;
+    };
+    const occupied = priorityBars.map(boundsFor).filter(Boolean);
+    for (const mesh of recentBars) {
+      const bounds = boundsFor(mesh);
+      if (!bounds) continue;
+      if (occupied.some(other => bounds.left < other.right && other.left < bounds.right &&
+          bounds.bottom < other.top && other.bottom < bounds.top)) {
+        mesh.bar.visible = false;
+        if (mesh.pips) mesh.pips.visible = false;
+      } else {
+        occupied.push(bounds);
+      }
+    }
+  }
+
   /** 每帧：同步全部单位/建筑的可视状态（位置/血条/选择环），并回收已消失实体。
    *  frozen=true 时（暂停）不生成新的扬尘，避免特效因时间冻结而无法回收。 */
   syncFrame(sim, frozen = false) {
@@ -2758,11 +2793,27 @@ export class World {
     const bids = new Set(sim.buildings.map(b => b.id));
     for (const id of [...this.buildingMeshes.keys()]) if (!bids.has(id)) this.removeBuilding(id);
 
+    const targetIds = new Set();
+    for (const u of sim.units) {
+      if (u.side === SIDES.PLAYER && sim.selected.has(u.id) && u.state === 'attack' && u.target?.id != null) {
+        targetIds.add(u.target.id);
+      }
+    }
+    const priorityBars = [];
+    const recentBars = [];
     for (const u of sim.units) {
       if (!this.unitMeshes.has(u.id)) this.spawnUnit(u);
-      this._syncUnit(u, false, sim.selected.has(u.id));
+      const selected = sim.selected.has(u.id);
+      const isTarget = targetIds.has(u.id);
+      this._syncUnit(u, false, selected, isTarget, sim.time);
       const mh = this.unitMeshes.get(u.id);
-      if (mh) mh.group.visible = u.side !== SIDES.ENEMY || !!u.visible;   // 超视距敌方隐藏
+      mh.group.visible = u.side !== SIDES.ENEMY || !!u.visible;   // 超视距敌方隐藏
+      if (mh.group.visible && mh.bar.visible) {
+        (selected || isTarget ? priorityBars : recentBars).push(mh);
+      }
+    }
+    if (recentBars.length && priorityBars.length + recentBars.length > 1) {
+      this._declutterUnitBars(priorityBars, recentBars);
     }
     for (const b of sim.buildings) {
       if (!this.buildingMeshes.has(b.id)) this.spawnBuilding(b);
