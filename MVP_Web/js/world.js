@@ -447,7 +447,18 @@ export class World {
   // ---------------------------------------------------------------- 地面
   _buildTerrain() {
     const segX = Math.ceil(MAP.W / 2), segZ = Math.ceil(MAP.H / 2);
-    const geo = new THREE.PlaneGeometry(MAP.W, MAP.H, segX, segZ);
+    // Keep the original two-unit grid inside the battlefield and space the
+    // surrounding vertices progressively farther apart as they recede into fog.
+    const outerSegments = 24;
+    const outerReach = 480;
+    const axis = (i, segments, half) => {
+      const edge = Math.max(-i, i - segments, 0);
+      if (!edge) return (i / segments * 2 - 1) * half;
+      const distance = 2 * edge + (outerReach - 2 * outerSegments) * (edge / outerSegments) ** 3;
+      return (i < 0 ? -1 : 1) * (half + distance);
+    };
+    const columns = segX + 2 * outerSegments + 1;
+    const geo = new THREE.PlaneGeometry(1, 1, columns - 1, segZ + 2 * outerSegments);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = [];
@@ -456,9 +467,12 @@ export class World {
     const cHigh = new THREE.Color(0x9fa86a);
     const cMoss = new THREE.Color(0x6f8f4e);
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), z = pos.getZ(i);
+      const x = axis(i % columns - outerSegments, segX, HALF_W);
+      const z = axis(Math.floor(i / columns) - outerSegments, segZ, HALF_H);
       const n = noise2(x, z);
-      pos.setY(i, terrainHeight(x, z));
+      const outside = Math.max(Math.abs(x) - HALF_W, Math.abs(z) - HALF_H, 0);
+      const fade = 1 - THREE.MathUtils.smoothstep(outside, 0, 70);
+      pos.setXYZ(i, x, THREE.MathUtils.lerp(3, terrainHeight(x, z), fade), z);
       const t = clamp((n + 1.4) / 2.8, 0, 1);
       const c = cLow.clone().lerp(cMid, t).lerp(cHigh, Math.max(0, t - 0.5) * 2);
       // 低洼处苔斑
@@ -479,6 +493,12 @@ export class World {
     );
     this.pickPlane.rotation.x = -Math.PI / 2;
     this.scene.add(this.pickPlane);
+  }
+
+  _edgeRockPosition(angle, margin) {
+    const dx = Math.cos(angle), dz = Math.sin(angle);
+    const distance = 1 / Math.max(Math.abs(dx) / (HALF_W + margin), Math.abs(dz) / (HALF_H + margin));
+    return [dx * distance, dz * distance];
   }
 
   _buildScatter() { this._rebuildScatter(SKIRMISH_MAP); }
@@ -532,10 +552,12 @@ export class World {
     const rockMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(cfg.pal.low).lerp(new THREE.Color(0xffffff), 0.1), roughness: 1 });
     for (let i = 0; i < sc.rock; i++) {
       const a = (i / Math.max(1, sc.rock)) * Math.PI * 2;
-      const x = Math.cos(a) * (HALF_W + 8), z = Math.sin(a) * (HALF_H + 6);
       const r = 6 + Math.random() * 8;
-      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), rockMat);
-      rock.position.set(x, r * 0.3, z);
+      const [x, z] = this._edgeRockPosition(a, 12 + r + Math.random() * 8);
+      const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), rockMat);
+      rock.scale.set(1, 0.58, 0.82);
+      rock.rotation.y = a;
+      rock.position.set(x, this._groundY(x, z) - r * 0.1, z);
       rock.castShadow = true; rock.receiveShadow = true;
       this.scatterGroup.add(rock);
     }
@@ -1336,15 +1358,15 @@ export class World {
 
     // 3) 边界岩脊：一圈低矮碎岩收住地图边缘
     const N = 72;
-    const ridge = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 0),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(cfg.pal.low).multiplyScalar(0.78), roughness: 1, flatShading: true }), N);
+    const ridge = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(cfg.pal.low).multiplyScalar(0.78), roughness: 1 }), N);
     const d = new THREE.Object3D();
     for (let i = 0; i < N; i++) {
       const a = (i / N) * Math.PI * 2;
-      const rx = HALF_W + 2.4 + Math.random() * 3.2, rz = HALF_H + 2.4 + Math.random() * 3.2;
       const rr = 1.8 + Math.random() * 2.8;
-      d.position.set(Math.cos(a) * rx, rr * 0.34, Math.sin(a) * rz);
-      d.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      const [x, z] = this._edgeRockPosition(a, rr + 3 + Math.random() * 15);
+      d.position.set(x, this._groundY(x, z) - rr * 0.08, z);
+      d.rotation.set(0, a, 0);
       d.scale.set(rr, rr * 0.5, rr);
       d.updateMatrix(); ridge.setMatrixAt(i, d.matrix);
     }
@@ -3536,11 +3558,9 @@ export class World {
 
   screenToGround(x, y) {
     this._setNdc(x, y);
-    const hit = this.raycaster.intersectObject(this.ground || this.pickPlane, false)[0];
-    if (!hit) return null;
-    const p = hit.point;
-    if (Math.abs(p.x) > HALF_W || Math.abs(p.z) > HALF_H) return null;
-    return { x: p.x, z: p.z };
+    const hit = this.raycaster.intersectObject(this.ground || this.pickPlane, false)
+      .find(({ point }) => Math.abs(point.x) <= HALF_W && Math.abs(point.z) <= HALF_H);
+    return hit ? { x: hit.point.x, z: hit.point.z } : null;
   }
 
   /** 命中实体（单位/建筑），返回 {kind, id} 或 null。 */
