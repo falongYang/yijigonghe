@@ -876,3 +876,24 @@ button, .sp-nav, .ch-nav, .bbtn, .abtn, .tbtn, .mtab, .dtab, .atab, .mm-intel-bt
   #topright #speeds { margin-inline-start: auto; }
   #res { scrollbar-width: thin; }
 }
+
+/* 窄高横屏：底部为建造、战报和小地图各留一栏。 */
+@media (min-width: 621px) and (max-width: 880px) and (max-height: 500px) and (orientation: landscape) {
+  #hud {
+    --landscape-build-width: 46vw;
+    --landscape-minimap-width: 162px;
+  }
+  #build-panel { width: var(--landscape-build-width); }
+  #ability-bar { flex-wrap: wrap; }
+  .abtn { font-size: 12px; min-height: 32px; }
+  #minimap-wrap { width: var(--landscape-minimap-width); }
+  #domain-legend, #mm-intel-legend { font-size: 11px; color: #dce6ce; }
+  #mm-intel-legend { line-height: 1.4; }
+  #log {
+    left: calc(24px + var(--landscape-build-width));
+    right: calc(16px + var(--landscape-minimap-width));
+    width: auto;
+    transform: none;
+  }
+  .log-item { max-width: 100%; overflow-wrap: anywhere; }
+}
